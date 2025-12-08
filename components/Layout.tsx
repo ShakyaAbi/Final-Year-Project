@@ -1,9 +1,12 @@
-import React from 'react';
+
+import React, { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { 
   FolderKanban, Settings, LogOut, Menu, X, Bell, ChevronRight, 
-  Command, ChevronsLeft, ChevronsRight 
+  Command, ChevronsLeft, ChevronsRight, ClipboardCheck, Info, AlertTriangle, CheckCircle, AlertCircle
 } from 'lucide-react';
+import { getNotifications } from '../services/mockService';
+import { ActivityLog } from '../types';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -12,16 +15,44 @@ interface LayoutProps {
 export const Layout: React.FC<LayoutProps> = ({ children }) => {
   const [sidebarOpen, setSidebarOpen] = React.useState(false);
   const [isCollapsed, setIsCollapsed] = React.useState(false);
+  const [notifications, setNotifications] = useState<ActivityLog[]>([]);
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
+
   const location = useLocation();
   const navigate = useNavigate();
 
+  useEffect(() => {
+    getNotifications().then(data => {
+      setNotifications(data);
+      setUnreadCount(data.length);
+    });
+  }, []);
+
   const navItems = [
     { icon: FolderKanban, label: 'Projects', path: '/projects' },
+    { icon: ClipboardCheck, label: 'Data Entry', path: '/data-entry' },
     { icon: Settings, label: 'Settings', path: '/settings' },
   ];
 
   const handleLogout = () => {
     navigate('/');
+  };
+
+  const toggleNotifications = () => {
+    if (!showNotifications) {
+      setUnreadCount(0);
+    }
+    setShowNotifications(!showNotifications);
+  };
+
+  const getNotificationIcon = (type: string) => {
+    switch (type) {
+      case 'warning': return <AlertTriangle className="w-4 h-4 text-amber-500" />;
+      case 'success': return <CheckCircle className="w-4 h-4 text-green-500" />;
+      case 'danger': return <AlertCircle className="w-4 h-4 text-red-500" />;
+      default: return <Info className="w-4 h-4 text-blue-500" />;
+    }
   };
 
   return (
@@ -93,10 +124,10 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
         )}
 
         {/* Navigation */}
-        <nav className="flex-1 overflow-y-auto p-4 space-y-6">
+        <nav className="flex-1 overflow-y-auto p-4 space-y-6 overflow-x-hidden">
           <div>
             {!isCollapsed && (
-                <h2 className="px-3 text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 animate-in fade-in">
+                <h2 className="px-3 text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 animate-in fade-in whitespace-nowrap">
                 Main Menu
                 </h2>
             )}
@@ -119,7 +150,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
                   >
                     <div className={`flex items-center ${isCollapsed ? 'justify-center' : 'gap-3'}`}>
                       <item.icon className={`w-5 h-5 transition-colors ${isActive ? 'text-white' : 'text-slate-400 group-hover:text-white'}`} />
-                      {!isCollapsed && <span>{item.label}</span>}
+                      {!isCollapsed && <span className="whitespace-nowrap">{item.label}</span>}
                     </div>
                     {!isCollapsed && isActive && <ChevronRight className="w-4 h-4 text-white/70" />}
                   </Link>
@@ -149,13 +180,13 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
             className={`mt-3 flex w-full items-center ${isCollapsed ? 'justify-center' : 'justify-center space-x-2'} px-3 py-2.5 text-xs font-medium text-slate-400 hover:text-red-300 hover:bg-red-500/10 rounded-lg transition-colors`}
           >
             <LogOut className="w-4 h-4" />
-            {!isCollapsed && <span>Sign Out</span>}
+            {!isCollapsed && <span className="whitespace-nowrap">Sign Out</span>}
           </button>
         </div>
       </aside>
 
       {/* Main Content Wrapper - The "Card" */}
-      <div className="flex-1 flex flex-col min-w-0 overflow-hidden bg-slate-50 rounded-2xl shadow-2xl relative z-10">
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden bg-slate-50 rounded-2xl shadow-2xl relative">
         {/* Header */}
         <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-4 lg:px-8 flex-shrink-0 z-10">
           <div className="flex items-center gap-4">
@@ -175,10 +206,58 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
           </div>
           
           <div className="flex items-center gap-4">
-            <button className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-full transition-all relative">
-              <Bell className="w-5 h-5" />
-              <span className="absolute top-2.5 right-2.5 w-2 h-2 bg-red-500 rounded-full ring-2 ring-white"></span>
-            </button>
+            <div className="relative">
+              <button 
+                onClick={toggleNotifications}
+                className={`p-2 rounded-full transition-all relative ${showNotifications ? 'bg-blue-50 text-blue-600' : 'text-slate-400 hover:text-blue-600 hover:bg-blue-50'}`}
+              >
+                <Bell className="w-5 h-5" />
+                {unreadCount > 0 && (
+                  <span className="absolute top-2.5 right-2.5 w-2 h-2 bg-red-500 rounded-full ring-2 ring-white animate-pulse"></span>
+                )}
+              </button>
+
+              {/* Notifications Dropdown */}
+              {showNotifications && (
+                <>
+                  <div className="fixed inset-0 z-10" onClick={() => setShowNotifications(false)}></div>
+                  <div className="absolute right-0 mt-2 w-80 bg-white rounded-xl shadow-xl border border-slate-100 py-2 z-20 animate-in fade-in slide-in-from-top-2">
+                    <div className="px-4 py-3 border-b border-slate-50 flex justify-between items-center bg-slate-50/50">
+                        <h3 className="font-semibold text-sm text-slate-900">Notifications</h3>
+                        <button className="text-xs text-blue-600 hover:text-blue-700 font-medium">Mark all read</button>
+                    </div>
+                    <div className="max-h-[320px] overflow-y-auto">
+                        {notifications.length > 0 ? (
+                          notifications.map((n, idx) => (
+                            <div key={idx} className="px-4 py-3 hover:bg-slate-50 border-b border-slate-50 last:border-0 flex gap-3 transition-colors cursor-pointer group">
+                                <div className={`mt-0.5 w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
+                                  n.type === 'warning' ? 'bg-amber-100' : n.type === 'danger' ? 'bg-red-100' : n.type === 'success' ? 'bg-green-100' : 'bg-blue-100'
+                                }`}>
+                                  {getNotificationIcon(n.type)}
+                                </div>
+                                <div>
+                                    <p className="text-sm text-slate-800 leading-snug">
+                                      <span className="font-bold text-slate-900">{n.user}</span> {n.action} <span className="font-medium text-slate-700">{n.item}</span>
+                                    </p>
+                                    <p className="text-xs text-slate-400 mt-1 flex items-center gap-1 group-hover:text-blue-500 transition-colors">
+                                      {n.date}
+                                    </p>
+                                </div>
+                            </div>
+                          ))
+                        ) : (
+                          <div className="py-8 text-center text-slate-400 text-sm">
+                            No new notifications
+                          </div>
+                        )}
+                    </div>
+                    <div className="px-4 py-2 border-t border-slate-50 text-center bg-slate-50/30">
+                        <Link to="/settings" className="text-xs font-semibold text-slate-500 hover:text-blue-600 transition-colors">View Activity Log</Link>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
           </div>
         </header>
 

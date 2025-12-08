@@ -183,7 +183,8 @@ export const IndicatorCharts: React.FC<IndicatorChartsProps> = ({ indicator }) =
   
   // Add padding (15% top/bottom)
   const yAxisMax = Math.ceil(domainMax * 1.15);
-  const yAxisMin = Math.floor(domainMin * 0.85);
+  // If domainMin is close to 0, let it be 0, else give padding
+  const yAxisMin = domainMin < 5 ? 0 : Math.floor(domainMin * 0.85);
 
   return (
     <div className="space-y-8">

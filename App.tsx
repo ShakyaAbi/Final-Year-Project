@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { HashRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { Login } from './pages/Login';
@@ -5,6 +6,7 @@ import { ProjectList } from './pages/ProjectList';
 import { ProjectDetail } from './pages/ProjectDetail';
 import { IndicatorDetail } from './pages/IndicatorDetail';
 import { Settings } from './pages/Settings';
+import { DataEntry } from './pages/DataEntry';
 
 const App: React.FC = () => {
   return (
@@ -14,6 +16,7 @@ const App: React.FC = () => {
         <Route path="/projects" element={<ProjectList />} />
         <Route path="/projects/:id" element={<ProjectDetail />} />
         <Route path="/indicators/:id" element={<IndicatorDetail />} />
+        <Route path="/data-entry" element={<DataEntry />} />
         <Route path="/settings" element={<Settings />} />
         
         {/* Fallback */}

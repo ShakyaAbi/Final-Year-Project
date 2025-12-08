@@ -1,3 +1,4 @@
+
 export enum NodeType {
   GOAL = 'Goal',
   OUTCOME = 'Outcome',
@@ -43,6 +44,7 @@ export interface IndicatorValue {
   isAnomaly: boolean;
   anomalyReason?: string;
   comment?: string;
+  evidence?: string; // Added for verification source/notes
 }
 
 export interface IndicatorVersion {
@@ -99,4 +101,20 @@ export interface ProjectStats {
   beneficiariesReached: number;
   activitiesTotal: number;
   activitiesCompleted: number;
+}
+
+export interface UserProfile {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+  avatar?: string;
+  organization: string;
+  timezone: string;
+  notificationPreferences: {
+    emailAlerts: boolean;
+    browserPush: boolean;
+    weeklyDigest: boolean;
+    anomalyAlerts: boolean;
+  };
 }

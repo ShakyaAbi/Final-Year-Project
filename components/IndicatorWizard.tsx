@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Project, LogframeNode, IndicatorType, Indicator, NodeType } from '../types';
 import { Button } from './ui/Button';
@@ -8,6 +9,7 @@ import { useNavigate } from 'react-router-dom';
 interface IndicatorWizardProps {
   project: Project;
   onClose: () => void;
+  initialNodeId?: string | null;
 }
 
 // Stepper Component
@@ -76,7 +78,7 @@ const NodeSelector = ({ nodes, selectedId, onSelect, level = 0 }: { nodes: Logfr
   );
 };
 
-export const IndicatorWizard: React.FC<IndicatorWizardProps> = ({ project, onClose }) => {
+export const IndicatorWizard: React.FC<IndicatorWizardProps> = ({ project, onClose, initialNodeId }) => {
   const navigate = useNavigate();
   const [step, setStep] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -85,6 +87,7 @@ export const IndicatorWizard: React.FC<IndicatorWizardProps> = ({ project, onClo
   // Form State
   const [formData, setFormData] = useState<Partial<Indicator>>({
     projectId: project.id,
+    nodeId: initialNodeId || undefined,
     type: IndicatorType.NUMBER,
     frequency: 'Weekly',
     booleanLabels: { true: 'Yes', false: 'No' },
@@ -181,7 +184,7 @@ export const IndicatorWizard: React.FC<IndicatorWizardProps> = ({ project, onClo
                 type="text"
                 value={formData.name || ''}
                 onChange={e => updateField('name', e.target.value)}
-                className="w-full px-3 py-2 border border-slate-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none"
+                className="w-full px-3 py-2 border border-slate-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none bg-white text-slate-900"
                 placeholder="e.g., Percentage of households with improved sanitation"
               />
             </div>
@@ -192,7 +195,7 @@ export const IndicatorWizard: React.FC<IndicatorWizardProps> = ({ project, onClo
                 type="text"
                 value={formData.code || ''}
                 onChange={e => updateField('code', e.target.value)}
-                className="w-full px-3 py-2 border border-slate-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none font-mono text-sm"
+                className="w-full px-3 py-2 border border-slate-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none font-mono text-sm bg-white text-slate-900"
                 placeholder="e.g., IND-WASH-01"
               />
             </div>
@@ -203,7 +206,7 @@ export const IndicatorWizard: React.FC<IndicatorWizardProps> = ({ project, onClo
                 rows={4}
                 value={formData.description || ''}
                 onChange={e => updateField('description', e.target.value)}
-                className="w-full px-3 py-2 border border-slate-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none"
+                className="w-full px-3 py-2 border border-slate-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none bg-white text-slate-900"
                 placeholder="Provide a clear definition, method of calculation, and purpose."
               />
             </div>
@@ -243,7 +246,7 @@ export const IndicatorWizard: React.FC<IndicatorWizardProps> = ({ project, onClo
                       type="text"
                       value={formData.unit || ''}
                       onChange={e => updateField('unit', e.target.value)}
-                      className="w-full px-3 py-2 border border-slate-300 rounded-md"
+                      className="w-full px-3 py-2 border border-slate-300 rounded-md bg-white text-slate-900"
                       placeholder={formData.type === IndicatorType.PERCENTAGE ? '%' : 'e.g., kg, people'}
                    />
                 </div>
@@ -252,7 +255,7 @@ export const IndicatorWizard: React.FC<IndicatorWizardProps> = ({ project, onClo
                    <select 
                       value={formData.decimals}
                       onChange={e => updateField('decimals', parseInt(e.target.value))}
-                      className="w-full px-3 py-2 border border-slate-300 rounded-md"
+                      className="w-full px-3 py-2 border border-slate-300 rounded-md bg-white text-slate-900"
                    >
                      <option value="0">0 (Integer)</option>
                      <option value="1">1 (0.1)</option>
@@ -279,7 +282,7 @@ export const IndicatorWizard: React.FC<IndicatorWizardProps> = ({ project, onClo
                         }
                       }
                     }}
-                    className="flex-1 px-3 py-2 border border-slate-300 rounded-md"
+                    className="flex-1 px-3 py-2 border border-slate-300 rounded-md bg-white text-slate-900"
                     placeholder="Type category and press Enter"
                   />
                   <Button 
@@ -321,7 +324,7 @@ export const IndicatorWizard: React.FC<IndicatorWizardProps> = ({ project, onClo
                        type="text"
                        value={formData.booleanLabels?.true || 'Yes'}
                        onChange={e => updateField('booleanLabels', { ...formData.booleanLabels, true: e.target.value })}
-                       className="w-full px-3 py-2 border border-slate-300 rounded-md"
+                       className="w-full px-3 py-2 border border-slate-300 rounded-md bg-white text-slate-900"
                     />
                  </div>
                  <div>
@@ -330,7 +333,7 @@ export const IndicatorWizard: React.FC<IndicatorWizardProps> = ({ project, onClo
                        type="text"
                        value={formData.booleanLabels?.false || 'No'}
                        onChange={e => updateField('booleanLabels', { ...formData.booleanLabels, false: e.target.value })}
-                       className="w-full px-3 py-2 border border-slate-300 rounded-md"
+                       className="w-full px-3 py-2 border border-slate-300 rounded-md bg-white text-slate-900"
                     />
                  </div>
               </div>
@@ -356,7 +359,7 @@ export const IndicatorWizard: React.FC<IndicatorWizardProps> = ({ project, onClo
                   <select 
                     value={formData.target as string}
                     onChange={e => updateField('target', e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-md"
+                    className="w-full px-3 py-2 border border-slate-300 rounded-md bg-white text-slate-900"
                   >
                     <option value="">Select target category...</option>
                     {formData.categories?.map(cat => <option key={cat} value={cat}>{cat}</option>)}
@@ -365,7 +368,7 @@ export const IndicatorWizard: React.FC<IndicatorWizardProps> = ({ project, onClo
                    <select 
                     value={formData.target as string}
                     onChange={e => updateField('target', e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-md"
+                    className="w-full px-3 py-2 border border-slate-300 rounded-md bg-white text-slate-900"
                   >
                     <option value="">Select target state...</option>
                     <option value="true">{formData.booleanLabels?.true}</option>
@@ -376,7 +379,7 @@ export const IndicatorWizard: React.FC<IndicatorWizardProps> = ({ project, onClo
                     type="number"
                     value={formData.target as number}
                     onChange={e => updateField('target', parseFloat(e.target.value))}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-md text-lg font-semibold"
+                    className="w-full px-3 py-2 border border-slate-300 rounded-md text-lg font-semibold bg-white text-slate-900"
                   />
                 )}
              </div>
@@ -387,7 +390,7 @@ export const IndicatorWizard: React.FC<IndicatorWizardProps> = ({ project, onClo
                    <select 
                     value={formData.baseline as string}
                     onChange={e => updateField('baseline', e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-md"
+                    className="w-full px-3 py-2 border border-slate-300 rounded-md bg-white text-slate-900"
                   >
                     <option value="">Select baseline category...</option>
                     {formData.categories?.map(cat => <option key={cat} value={cat}>{cat}</option>)}
@@ -396,7 +399,7 @@ export const IndicatorWizard: React.FC<IndicatorWizardProps> = ({ project, onClo
                    <select 
                     value={formData.baseline as string}
                     onChange={e => updateField('baseline', e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-md"
+                    className="w-full px-3 py-2 border border-slate-300 rounded-md bg-white text-slate-900"
                   >
                     <option value="">Select baseline state...</option>
                     <option value="true">{formData.booleanLabels?.true}</option>
@@ -407,7 +410,7 @@ export const IndicatorWizard: React.FC<IndicatorWizardProps> = ({ project, onClo
                     type="number"
                     value={formData.baseline as number}
                     onChange={e => updateField('baseline', parseFloat(e.target.value))}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-md"
+                    className="w-full px-3 py-2 border border-slate-300 rounded-md bg-white text-slate-900"
                    />
                 )}
              </div>
@@ -421,7 +424,7 @@ export const IndicatorWizard: React.FC<IndicatorWizardProps> = ({ project, onClo
                       type="number"
                       value={formData.minExpected}
                       onChange={e => updateField('minExpected', parseFloat(e.target.value))}
-                      className="w-full px-3 py-2 border border-slate-300 rounded-md"
+                      className="w-full px-3 py-2 border border-slate-300 rounded-md bg-white text-slate-900"
                     />
                   </div>
                   <div>
@@ -430,7 +433,7 @@ export const IndicatorWizard: React.FC<IndicatorWizardProps> = ({ project, onClo
                       type="number"
                       value={formData.maxExpected}
                       onChange={e => updateField('maxExpected', parseFloat(e.target.value))}
-                      className="w-full px-3 py-2 border border-slate-300 rounded-md"
+                      className="w-full px-3 py-2 border border-slate-300 rounded-md bg-white text-slate-900"
                     />
                   </div>
                </div>
@@ -461,7 +464,7 @@ export const IndicatorWizard: React.FC<IndicatorWizardProps> = ({ project, onClo
                <label className="block text-sm font-medium text-slate-700 mb-1">Start Date (First Submission)</label>
                <input 
                  type="date"
-                 className="w-full px-3 py-2 border border-slate-300 rounded-md"
+                 className="w-full px-3 py-2 border border-slate-300 rounded-md bg-white text-slate-900"
                  defaultValue={new Date().toISOString().split('T')[0]}
                />
              </div>

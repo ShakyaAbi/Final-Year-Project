@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState } from 'react';
 import { Layout } from '../components/Layout';
 import { useParams, Link } from 'react-router-dom';
@@ -11,7 +12,7 @@ import { IndicatorCard } from '../components/IndicatorCard';
 import { IndicatorWizard } from '../components/IndicatorWizard';
 import { 
   ArrowLeft, BarChart2, GitBranch, Layers, Plus, Search, Filter, 
-  DollarSign, Clock, Users, CheckCircle, AlertTriangle, Activity, Info
+  DollarSign, Clock, Users, CheckCircle, AlertTriangle, Activity, Info, ClipboardCheck
 } from 'lucide-react';
 import { Card } from '../components/ui/Card';
 
@@ -29,6 +30,9 @@ export const ProjectDetail: React.FC = () => {
   const [isWizardOpen, setIsWizardOpen] = useState(false);
   const [nodeModalMode, setNodeModalMode] = useState<'create' | 'edit'>('create');
   const [selectedNode, setSelectedNode] = useState<LogframeNode | null>(null);
+  
+  // State for adding indicator from tree
+  const [selectedNodeForIndicator, setSelectedNodeForIndicator] = useState<LogframeNode | null>(null);
 
   // Filter State
   const [searchQuery, setSearchQuery] = useState('');
@@ -52,7 +56,7 @@ export const ProjectDetail: React.FC = () => {
 
   useEffect(() => {
     refreshData();
-  }, [id]);
+  }, [id, isWizardOpen]); // Also refresh when wizard closes (assuming success)
 
   const handleAddRootGoal = () => {
     setSelectedNode(null);
@@ -70,6 +74,11 @@ export const ProjectDetail: React.FC = () => {
     setSelectedNode(node);
     setNodeModalMode('edit');
     setIsNodeModalOpen(true);
+  };
+
+  const handleAddIndicator = (node: LogframeNode) => {
+    setSelectedNodeForIndicator(node);
+    setIsWizardOpen(true);
   };
 
   const handleSaveNode = async (data: Partial<LogframeNode>) => {
@@ -127,8 +136,13 @@ export const ProjectDetail: React.FC = () => {
             <p className="text-slate-500 mt-1">{project.startDate} — {project.endDate}</p>
           </div>
           <div className="flex space-x-3">
+             <Link to={`/data-entry?projectId=${project.id}`}>
+                <Button variant="secondary">
+                  <ClipboardCheck className="w-4 h-4 mr-2" /> Data Entry
+                </Button>
+             </Link>
              <Button variant="outline">Edit Project</Button>
-             <Button onClick={() => setIsWizardOpen(true)}>
+             <Button onClick={() => { setSelectedNodeForIndicator(null); setIsWizardOpen(true); }}>
                 <Plus className="w-4 h-4 mr-2" /> Add Indicator
              </Button>
           </div>
@@ -305,8 +319,10 @@ export const ProjectDetail: React.FC = () => {
                   <LogframeTree 
                     key={node.id} 
                     node={node} 
+                    indicators={indicators}
                     onAddChild={handleAddChild}
                     onEdit={handleEditNode}
+                    onAddIndicator={handleAddIndicator}
                     isRoot={true}
                   />
                 ))}
@@ -326,7 +342,7 @@ export const ProjectDetail: React.FC = () => {
                   placeholder="Search indicators..." 
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-9 pr-4 py-2 rounded-md border border-slate-300 focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                  className="w-full pl-9 pr-4 py-2 rounded-md border border-slate-300 focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-white text-slate-900"
                 />
               </div>
               <div className="flex gap-2">
@@ -381,6 +397,7 @@ export const ProjectDetail: React.FC = () => {
       >
         <IndicatorWizard 
           project={project}
+          initialNodeId={selectedNodeForIndicator?.id}
           onClose={() => setIsWizardOpen(false)}
         />
       </Modal>

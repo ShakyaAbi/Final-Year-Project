@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { LogframeNode, NodeType } from '../types';
 import { Button } from './ui/Button';
@@ -75,7 +76,7 @@ export const LogframeNodeForm: React.FC<LogframeNodeFormProps> = ({
             value={formData.title || ''} 
             onChange={(e) => handleChange('title', e.target.value)}
             placeholder={`e.g. ${allowedType === NodeType.ACTIVITY ? 'Train 50 staff' : 'Improved health outcomes'}`}
-            className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+            className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white text-slate-900"
           />
         </div>
 
@@ -85,7 +86,7 @@ export const LogframeNodeForm: React.FC<LogframeNodeFormProps> = ({
             rows={3}
             value={formData.description || ''}
             onChange={(e) => handleChange('description', e.target.value)}
-            className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+            className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white text-slate-900"
           />
         </div>
 
@@ -96,7 +97,7 @@ export const LogframeNodeForm: React.FC<LogframeNodeFormProps> = ({
             placeholder="Source of data or evidence"
             value={formData.verificationMethod || ''}
             onChange={(e) => handleChange('verificationMethod', e.target.value)}
-            className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+            className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white text-slate-900"
           />
         </div>
 
@@ -107,7 +108,7 @@ export const LogframeNodeForm: React.FC<LogframeNodeFormProps> = ({
             placeholder="Potential external risks"
             value={formData.risks || ''}
             onChange={(e) => handleChange('risks', e.target.value)}
-            className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+            className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white text-slate-900"
           />
         </div>
 
@@ -118,7 +119,7 @@ export const LogframeNodeForm: React.FC<LogframeNodeFormProps> = ({
             placeholder="Conditions necessary for success"
             value={formData.assumptions || ''}
             onChange={(e) => handleChange('assumptions', e.target.value)}
-            className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+            className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white text-slate-900"
           />
         </div>
       </div>

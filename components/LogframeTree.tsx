@@ -1,11 +1,15 @@
+
 import React, { useState } from 'react';
-import { LogframeNode, NodeType } from '../types';
-import { Target, CircleDot, ArrowRight, CheckSquare, Plus, Edit2, AlertCircle, FileText, ShieldAlert } from 'lucide-react';
+import { LogframeNode, NodeType, Indicator } from '../types';
+import { Target, CircleDot, ArrowRight, CheckSquare, Plus, Edit2, AlertCircle, FileText, ShieldAlert, BarChart2 } from 'lucide-react';
+import { Link } from 'react-router-dom';
 
 interface LogframeTreeProps {
   node: LogframeNode;
+  indicators: Indicator[]; // Pass full list, filter locally
   onEdit: (node: LogframeNode) => void;
   onAddChild: (parentNode: LogframeNode) => void;
+  onAddIndicator: (parentNode: LogframeNode) => void;
   isRoot?: boolean;
 }
 
@@ -28,11 +32,13 @@ const getChildTypeLabel = (type: NodeType) => {
   }
 };
 
-export const LogframeTree: React.FC<LogframeTreeProps> = ({ node, onEdit, onAddChild, isRoot = false }) => {
+export const LogframeTree: React.FC<LogframeTreeProps> = ({ node, indicators, onEdit, onAddChild, onAddIndicator, isRoot = false }) => {
   const hasChildren = node.children && node.children.length > 0;
   const canHaveChildren = node.type !== NodeType.ACTIVITY;
   const childLabel = getChildTypeLabel(node.type);
-  const [expanded, setExpanded] = useState(true);
+  
+  // Filter indicators for this specific node
+  const nodeIndicators = indicators.filter(i => i.nodeId === node.id);
 
   return (
     <div className="relative">
@@ -63,6 +69,15 @@ export const LogframeTree: React.FC<LogframeTreeProps> = ({ node, onEdit, onAddC
               </div>
               
               <div className="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                 {/* Add Indicator Action */}
+                <button 
+                  onClick={() => onAddIndicator(node)}
+                  className="p-1.5 text-slate-400 hover:text-purple-600 hover:bg-purple-50 rounded transition-colors"
+                  title="Add Indicator"
+                >
+                  <BarChart2 className="w-4 h-4" />
+                </button>
+                
                 <button 
                   onClick={() => onEdit(node)}
                   className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
@@ -86,11 +101,11 @@ export const LogframeTree: React.FC<LogframeTreeProps> = ({ node, onEdit, onAddC
               <p className="text-sm text-slate-600 mb-3 line-clamp-2">{node.description}</p>
             )}
 
-            {/* Metadata Badges (Risks, Assumptions, Verification) */}
+            {/* Metadata Badges */}
             <div className="flex flex-wrap gap-2 mt-2">
-              {node.indicatorCount !== undefined && node.indicatorCount > 0 && (
+              {nodeIndicators.length > 0 && (
                 <span className="inline-flex items-center text-xs text-slate-500 bg-slate-100 px-2 py-1 rounded border border-slate-200">
-                  <Target className="w-3 h-3 mr-1" /> {node.indicatorCount} Indicators
+                  <Target className="w-3 h-3 mr-1" /> {nodeIndicators.length} Indicators
                 </span>
               )}
               {node.risks && (
@@ -109,21 +124,64 @@ export const LogframeTree: React.FC<LogframeTreeProps> = ({ node, onEdit, onAddC
                 </span>
               )}
             </div>
+
+            {/* Embedded Indicators List */}
+            {nodeIndicators.length > 0 && (
+               <div className="mt-4 border-t border-slate-100 pt-3">
+                  <h5 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Indicators</h5>
+                  <div className="grid grid-cols-1 gap-2">
+                     {nodeIndicators.map(ind => (
+                        <Link 
+                          key={ind.id} 
+                          to={`/indicators/${ind.id}`}
+                          className="flex items-center justify-between p-2.5 bg-slate-50 hover:bg-white rounded border border-slate-100 hover:border-blue-200 hover:shadow-sm transition-all text-sm group/ind"
+                        >
+                           <div className="flex items-center gap-3 overflow-hidden">
+                              <span className="w-1.5 h-1.5 rounded-full bg-blue-500 flex-shrink-0"></span>
+                              <span className="truncate font-medium text-slate-700 group-hover/ind:text-blue-700">{ind.name}</span>
+                              <span className="text-xs text-slate-400 border border-slate-200 px-1.5 rounded">{ind.type}</span>
+                           </div>
+                           <div className="flex items-center gap-4 text-xs">
+                              <div className="flex flex-col items-end">
+                                <span className="text-slate-400 text-[9px] uppercase font-bold">Target</span>
+                                <span className="font-semibold text-slate-900">{ind.target}</span>
+                              </div>
+                              <ArrowRight className="w-3 h-3 text-slate-300 group-hover/ind:text-blue-400" />
+                           </div>
+                        </Link>
+                     ))}
+                  </div>
+               </div>
+            )}
+            
+            {/* Empty state for indicators if none exist but user might want to add */}
+            {nodeIndicators.length === 0 && (
+               <div className="mt-3 pt-2 border-t border-slate-50 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <button 
+                    onClick={() => onAddIndicator(node)}
+                    className="text-xs flex items-center text-slate-400 hover:text-purple-600 transition-colors"
+                  >
+                    <Plus className="w-3 h-3 mr-1" /> Add measure/indicator
+                  </button>
+               </div>
+            )}
+
           </div>
         </div>
       </div>
 
-      {/* Recursive Children Rendering with visual line */}
+      {/* Recursive Children Rendering */}
       {hasChildren && (
         <div className="pl-6 sm:pl-8 flex flex-col">
           <div className="relative border-l-2 border-slate-200 pl-6 sm:pl-8 pt-2 pb-2 space-y-2">
-             {/* Decorative curve for first child could be added here if desired */}
             {node.children?.map((child) => (
               <LogframeTree 
                 key={child.id} 
                 node={child} 
+                indicators={indicators}
                 onEdit={onEdit}
                 onAddChild={onAddChild}
+                onAddIndicator={onAddIndicator}
                 isRoot={false}
               />
             ))}
