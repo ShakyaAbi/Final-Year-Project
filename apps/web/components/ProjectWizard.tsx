@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import { Project, NodeType, LogframeNode } from '../types';
 import { Button } from './ui/Button';
 import { ChevronRight, Check, Calendar, FileText, Target, Layers } from 'lucide-react';
-import { createProject } from '../services/mockService';
+import { api } from '../services/api';
 import { useNavigate } from 'react-router-dom';
 
 interface ProjectWizardProps {
@@ -47,6 +47,7 @@ export const ProjectWizard: React.FC<ProjectWizardProps> = ({ onClose }) => {
   const navigate = useNavigate();
   const [step, setStep] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const steps = ['Profile', 'Timeline', 'Strategy', 'Review'];
 
   const [formData, setFormData] = useState<Partial<Project>>({
@@ -80,6 +81,7 @@ export const ProjectWizard: React.FC<ProjectWizardProps> = ({ onClose }) => {
 
   const handleSubmit = async () => {
     setIsSubmitting(true);
+    setError(null);
     try {
       // Construct the initial logframe with the primary goal
       const initialLogframe: LogframeNode[] = primaryGoal.title ? [{
@@ -96,12 +98,13 @@ export const ProjectWizard: React.FC<ProjectWizardProps> = ({ onClose }) => {
         logframe: initialLogframe
       };
 
-      const newProject = await createProject(newProjectData);
+      const newProject = await api.createProject(newProjectData);
       onClose();
       // Redirect to the new project
       navigate(`/projects/${newProject.id}`);
     } catch (error) {
       console.error(error);
+      setError(error instanceof Error ? error.message : 'Failed to create project');
     } finally {
       setIsSubmitting(false);
     }
@@ -123,6 +126,12 @@ export const ProjectWizard: React.FC<ProjectWizardProps> = ({ onClose }) => {
           <div className="max-w-2xl mx-auto space-y-6">
             <h2 className="text-xl font-bold text-slate-900 mb-2">Project Profile</h2>
             <p className="text-slate-500 mb-6">Let's start with the basics. What is this intervention about?</p>
+
+            {error && (
+              <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg p-3">
+                {error}
+              </div>
+            )}
 
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Project Name <span className="text-red-500">*</span></label>

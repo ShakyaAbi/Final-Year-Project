@@ -4,7 +4,7 @@ import { Layout } from '../components/Layout';
 import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
 import { Project } from '../types';
-import { getProjects } from '../services/mockService';
+import { api } from '../services/api';
 import { Plus, Calendar, Activity, Search, Filter, ArrowUpDown } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Modal } from '../components/ui/Modal';
@@ -16,6 +16,7 @@ type SortOrder = 'asc' | 'desc';
 export const ProjectList: React.FC = () => {
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   // Filter & Sort States
   const [searchQuery, setSearchQuery] = useState('');
@@ -27,10 +28,13 @@ export const ProjectList: React.FC = () => {
   const [isWizardOpen, setIsWizardOpen] = useState(false);
 
   useEffect(() => {
-    getProjects().then(data => {
-      setProjects(data);
-      setLoading(false);
-    });
+    api.getProjects()
+      .then(data => {
+        setProjects(data);
+        setError(null);
+      })
+      .catch((err) => setError(err?.message || 'Failed to load projects'))
+      .finally(() => setLoading(false));
   }, [isWizardOpen]); // Refresh when wizard closes/saves
 
   const filteredAndSortedProjects = useMemo(() => {
@@ -110,6 +114,7 @@ export const ProjectList: React.FC = () => {
                   <option value="Active">Active</option>
                   <option value="Draft">Draft</option>
                   <option value="Archived">Archived</option>
+                  <option value="Completed">Completed</option>
               </select>
             </div>
 
@@ -138,7 +143,15 @@ export const ProjectList: React.FC = () => {
          </div>
       </div>
 
-      {loading ? (
+      {error ? (
+        <div className="text-center py-16 bg-white rounded-xl border border-dashed border-red-300">
+          <p className="text-red-600 text-lg font-medium">Failed to load projects</p>
+          <p className="text-red-500 text-sm mt-1">{error}</p>
+          <Button variant="outline" className="mt-4" onClick={() => window.location.reload()}>
+            Retry
+          </Button>
+        </div>
+      ) : loading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
            {[1,2,3].map(i => (
              <div key={i} className="h-48 bg-slate-100 animate-pulse rounded-lg"></div>

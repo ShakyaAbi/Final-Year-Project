@@ -33,7 +33,7 @@ export interface Project {
   description: string;
   startDate: string;
   endDate: string;
-  status: 'Active' | 'Draft' | 'Archived';
+  status: 'Active' | 'Draft' | 'Archived' | 'Completed';
   logframe: LogframeNode[]; // Root nodes (usually Goals)
 }
 

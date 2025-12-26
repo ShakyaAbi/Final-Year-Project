@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Eye, EyeOff, Facebook, Mail } from 'lucide-react';
+import { api } from '../services/api';
 
 const GoogleIcon = () => (
   <svg className="w-5 h-5" viewBox="0 0 24 24">
@@ -29,15 +30,20 @@ export const Login: React.FC = () => {
     const [showPassword, setShowPassword] = useState(false);
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
+    const [error, setError] = useState<string | null>(null);
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setIsLoading(true);
-        // Simulate network request
-        setTimeout(() => {
-            setIsLoading(false);
+        setError(null);
+        try {
+            await api.login(email, password);
             navigate("/projects");
-        }, 800);
+        } catch (err: any) {
+            setError(err?.message || "Login failed");
+        } finally {
+            setIsLoading(false);
+        }
     };
 
     return (
@@ -111,6 +117,11 @@ export const Login: React.FC = () => {
                             onSubmit={handleSubmit}
                             className="w-full max-w-xs space-y-5"
                         >
+                            {error && (
+                              <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg p-3">
+                                {error}
+                              </div>
+                            )}
                             <div>
                                 <label className="block text-xs font-medium text-slate-500 mb-1.5 ml-1">
                                     Email address

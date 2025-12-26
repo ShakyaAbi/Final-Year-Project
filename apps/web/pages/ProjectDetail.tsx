@@ -1,9 +1,10 @@
 
 import React, { useEffect, useState } from 'react';
 import { Layout } from '../components/Layout';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { Project, Indicator, LogframeNode, NodeType, ProjectStats, ActivityLog } from '../types';
-import { getProject, getIndicators, addLogframeNode, updateLogframeNode, getProjectStats, getProjectActivities } from '../services/mockService';
+import { api } from '../services/api';
+import { getIndicators, addLogframeNode, updateLogframeNode, getProjectStats, getProjectActivities } from '../services/mockService';
 import { Button } from '../components/ui/Button';
 import { LogframeTree } from '../components/LogframeTree';
 import { Modal } from '../components/ui/Modal';
@@ -24,6 +25,8 @@ export const ProjectDetail: React.FC = () => {
   const [activities, setActivities] = useState<ActivityLog[]>([]);
   const [activeTab, setActiveTab] = useState<'overview' | 'logframe' | 'indicators'>('overview');
   const [loading, setLoading] = useState(true);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const navigate = useNavigate();
 
   // Modal States
   const [isNodeModalOpen, setIsNodeModalOpen] = useState(false);
@@ -39,8 +42,9 @@ export const ProjectDetail: React.FC = () => {
 
   const refreshData = () => {
     if (id) {
+      setLoading(true);
       Promise.all([
-        getProject(id), 
+        api.getProject(id),
         getIndicators(id),
         getProjectStats(id),
         getProjectActivities(id)
@@ -49,6 +53,13 @@ export const ProjectDetail: React.FC = () => {
         setIndicators(indData);
         setStats(statsData);
         setActivities(actData);
+      }).catch((error) => {
+        console.error('Failed to load project detail', error);
+        setProject(undefined);
+        setIndicators([]);
+        setStats(null);
+        setActivities([]);
+      }).finally(() => {
         setLoading(false);
       });
     }
@@ -79,6 +90,23 @@ export const ProjectDetail: React.FC = () => {
   const handleAddIndicator = (node: LogframeNode) => {
     setSelectedNodeForIndicator(node);
     setIsWizardOpen(true);
+  };
+
+  const handleDeleteProject = async () => {
+    if (!project || isDeleting) return;
+    const confirmed = window.confirm(`Delete project "${project.name}"? This cannot be undone.`);
+    if (!confirmed) return;
+
+    setIsDeleting(true);
+    try {
+      await api.deleteProject(project.id);
+      navigate('/projects');
+    } catch (error) {
+      console.error('Failed to delete project', error);
+      alert('Failed to delete project.');
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
   const handleSaveNode = async (data: Partial<LogframeNode>) => {
@@ -142,6 +170,9 @@ export const ProjectDetail: React.FC = () => {
                 </Button>
              </Link>
              <Button variant="outline">Edit Project</Button>
+             <Button variant="danger" onClick={handleDeleteProject} isLoading={isDeleting}>
+               Delete
+             </Button>
              <Button onClick={() => { setSelectedNodeForIndicator(null); setIsWizardOpen(true); }}>
                 <Plus className="w-4 h-4 mr-2" /> Add Indicator
              </Button>
