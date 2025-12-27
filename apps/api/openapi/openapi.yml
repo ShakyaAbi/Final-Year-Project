@@ -1,0 +1,300 @@
+openapi: 3.0.3
+info:
+  title: MERLIN Lite API
+  version: 1.0.0
+servers:
+  - url: http://localhost:4000/api/v1
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    User:
+      type: object
+      properties:
+        id: { type: integer }
+        email: { type: string, format: email }
+        role: { type: string, enum: [ADMIN, MANAGER, DATA_ENTRY] }
+        createdAt: { type: string, format: date-time }
+    Project:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        description: { type: string, nullable: true }
+        status: { type: string, enum: [DRAFT, ACTIVE, COMPLETED, ARCHIVED] }
+        startDate: { type: string, format: date-time, nullable: true }
+        endDate: { type: string, format: date-time, nullable: true }
+        createdAt: { type: string, format: date-time }
+    LogframeNode:
+      type: object
+      properties:
+        id: { type: integer }
+        projectId: { type: integer }
+        type: { type: string, enum: [GOAL, OUTCOME, OUTPUT, ACTIVITY] }
+        title: { type: string }
+        description: { type: string, nullable: true }
+        parentId: { type: integer, nullable: true }
+        sortOrder: { type: integer }
+        createdAt: { type: string, format: date-time }
+        children:
+          type: array
+          items:
+            $ref: '#/components/schemas/LogframeNode'
+    Indicator:
+      type: object
+      properties:
+        id: { type: integer }
+        projectId: { type: integer }
+        logframeNodeId: { type: integer }
+        name: { type: string }
+        unit: { type: string }
+        baselineValue: { type: number, nullable: true }
+        targetValue: { type: number, nullable: true }
+        dataType: { type: string, enum: [NUMBER, PERCENT, TEXT, BOOLEAN] }
+        minValue: { type: number, nullable: true }
+        maxValue: { type: number, nullable: true }
+        createdAt: { type: string, format: date-time }
+    Submission:
+      type: object
+      properties:
+        id: { type: integer }
+        indicatorId: { type: integer }
+        reportedAt: { type: string, format: date }
+        value: { type: string }
+        createdByUserId: { type: integer }
+        createdAt: { type: string, format: date-time }
+paths:
+  /auth/login:
+    post:
+      summary: Login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email: { type: string, format: email }
+                password: { type: string }
+      responses:
+        '200':
+          description: Access token
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token: { type: string }
+                  user:
+                    $ref: '#/components/schemas/User'
+  /auth/register:
+    post:
+      security: [{ bearerAuth: [] }]
+      summary: Create user (ADMIN only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email: { type: string, format: email }
+                password: { type: string }
+                role:
+                  type: string
+                  enum: [ADMIN, MANAGER, DATA_ENTRY]
+      responses:
+        '201': { description: Created }
+  /auth/me:
+    get:
+      security: [{ bearerAuth: [] }]
+      summary: Current user
+      responses:
+        '200':
+          description: Current user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+  /projects:
+    get:
+      security: [{ bearerAuth: [] }]
+      summary: List projects
+      responses:
+        '200':
+          description: Projects
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Project' }
+    post:
+      security: [{ bearerAuth: [] }]
+      summary: Create project (ADMIN, MANAGER)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Project'
+      responses:
+        '201': { description: Created }
+  /projects/{id}:
+    get:
+      security: [{ bearerAuth: [] }]
+      summary: Get project
+      parameters:
+        - in: path
+          name: id
+          schema: { type: integer }
+          required: true
+      responses:
+        '200':
+          description: Project
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Project' }
+    patch:
+      security: [{ bearerAuth: [] }]
+      summary: Update project (ADMIN, MANAGER)
+      parameters:
+        - in: path
+          name: id
+          schema: { type: integer }
+          required: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Project' }
+      responses:
+        '200': { description: Updated }
+    delete:
+      security: [{ bearerAuth: [] }]
+      summary: Delete project (ADMIN, MANAGER)
+      parameters:
+        - in: path
+          name: id
+          schema: { type: integer }
+          required: true
+      responses:
+        '200': { description: Deleted }
+  /projects/{projectId}/logframe/nodes:
+    post:
+      security: [{ bearerAuth: [] }]
+      summary: Create logframe node (ADMIN, MANAGER)
+      parameters:
+        - in: path
+          name: projectId
+          schema: { type: integer }
+          required: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LogframeNode'
+      responses:
+        '201': { description: Created }
+  /projects/{projectId}/logframe/tree:
+    get:
+      security: [{ bearerAuth: [] }]
+      summary: Get logframe tree
+      parameters:
+        - in: path
+          name: projectId
+          schema: { type: integer }
+          required: true
+      responses:
+        '200':
+          description: Tree
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/LogframeNode' }
+  /logframe/nodes/{id}:
+    patch:
+      security: [{ bearerAuth: [] }]
+      summary: Update logframe node (ADMIN, MANAGER)
+      parameters:
+        - in: path
+          name: id
+          schema: { type: integer }
+          required: true
+      responses:
+        '200': { description: Updated }
+    delete:
+      security: [{ bearerAuth: [] }]
+      summary: Delete logframe node (ADMIN)
+      parameters:
+        - in: path
+          name: id
+          schema: { type: integer }
+          required: true
+      responses:
+        '204': { description: Deleted }
+  /projects/{projectId}/indicators:
+    post:
+      security: [{ bearerAuth: [] }]
+      summary: Create indicator (ADMIN, MANAGER)
+      parameters:
+        - in: path
+          name: projectId
+          schema: { type: integer }
+          required: true
+      responses:
+        '201': { description: Created }
+    get:
+      security: [{ bearerAuth: [] }]
+      summary: List indicators
+      parameters:
+        - in: path
+          name: projectId
+          schema: { type: integer }
+          required: true
+      responses:
+        '200': { description: Indicators }
+  /indicators/{id}:
+    patch:
+      security: [{ bearerAuth: [] }]
+      summary: Update indicator (ADMIN, MANAGER)
+      parameters:
+        - in: path
+          name: id
+          schema: { type: integer }
+          required: true
+      responses:
+        '200': { description: Updated }
+  /indicators/{indicatorId}/submissions:
+    post:
+      security: [{ bearerAuth: [] }]
+      summary: Create submission (all authenticated)
+      parameters:
+        - in: path
+          name: indicatorId
+          schema: { type: integer }
+          required: true
+      responses:
+        '201': { description: Created }
+    get:
+      security: [{ bearerAuth: [] }]
+      summary: List submissions
+      parameters:
+        - in: path
+          name: indicatorId
+          schema: { type: integer }
+          required: true
+        - in: query
+          name: from
+          schema: { type: string, format: date }
+        - in: query
+          name: to
+          schema: { type: string, format: date }
+      responses:
+        '200': { description: Submissions }
+security:
+  - bearerAuth: []

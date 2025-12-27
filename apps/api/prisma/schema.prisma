@@ -1,0 +1,107 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  MANAGER
+  DATA_ENTRY
+}
+
+enum ProjectStatus {
+  DRAFT
+  ACTIVE
+  COMPLETED
+  ARCHIVED
+}
+
+enum NodeType {
+  GOAL
+  OUTCOME
+  OUTPUT
+  ACTIVITY
+}
+
+enum IndicatorDataType {
+  NUMBER
+  PERCENT
+  TEXT
+  BOOLEAN
+}
+
+model User {
+  id           Int       @id @default(autoincrement())
+  email        String    @unique
+  passwordHash String
+  role         Role
+  createdAt    DateTime  @default(now())
+  submissions  Submission[]
+}
+
+model Project {
+  id          Int            @id @default(autoincrement())
+  name        String
+  description String?
+  status      ProjectStatus  @default(DRAFT)
+  startDate   DateTime?
+  endDate     DateTime?
+  createdAt   DateTime       @default(now())
+  nodes       LogframeNode[]
+  indicators  Indicator[]
+}
+
+model LogframeNode {
+  id          Int          @id @default(autoincrement())
+  project     Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  projectId   Int
+  type        NodeType
+  title       String
+  description String?
+  parent      LogframeNode? @relation("LogframeHierarchy", fields: [parentId], references: [id])
+  parentId    Int?
+  children    LogframeNode[] @relation("LogframeHierarchy")
+  sortOrder   Int           @default(0)
+  createdAt   DateTime      @default(now())
+  indicators  Indicator[]
+
+  @@index([projectId])
+  @@index([parentId])
+}
+
+model Indicator {
+  id             Int               @id @default(autoincrement())
+  project        Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  projectId      Int
+  logframeNode   LogframeNode      @relation(fields: [logframeNodeId], references: [id], onDelete: Cascade)
+  logframeNodeId Int
+  name           String
+  unit           String
+  baselineValue  Float?
+  targetValue    Float?
+  dataType       IndicatorDataType
+  minValue       Float?
+  maxValue       Float?
+  createdAt      DateTime          @default(now())
+  submissions    Submission[]
+
+  @@index([projectId])
+  @@index([logframeNodeId])
+}
+
+model Submission {
+  id              Int      @id @default(autoincrement())
+  indicator       Indicator @relation(fields: [indicatorId], references: [id], onDelete: Cascade)
+  indicatorId     Int
+  reportedAt      DateTime
+  value           String
+  createdByUser   User     @relation(fields: [createdByUserId], references: [id], onDelete: Cascade)
+  createdByUserId Int
+  createdAt       DateTime @default(now())
+
+  @@index([indicatorId])
+}
