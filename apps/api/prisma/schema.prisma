@@ -44,15 +44,20 @@ model User {
 }
 
 model Project {
-  id          Int            @id @default(autoincrement())
-  name        String
-  description String?
-  status      ProjectStatus  @default(DRAFT)
-  startDate   DateTime?
-  endDate     DateTime?
-  createdAt   DateTime       @default(now())
-  nodes       LogframeNode[]
-  indicators  Indicator[]
+  id             Int            @id @default(autoincrement())
+  name           String
+  description    String?
+  status         ProjectStatus  @default(DRAFT)
+  startDate      DateTime?
+  endDate        DateTime?
+  sectors        String[]       @default([])
+  location       String?
+  donor          String?
+  budgetAmount   Float?
+  budgetCurrency String?
+  createdAt      DateTime       @default(now())
+  nodes          LogframeNode[]
+  indicators     Indicator[]
 }
 
 model LogframeNode {

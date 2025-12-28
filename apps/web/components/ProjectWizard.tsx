@@ -56,6 +56,11 @@ export const ProjectWizard: React.FC<ProjectWizardProps> = ({ onClose }) => {
     startDate: '',
     endDate: '',
     status: 'Draft',
+    sectors: [],
+    location: '',
+    donor: '',
+    budgetAmount: undefined,
+    budgetCurrency: '',
     logframe: [] // We will build a basic goal here
   });
 
@@ -65,9 +70,23 @@ export const ProjectWizard: React.FC<ProjectWizardProps> = ({ onClose }) => {
     description: '',
     type: NodeType.GOAL
   });
+  const [newSector, setNewSector] = useState('');
 
   const updateField = (field: keyof Project, value: any) => {
     setFormData(prev => ({ ...prev, [field]: value }));
+  };
+
+  const addSector = () => {
+    const trimmed = newSector.trim();
+    if (!trimmed) return;
+    const next = [...(formData.sectors || [])];
+    if (!next.includes(trimmed)) next.push(trimmed);
+    updateField('sectors', next);
+    setNewSector('');
+  };
+
+  const removeSector = (index: number) => {
+    updateField('sectors', (formData.sectors || []).filter((_, i) => i !== index));
   };
 
   const handleNext = () => {
@@ -93,8 +112,17 @@ export const ProjectWizard: React.FC<ProjectWizardProps> = ({ onClose }) => {
         indicatorCount: 0
       }] : [];
 
+      const normalizedLocation = formData.location?.trim();
+      const normalizedDonor = formData.donor?.trim();
+      const normalizedCurrency = formData.budgetCurrency?.trim();
+      const normalizedSectors = (formData.sectors || []).map((s) => s.trim()).filter(Boolean);
+
       const newProjectData = {
         ...formData,
+        sectors: normalizedSectors,
+        location: normalizedLocation || undefined,
+        donor: normalizedDonor || undefined,
+        budgetCurrency: normalizedCurrency || undefined,
         logframe: initialLogframe
       };
 
@@ -153,6 +181,94 @@ export const ProjectWizard: React.FC<ProjectWizardProps> = ({ onClose }) => {
                 className="w-full px-3 py-2 border border-slate-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none bg-white text-slate-900"
                 placeholder="Describe the project's background, objectives, and scope."
               />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Sectors</label>
+              <div className="flex gap-2 mb-3">
+                <input
+                  type="text"
+                  value={newSector}
+                  onChange={(e) => setNewSector(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      addSector();
+                    }
+                  }}
+                  className="flex-1 px-3 py-2 border border-slate-300 rounded-md bg-white text-slate-900"
+                  placeholder="Add a sector and press Enter"
+                />
+                <Button type="button" onClick={addSector}>
+                  Add
+                </Button>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {(formData.sectors || []).map((sector, idx) => (
+                  <span key={`${sector}-${idx}`} className="bg-white border border-slate-200 px-2 py-1 rounded-md text-sm flex items-center">
+                    {sector}
+                    <button
+                      type="button"
+                      onClick={() => removeSector(idx)}
+                      className="ml-2 text-slate-400 hover:text-red-500"
+                    >
+                      &times;
+                    </button>
+                  </span>
+                ))}
+                {(!formData.sectors || formData.sectors.length === 0) && (
+                  <span className="text-sm text-slate-400 italic">No sectors added yet.</span>
+                )}
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Region / Location</label>
+              <input
+                type="text"
+                value={formData.location || ''}
+                onChange={e => updateField('location', e.target.value)}
+                className="w-full px-3 py-2 border border-slate-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none bg-white text-slate-900"
+                placeholder="e.g. Province 3, Kathmandu Valley"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Donor (Optional)</label>
+              <input
+                type="text"
+                value={formData.donor || ''}
+                onChange={e => updateField('donor', e.target.value)}
+                className="w-full px-3 py-2 border border-slate-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none bg-white text-slate-900"
+                placeholder="e.g. USAID"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-6">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Budget Amount</label>
+                <input
+                  type="number"
+                  value={formData.budgetAmount ?? ''}
+                  onChange={e => {
+                    const raw = e.target.value;
+                    const parsed = raw === '' ? undefined : Number(raw);
+                    updateField('budgetAmount', Number.isFinite(parsed as number) ? parsed : undefined);
+                  }}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none bg-white text-slate-900"
+                  placeholder="e.g. 250000"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Budget Currency</label>
+                <input
+                  type="text"
+                  value={formData.budgetCurrency || ''}
+                  onChange={e => updateField('budgetCurrency', e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none bg-white text-slate-900"
+                  placeholder="e.g. USD, NPR"
+                />
+              </div>
             </div>
 
              <div>
@@ -276,6 +392,33 @@ export const ProjectWizard: React.FC<ProjectWizardProps> = ({ onClose }) => {
                     <div className="p-4 grid grid-cols-2 gap-4">
                         <div><span className="text-slate-500 text-sm">Start Date</span> <span className="block font-medium">{formData.startDate}</span></div>
                         <div><span className="text-slate-500 text-sm">End Date</span> <span className="block font-medium">{formData.endDate}</span></div>
+                    </div>
+                </div>
+
+                <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
+                    <div className="bg-slate-50 px-4 py-2 border-b border-slate-200 flex justify-between items-center">
+                       <h3 className="font-semibold text-slate-700 flex items-center"><Layers className="w-4 h-4 mr-2" /> Additional Details</h3>
+                       <button onClick={() => setStep(0)} className="text-xs text-blue-600 hover:underline">Edit</button>
+                    </div>
+                    <div className="p-4 space-y-2 text-sm">
+                        <div>
+                          <span className="text-slate-500">Sectors:</span>{' '}
+                          <span className="font-medium">{(formData.sectors || []).join(', ') || '—'}</span>
+                        </div>
+                        <div>
+                          <span className="text-slate-500">Location:</span>{' '}
+                          <span className="font-medium">{formData.location || '—'}</span>
+                        </div>
+                        <div>
+                          <span className="text-slate-500">Donor:</span>{' '}
+                          <span className="font-medium">{formData.donor || '—'}</span>
+                        </div>
+                        <div>
+                          <span className="text-slate-500">Budget:</span>{' '}
+                          <span className="font-medium">
+                            {formData.budgetAmount ?? '—'} {formData.budgetCurrency || ''}
+                          </span>
+                        </div>
                     </div>
                 </div>
 

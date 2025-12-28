@@ -27,6 +27,13 @@ components:
         status: { type: string, enum: [DRAFT, ACTIVE, COMPLETED, ARCHIVED] }
         startDate: { type: string, format: date-time, nullable: true }
         endDate: { type: string, format: date-time, nullable: true }
+        sectors:
+          type: array
+          items: { type: string }
+        location: { type: string, nullable: true }
+        donor: { type: string, nullable: true }
+        budgetAmount: { type: number, nullable: true }
+        budgetCurrency: { type: string, nullable: true }
         createdAt: { type: string, format: date-time }
     LogframeNode:
       type: object

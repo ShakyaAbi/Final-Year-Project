@@ -7,6 +7,11 @@ export const createProject = (data: {
   status: ProjectStatus;
   startDate: Date | null;
   endDate: Date | null;
+  sectors: string[];
+  location: string | null;
+  donor: string | null;
+  budgetAmount: number | null;
+  budgetCurrency: string | null;
 }) => prisma.project.create({ data });
 
 export const getProjects = () => prisma.project.findMany({ orderBy: { createdAt: 'desc' } });
@@ -21,6 +26,11 @@ export const updateProject = (
     status: ProjectStatus;
     startDate: Date | null;
     endDate: Date | null;
+    sectors: string[];
+    location: string | null;
+    donor: string | null;
+    budgetAmount: number | null;
+    budgetCurrency: string | null;
   }>
 ) => prisma.project.update({ where: { id }, data });
 

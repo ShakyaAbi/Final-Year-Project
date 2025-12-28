@@ -84,6 +84,11 @@ const mapProject = (p: any, logframe: LogframeNode[] = []): Project => ({
   startDate: p.startDate ? new Date(p.startDate).toISOString() : '',
   endDate: p.endDate ? new Date(p.endDate).toISOString() : '',
   status: mapStatus(p.status),
+  sectors: Array.isArray(p.sectors) ? p.sectors.map(String) : [],
+  location: p.location ?? undefined,
+  donor: p.donor ?? undefined,
+  budgetAmount: p.budgetAmount ?? undefined,
+  budgetCurrency: p.budgetCurrency ?? undefined,
   logframe
 });
 
@@ -123,7 +128,12 @@ export const api = {
         description: payload.description,
         status: payload.status ? payload.status.toUpperCase() : undefined,
         startDate: payload.startDate,
-        endDate: payload.endDate
+        endDate: payload.endDate,
+        sectors: payload.sectors,
+        location: payload.location,
+        donor: payload.donor,
+        budgetAmount: payload.budgetAmount,
+        budgetCurrency: payload.budgetCurrency
       }
     });
     return mapProject(created);

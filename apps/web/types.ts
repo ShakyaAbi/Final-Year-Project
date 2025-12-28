@@ -34,6 +34,11 @@ export interface Project {
   startDate: string;
   endDate: string;
   status: 'Active' | 'Draft' | 'Archived' | 'Completed';
+  sectors: string[];
+  location?: string;
+  donor?: string;
+  budgetAmount?: number;
+  budgetCurrency?: string;
   logframe: LogframeNode[]; // Root nodes (usually Goals)
 }
 
