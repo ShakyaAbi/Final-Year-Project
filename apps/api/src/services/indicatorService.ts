@@ -52,6 +52,14 @@ export const getIndicators = async (projectId: number) => {
   return indicatorRepo.getIndicatorsByProject(projectId);
 };
 
+export const getIndicatorById = async (id: number, includeSubmissions = false) => {
+  const indicator = includeSubmissions
+    ? await indicatorRepo.getByIdWithSubmissions(id)
+    : await indicatorRepo.getById(id);
+  if (!indicator) throw new NotFoundError('INDICATOR_NOT_FOUND', 'Indicator not found');
+  return indicator;
+};
+
 export const updateIndicator = async (
   id: number,
   data: Partial<{

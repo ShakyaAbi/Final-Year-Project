@@ -5,7 +5,6 @@ import {
   FolderKanban, Settings, LogOut, Menu, X, Bell, ChevronRight, 
   Command, ChevronsLeft, ChevronsRight, ClipboardCheck, Info, AlertTriangle, CheckCircle, AlertCircle
 } from 'lucide-react';
-import { getNotifications } from '../services/mockService';
 import { ActivityLog } from '../types';
 
 interface LayoutProps {
@@ -23,10 +22,8 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
   const navigate = useNavigate();
 
   useEffect(() => {
-    getNotifications().then(data => {
-      setNotifications(data);
-      setUnreadCount(data.length);
-    });
+    setNotifications([]);
+    setUnreadCount(0);
   }, []);
 
   const navItems = [
@@ -92,7 +89,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
                 onClick={() => setIsCollapsed(!isCollapsed)}
                 title={isCollapsed ? "Expand Sidebar" : ""}
               >
-                <Command className="w-5 h-5 text-white" />
+                <img src="/MerlinLogoWhite.svg" alt="MERLIN Logo" className="w-5 h-5" />
               </div>
               {!isCollapsed && (
                   <span className="text-xl font-bold text-white tracking-tight whitespace-nowrap">

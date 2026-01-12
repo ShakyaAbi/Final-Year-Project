@@ -58,9 +58,9 @@ export const Login: React.FC = () => {
             </div>
 
             <div className="relative z-10 w-full max-w-4xl bg-white rounded-[2rem] shadow-2xl overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-300">
-                {/* Card Header with Placeholder Logo */}
+                {/* Card Header with Logo */}
                 <div className="pt-10 pb-2 flex flex-col items-center justify-center text-center">
-                    <div className="w-12 h-12 bg-slate-200 rounded-full mb-4"></div>
+                    <img src="/MerlinLogo.svg" alt="MERLIN Logo" className="w-12 h-12 mb-4" />
                     <h2 className="text-slate-500 font-medium text-sm tracking-wide">
                         Unlimited free access to our resources
                     </h2>

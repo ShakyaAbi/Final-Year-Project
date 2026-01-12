@@ -11,6 +11,7 @@ import {
 } from '../validators/indicatorValidators';
 import {
   createIndicator,
+  getIndicator,
   getIndicatorsByProject,
   updateIndicator
 } from '../controllers/indicatorController';
@@ -30,6 +31,13 @@ router.get(
   authenticate,
   validate(projectIndicatorParamsSchema),
   getIndicatorsByProject
+);
+
+router.get(
+  '/indicators/:id',
+  authenticate,
+  validate(indicatorIdParamsSchema),
+  getIndicator
 );
 
 router.patch(

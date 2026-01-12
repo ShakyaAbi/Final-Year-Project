@@ -4,7 +4,6 @@ import { Layout } from '../components/Layout';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { Project, Indicator, LogframeNode, NodeType, ProjectStats, ActivityLog } from '../types';
 import { api } from '../services/api';
-import { getIndicators, addLogframeNode, updateLogframeNode, getProjectStats, getProjectActivities } from '../services/mockService';
 import { Button } from '../components/ui/Button';
 import { LogframeTree } from '../components/LogframeTree';
 import { Modal } from '../components/ui/Modal';
@@ -45,9 +44,9 @@ export const ProjectDetail: React.FC = () => {
       setLoading(true);
       Promise.all([
         api.getProject(id),
-        getIndicators(id),
-        getProjectStats(id),
-        getProjectActivities(id)
+        api.getIndicators(id),
+        api.getProjectStats(id),
+        api.getProjectActivities(id)
       ]).then(([projData, indData, statsData, actData]) => {
         setProject(projData ? { ...projData } : undefined);
         setIndicators(indData);
@@ -125,10 +124,19 @@ export const ProjectDetail: React.FC = () => {
           children: [],
           indicatorCount: 0
         };
-        await addLogframeNode(project.id, selectedNode ? selectedNode.id : null, newNode);
+        await api.addLogframeNode(project.id, {
+          type: newNode.type,
+          title: newNode.title,
+          description: newNode.description,
+          parentId: selectedNode ? selectedNode.id : null
+        });
       } else {
         if (selectedNode) {
-          await updateLogframeNode(project.id, selectedNode.id, data);
+          await api.updateLogframeNode(selectedNode.id, {
+            title: data.title,
+            description: data.description,
+            type: data.type as NodeType
+          });
         }
       }
       setIsNodeModalOpen(false);

@@ -104,6 +104,7 @@ model Submission {
   indicatorId     Int
   reportedAt      DateTime
   value           String
+  evidence        String?
   createdByUser   User     @relation(fields: [createdByUserId], references: [id], onDelete: Cascade)
   createdByUserId Int
   createdAt       DateTime @default(now())

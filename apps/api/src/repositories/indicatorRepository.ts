@@ -18,6 +18,12 @@ export const getIndicatorsByProject = (projectId: number) =>
 
 export const getById = (id: number) => prisma.indicator.findUnique({ where: { id } });
 
+export const getByIdWithSubmissions = (id: number) =>
+  prisma.indicator.findUnique({
+    where: { id },
+    include: { submissions: { orderBy: { reportedAt: 'desc' } } }
+  });
+
 export const updateIndicator = (
   id: number,
   data: Partial<{

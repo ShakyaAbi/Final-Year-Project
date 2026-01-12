@@ -53,9 +53,34 @@ const normalizeValue = (dataType: IndicatorDataType, value: any, min?: number | 
   }
 };
 
+const assessAnomaly = (dataType: IndicatorDataType, value: string, min?: number | null, max?: number | null) => {
+  if (dataType === 'NUMBER') {
+    const num = Number(value);
+    if (!Number.isFinite(num)) return { isAnomaly: false };
+    if (min !== null && min !== undefined && num < min) {
+      return { isAnomaly: true, anomalyReason: `Value below expected minimum (${min})` };
+    }
+    if (max !== null && max !== undefined && num > max) {
+      return { isAnomaly: true, anomalyReason: `Value exceeds expected maximum (${max})` };
+    }
+    return { isAnomaly: false };
+  }
+  if (dataType === 'PERCENT') {
+    const num = Number(value);
+    if (!Number.isFinite(num)) return { isAnomaly: false };
+    const lower = min ?? 0;
+    const upper = max ?? 100;
+    if (num < lower || num > upper) {
+      return { isAnomaly: true, anomalyReason: `Percent must be between ${lower} and ${upper}` };
+    }
+    return { isAnomaly: false };
+  }
+  return { isAnomaly: false };
+};
+
 export const createSubmission = async (
   indicatorId: number,
-  data: { reportedAt: string; value: any },
+  data: { reportedAt: string; value: any; evidence?: string | null },
   userId: number
 ) => {
   const indicator = await indicatorRepo.getById(indicatorId);
@@ -68,6 +93,7 @@ export const createSubmission = async (
     indicatorId,
     reportedAt: reportedAt!,
     value: normalizedValue,
+    evidence: data.evidence ?? null,
     createdByUserId: userId
   });
 };
@@ -82,5 +108,10 @@ export const listSubmissions = async (
   const from = query.from ? parseDate(query.from) : undefined;
   const to = query.to ? parseDate(query.to) : undefined;
 
-  return submissionRepo.listSubmissions(indicatorId, { from, to });
+  const submissions = await submissionRepo.listSubmissions(indicatorId, { from, to });
+
+  return submissions.map((submission) => ({
+    ...submission,
+    ...assessAnomaly(indicator.dataType, submission.value, indicator.minValue, indicator.maxValue)
+  }));
 };

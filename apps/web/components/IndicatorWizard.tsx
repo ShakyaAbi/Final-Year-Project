@@ -2,8 +2,8 @@
 import React, { useState, useEffect } from 'react';
 import { Project, LogframeNode, IndicatorType, Indicator, NodeType } from '../types';
 import { Button } from './ui/Button';
-import { ChevronRight, Check, CircleDot, Calendar, Layers, Hash, Type, AlertCircle, Target, Tag } from 'lucide-react';
-import { createIndicator } from '../services/mockService';
+import { ChevronRight, Check, CircleDot, Calendar, Layers, Hash, Type, AlertCircle, Target } from 'lucide-react';
+import { api } from '../services/api';
 import { useNavigate } from 'react-router-dom';
 
 interface IndicatorWizardProps {
@@ -83,6 +83,12 @@ export const IndicatorWizard: React.FC<IndicatorWizardProps> = ({ project, onClo
   const [step, setStep] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const steps = ['Context', 'Details', 'Format', 'Rules', 'Frequency', 'Review'];
+  const selectableTypes = [
+    IndicatorType.NUMBER,
+    IndicatorType.PERCENTAGE,
+    IndicatorType.CURRENCY,
+    IndicatorType.BOOLEAN
+  ];
 
   // Form State
   const [formData, setFormData] = useState<Partial<Indicator>>({
@@ -91,12 +97,8 @@ export const IndicatorWizard: React.FC<IndicatorWizardProps> = ({ project, onClo
     type: IndicatorType.NUMBER,
     frequency: 'Weekly',
     booleanLabels: { true: 'Yes', false: 'No' },
-    categories: [],
     decimals: 2
   });
-
-  // Temporary state for inputs
-  const [newCategory, setNewCategory] = useState('');
 
   const updateField = (field: keyof Indicator, value: any) => {
     setFormData(prev => ({ ...prev, [field]: value }));
@@ -116,16 +118,15 @@ export const IndicatorWizard: React.FC<IndicatorWizardProps> = ({ project, onClo
     try {
       const newIndicator = {
         ...formData,
-        id: `ind-${Date.now()}`,
         status: 'Active',
         currentVersion: 1,
         versions: [{ version: 1, createdAt: new Date().toISOString(), changes: 'Initial Creation', active: true }],
         values: []
       } as Indicator;
 
-      await createIndicator(newIndicator);
+      const created = await api.createIndicator(project.id, newIndicator);
       onClose();
-      navigate(`/indicators/${newIndicator.id}`);
+      navigate(`/indicators/${created.id}`);
     } catch (error) {
       console.error(error);
     } finally {
@@ -139,11 +140,7 @@ export const IndicatorWizard: React.FC<IndicatorWizardProps> = ({ project, onClo
       case 0: return !!formData.nodeId; // Must select node
       case 1: return !!formData.name; // Name required
       case 2: return true; // Type always has default
-      case 3: 
-        if (formData.type === IndicatorType.CATEGORICAL) {
-          return (formData.categories?.length || 0) > 0;
-        }
-        return !!formData.target || formData.target === 0;
+      case 3: return !!formData.target || formData.target === 0;
       case 4: return !!formData.frequency;
       default: return true;
     }
@@ -219,7 +216,7 @@ export const IndicatorWizard: React.FC<IndicatorWizardProps> = ({ project, onClo
             <h2 className="text-xl font-bold text-slate-900 mb-2">Type & Data Format</h2>
             
             <div className="grid grid-cols-2 gap-4">
-              {Object.values(IndicatorType).map(t => (
+              {selectableTypes.map(t => (
                 <div 
                   key={t}
                   onClick={() => updateField('type', t)}
@@ -231,14 +228,14 @@ export const IndicatorWizard: React.FC<IndicatorWizardProps> = ({ project, onClo
                   {t === IndicatorType.NUMBER && <Hash className="w-6 h-6 mx-auto mb-2" />}
                   {t === IndicatorType.PERCENTAGE && <CircleDot className="w-6 h-6 mx-auto mb-2" />}
                   {t === IndicatorType.CURRENCY && <span className="block text-xl font-bold mb-2">$</span>}
-                  {t === IndicatorType.CATEGORICAL && <Tag className="w-6 h-6 mx-auto mb-2" />}
+                  {t === IndicatorType.TEXT && <Type className="w-6 h-6 mx-auto mb-2" />}
                   {t === IndicatorType.BOOLEAN && <Check className="w-6 h-6 mx-auto mb-2" />}
                   <span className="font-semibold">{t}</span>
                 </div>
               ))}
             </div>
 
-            {(formData.type === IndicatorType.NUMBER || formData.type === IndicatorType.PERCENTAGE) && (
+            {(formData.type === IndicatorType.NUMBER || formData.type === IndicatorType.PERCENTAGE || formData.type === IndicatorType.CURRENCY) && (
               <div className="grid grid-cols-2 gap-4 mt-4 bg-slate-50 p-4 rounded-lg">
                 <div>
                    <label className="block text-sm font-medium text-slate-700 mb-1">Unit of Measure</label>
@@ -247,7 +244,7 @@ export const IndicatorWizard: React.FC<IndicatorWizardProps> = ({ project, onClo
                       value={formData.unit || ''}
                       onChange={e => updateField('unit', e.target.value)}
                       className="w-full px-3 py-2 border border-slate-300 rounded-md bg-white text-slate-900"
-                      placeholder={formData.type === IndicatorType.PERCENTAGE ? '%' : 'e.g., kg, people'}
+                      placeholder={formData.type === IndicatorType.PERCENTAGE ? '%' : 'e.g., kg, USD'}
                    />
                 </div>
                 <div>
@@ -261,57 +258,6 @@ export const IndicatorWizard: React.FC<IndicatorWizardProps> = ({ project, onClo
                      <option value="1">1 (0.1)</option>
                      <option value="2">2 (0.01)</option>
                    </select>
-                </div>
-              </div>
-            )}
-
-            {formData.type === IndicatorType.CATEGORICAL && (
-              <div className="bg-slate-50 p-4 rounded-lg">
-                <label className="block text-sm font-medium text-slate-700 mb-2">Categories</label>
-                <div className="flex gap-2 mb-3">
-                  <input 
-                    type="text"
-                    value={newCategory}
-                    onChange={e => setNewCategory(e.target.value)}
-                    onKeyDown={e => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault();
-                        if (newCategory) {
-                          updateField('categories', [...(formData.categories || []), newCategory]);
-                          setNewCategory('');
-                        }
-                      }
-                    }}
-                    className="flex-1 px-3 py-2 border border-slate-300 rounded-md bg-white text-slate-900"
-                    placeholder="Type category and press Enter"
-                  />
-                  <Button 
-                    type="button" 
-                    onClick={() => {
-                      if (newCategory) {
-                        updateField('categories', [...(formData.categories || []), newCategory]);
-                        setNewCategory('');
-                      }
-                    }}
-                  >
-                    Add
-                  </Button>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  {formData.categories?.map((cat, idx) => (
-                    <span key={idx} className="bg-white border border-slate-200 px-2 py-1 rounded-md text-sm flex items-center">
-                      {cat}
-                      <button 
-                        onClick={() => updateField('categories', formData.categories?.filter((_, i) => i !== idx))}
-                        className="ml-2 text-slate-400 hover:text-red-500"
-                      >
-                        &times;
-                      </button>
-                    </span>
-                  ))}
-                  {(!formData.categories || formData.categories.length === 0) && (
-                    <span className="text-sm text-slate-400 italic">No categories added yet.</span>
-                  )}
                 </div>
               </div>
             )}
@@ -355,16 +301,7 @@ export const IndicatorWizard: React.FC<IndicatorWizardProps> = ({ project, onClo
              <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Target Value <span className="text-red-500">*</span></label>
                 
-                {formData.type === IndicatorType.CATEGORICAL ? (
-                  <select 
-                    value={formData.target as string}
-                    onChange={e => updateField('target', e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-md bg-white text-slate-900"
-                  >
-                    <option value="">Select target category...</option>
-                    {formData.categories?.map(cat => <option key={cat} value={cat}>{cat}</option>)}
-                  </select>
-                ) : formData.type === IndicatorType.BOOLEAN ? (
+                {formData.type === IndicatorType.BOOLEAN ? (
                    <select 
                     value={formData.target as string}
                     onChange={e => updateField('target', e.target.value)}
@@ -374,6 +311,13 @@ export const IndicatorWizard: React.FC<IndicatorWizardProps> = ({ project, onClo
                     <option value="true">{formData.booleanLabels?.true}</option>
                     <option value="false">{formData.booleanLabels?.false}</option>
                   </select>
+                ) : formData.type === IndicatorType.TEXT ? (
+                  <input
+                    type="text"
+                    value={formData.target as string}
+                    onChange={e => updateField('target', e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-md bg-white text-slate-900"
+                  />
                 ) : (
                   <input 
                     type="number"
@@ -386,16 +330,7 @@ export const IndicatorWizard: React.FC<IndicatorWizardProps> = ({ project, onClo
 
              <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Baseline Value</label>
-                {formData.type === IndicatorType.CATEGORICAL ? (
-                   <select 
-                    value={formData.baseline as string}
-                    onChange={e => updateField('baseline', e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-md bg-white text-slate-900"
-                  >
-                    <option value="">Select baseline category...</option>
-                    {formData.categories?.map(cat => <option key={cat} value={cat}>{cat}</option>)}
-                  </select>
-                ) : formData.type === IndicatorType.BOOLEAN ? (
+                {formData.type === IndicatorType.BOOLEAN ? (
                    <select 
                     value={formData.baseline as string}
                     onChange={e => updateField('baseline', e.target.value)}
@@ -405,6 +340,13 @@ export const IndicatorWizard: React.FC<IndicatorWizardProps> = ({ project, onClo
                     <option value="true">{formData.booleanLabels?.true}</option>
                     <option value="false">{formData.booleanLabels?.false}</option>
                   </select>
+                ) : formData.type === IndicatorType.TEXT ? (
+                   <input
+                    type="text"
+                    value={formData.baseline as string}
+                    onChange={e => updateField('baseline', e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-md bg-white text-slate-900"
+                   />
                 ) : (
                    <input 
                     type="number"

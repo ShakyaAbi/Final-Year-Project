@@ -2,7 +2,7 @@ import React from 'react';
 import { 
   ComposedChart, Line, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Scatter, ReferenceLine 
 } from 'recharts';
-import { Indicator } from '../types';
+import { Indicator, IndicatorType } from '../types';
 import { AlertTriangle } from 'lucide-react';
 
 interface IndicatorChartsProps {
@@ -139,6 +139,19 @@ const CustomAnomalyShape = (props: any) => {
 };
 
 export const IndicatorCharts: React.FC<IndicatorChartsProps> = ({ indicator }) => {
+  const isNumeric =
+    indicator.type === IndicatorType.NUMBER ||
+    indicator.type === IndicatorType.PERCENTAGE ||
+    indicator.type === IndicatorType.CURRENCY;
+
+  if (!isNumeric) {
+    return (
+      <div className="bg-white p-6 rounded-lg border border-slate-200 shadow-sm">
+        <p className="text-sm text-slate-500">Charts are available for numeric indicators only.</p>
+      </div>
+    );
+  }
+
   const sortedValues = [...indicator.values]
     .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
     .map(v => ({...v, value: Number(v.value)})); // Ensure numeric values

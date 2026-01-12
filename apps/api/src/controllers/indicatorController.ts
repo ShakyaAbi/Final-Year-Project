@@ -14,6 +14,12 @@ export const getIndicatorsByProject = asyncHandler(async (req: Request, res: Res
   res.json(indicators);
 });
 
+export const getIndicator = asyncHandler(async (req: Request, res: Response) => {
+  const includeSubmissions = req.query.includeSubmissions === 'true';
+  const indicator = await indicatorService.getIndicatorById(Number(req.params.id), includeSubmissions);
+  res.json(indicator);
+});
+
 export const updateIndicator = asyncHandler(async (req: Request, res: Response) => {
   const indicator = await indicatorService.updateIndicator(Number(req.params.id), req.body);
   res.json(indicator);

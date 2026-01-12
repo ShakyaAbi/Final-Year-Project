@@ -2,8 +2,8 @@
 import React, { useEffect, useState } from 'react';
 import { Layout } from '../components/Layout';
 import { useParams, Link } from 'react-router-dom';
-import { Indicator, IndicatorValue } from '../types';
-import { getIndicator, saveValue } from '../services/mockService';
+import { Indicator, IndicatorType } from '../types';
+import { api } from '../services/api';
 import { Button } from '../components/ui/Button';
 import { IndicatorCharts } from '../components/IndicatorCharts';
 import { 
@@ -15,6 +15,7 @@ export const IndicatorDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const [indicator, setIndicator] = useState<Indicator | undefined>(undefined);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   
   // Form State
   const [entryValue, setEntryValue] = useState<string>('');
@@ -29,12 +30,40 @@ export const IndicatorDetail: React.FC = () => {
   const [sortField, setSortField] = useState<'date' | 'value'>('date');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
 
+  const applyAnomalyRules = (values: Indicator['values'], min?: number, max?: number) => {
+    const hasMin = min !== undefined && min !== null;
+    const hasMax = max !== undefined && max !== null;
+    if (!hasMin && !hasMax) {
+      return values.map((v) => ({ ...v, isAnomaly: false, anomalyReason: undefined }));
+    }
+    return values.map((v) => {
+      const num = Number(v.value);
+      if (!Number.isFinite(num)) {
+        return { ...v, isAnomaly: false, anomalyReason: undefined };
+      }
+      if (hasMin && num < min!) {
+        return { ...v, isAnomaly: true, anomalyReason: `Value below expected minimum (${min})` };
+      }
+      if (hasMax && num > max!) {
+        return { ...v, isAnomaly: true, anomalyReason: `Value exceeds expected maximum (${max})` };
+      }
+      return { ...v, isAnomaly: false, anomalyReason: undefined };
+    });
+  };
+
   useEffect(() => {
     if (id) {
-      getIndicator(id).then(data => {
-        setIndicator(data);
-        setLoading(false);
-      });
+      Promise.all([api.getIndicator(id), api.getIndicatorSubmissions(id)])
+        .then(([data, submissions]) => {
+          const values = applyAnomalyRules(submissions, data.minExpected, data.maxExpected);
+          setIndicator({ ...data, values });
+          setLoading(false);
+        })
+        .catch((error) => {
+          console.error('Failed to load indicator', error);
+          setIndicator(undefined);
+          setLoading(false);
+        });
     }
   }, [id]);
 
@@ -59,32 +88,41 @@ export const IndicatorDetail: React.FC = () => {
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!indicator || !entryValue) return;
+    if (!indicator || entryValue === '') return;
 
     setSaving(true);
-    const val = parseFloat(entryValue);
+    setError(null);
+    const isNumeric =
+      indicator.type === IndicatorType.NUMBER ||
+      indicator.type === IndicatorType.PERCENTAGE ||
+      indicator.type === IndicatorType.CURRENCY;
+    const val = isNumeric ? Number(entryValue) : entryValue;
     const finalEvidence = attachedFile ? `[Attached] ${attachedFile.name}` : evidence;
     
-    await saveValue(indicator.id, val, entryDate, finalEvidence);
-
-    // Optimistic update for UI
-    const newEntry: IndicatorValue = {
-        id: `temp-${Date.now()}`,
-        date: entryDate,
+    let didError = false;
+    try {
+      await api.createSubmission(indicator.id, {
+        reportedAt: entryDate,
         value: val,
-        isAnomaly: val > (indicator.maxExpected || Infinity) || val < (indicator.minExpected || -Infinity),
-        anomalyReason: (val > (indicator.maxExpected || Infinity) || val < (indicator.minExpected || -Infinity)) ? 'Out of expected bounds' : undefined,
         evidence: finalEvidence
-    };
+      });
 
-    setIndicator(prev => prev ? ({
-        ...prev,
-        values: [...prev.values, newEntry]
-    }) : undefined);
+      const submissions = await api.getIndicatorSubmissions(indicator.id);
+      const values = applyAnomalyRules(submissions, indicator.minExpected, indicator.maxExpected);
+      setIndicator(prev => prev ? ({
+          ...prev,
+          values
+      }) : undefined);
+    } catch (err: any) {
+      didError = true;
+      setError(err?.message || 'Failed to submit value.');
+    }
 
-    setEntryValue('');
-    setEvidence('');
-    setAttachedFile(null);
+    if (!didError) {
+      setEntryValue('');
+      setEvidence('');
+      setAttachedFile(null);
+    }
     setSaving(false);
   };
 
@@ -264,6 +302,11 @@ export const IndicatorDetail: React.FC = () => {
             <div className="bg-white p-6 rounded-lg border border-slate-200 shadow-lg shadow-slate-200/50 sticky top-6">
                 <h3 className="text-lg font-bold text-slate-900 mb-4">Weekly Data Entry</h3>
                 <form onSubmit={handleSave} className="space-y-4">
+                    {error && (
+                      <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg p-3">
+                        {error}
+                      </div>
+                    )}
                     <div>
                         <label className="block text-sm font-medium text-slate-700 mb-1">Reporting Date</label>
                         <input 
@@ -276,16 +319,36 @@ export const IndicatorDetail: React.FC = () => {
                     <div>
                         <label className="block text-sm font-medium text-slate-700 mb-1">Value</label>
                         <input 
-                            type="number" 
-                            step="0.01"
-                            placeholder="e.g. 45"
+                            type={
+                              indicator.type === IndicatorType.NUMBER ||
+                              indicator.type === IndicatorType.PERCENTAGE ||
+                              indicator.type === IndicatorType.CURRENCY
+                                ? 'number'
+                                : 'text'
+                            }
+                            step={
+                              indicator.type === IndicatorType.NUMBER ||
+                              indicator.type === IndicatorType.PERCENTAGE ||
+                              indicator.type === IndicatorType.CURRENCY
+                                ? '0.01'
+                                : undefined
+                            }
+                            placeholder={
+                              indicator.type === IndicatorType.NUMBER ||
+                              indicator.type === IndicatorType.PERCENTAGE ||
+                              indicator.type === IndicatorType.CURRENCY
+                                ? 'e.g. 45'
+                                : 'e.g. Completed'
+                            }
                             value={entryValue}
                             onChange={e => setEntryValue(e.target.value)}
                             className="w-full rounded-md border-slate-300 border p-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white text-slate-900"
                         />
-                        <p className="text-xs text-slate-400 mt-1">
-                            Expected range: {indicator.minExpected} - {indicator.maxExpected}
-                        </p>
+                        {(indicator.type === IndicatorType.NUMBER || indicator.type === IndicatorType.PERCENTAGE || indicator.type === IndicatorType.CURRENCY) && (
+                          <p className="text-xs text-slate-400 mt-1">
+                              Expected range: {indicator.minExpected} - {indicator.maxExpected}
+                          </p>
+                        )}
                     </div>
 
                     {/* Evidence / File Upload */}

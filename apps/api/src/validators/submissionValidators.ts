@@ -18,7 +18,8 @@ export const indicatorSubmissionsParamsSchema = {
 export const createSubmissionSchema = {
   body: z.object({
     reportedAt: dateString,
-    value: z.union([z.string(), z.number(), z.boolean()])
+    value: z.union([z.string(), z.number(), z.boolean()]),
+    evidence: z.string().optional().nullable()
   })
 };
 

@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Layout } from '../components/Layout';
-import { getProjects, getIndicators, saveValue } from '../services/mockService';
+import { api } from '../services/api';
 import { Project, Indicator, IndicatorType, IndicatorValue } from '../types';
 import { Button } from '../components/ui/Button';
 import { Search, Filter, Check, FileText, Calendar, AlertCircle, Link as LinkIcon, UploadCloud, X } from 'lucide-react';
@@ -27,7 +27,8 @@ export const DataEntry: React.FC = () => {
     date: string, 
     evidence: string, 
     file: File | null,
-    status: 'idle' | 'saving' | 'saved' 
+    status: 'idle' | 'saving' | 'saved',
+    error?: string
   }>>({});
 
   useEffect(() => {
@@ -36,11 +37,26 @@ export const DataEntry: React.FC = () => {
   }, [searchParams]);
 
   useEffect(() => {
-    Promise.all([getProjects(), getIndicators()]).then(([projData, indData]) => {
-      setProjects(projData);
+    api.getProjects()
+      .then((projData) => setProjects(projData))
+      .catch((error) => {
+        console.error('Failed to load projects', error);
+        setProjects([]);
+      });
+  }, []);
+
+  const loadIndicators = async (projectId?: string) => {
+    setLoading(true);
+    try {
+      let indData: Indicator[] = [];
+      if (projectId) {
+        indData = await api.getIndicators(projectId);
+      } else if (projects.length > 0) {
+        const all = await Promise.all(projects.map((project) => api.getIndicators(project.id)));
+        indData = all.flat();
+      }
       setIndicators(indData);
-      
-      // Initialize entries state for all indicators
+
       const initialEntries: Record<string, any> = {};
       const today = new Date().toISOString().split('T')[0];
       indData.forEach(ind => {
@@ -49,13 +65,25 @@ export const DataEntry: React.FC = () => {
           date: today,
           evidence: '',
           file: null,
-          status: 'idle'
+          status: 'idle',
+          error: undefined
         };
       });
       setEntries(initialEntries);
+    } catch (error) {
+      console.error('Failed to load indicators', error);
+      setIndicators([]);
+      setEntries({});
+    } finally {
       setLoading(false);
-    });
-  }, []);
+    }
+  };
+
+  useEffect(() => {
+    if (projects.length > 0) {
+      loadIndicators(selectedProject || undefined);
+    }
+  }, [projects, selectedProject]);
 
   const filteredIndicators = indicators.filter(ind => {
     const matchesProject = selectedProject ? ind.projectId === selectedProject : true;
@@ -67,7 +95,7 @@ export const DataEntry: React.FC = () => {
   const handleEntryChange = (id: string, field: string, value: string) => {
     setEntries(prev => ({
       ...prev,
-      [id]: { ...prev[id], [field]: value, status: 'idle' }
+      [id]: { ...prev[id], [field]: value, status: 'idle', error: undefined }
     }));
   };
 
@@ -98,7 +126,8 @@ export const DataEntry: React.FC = () => {
         ...prev[id], 
         file: file, 
         evidence: '', // Clear manual text if file is attached to avoid ambiguity
-        status: 'idle' 
+        status: 'idle',
+        error: undefined
       }
     }));
   };
@@ -112,15 +141,34 @@ export const DataEntry: React.FC = () => {
 
   const handleSubmit = async (id: string) => {
     const entry = entries[id];
-    if (!entry.value) return;
+    if (entry.value === '') return;
 
-    setEntries(prev => ({ ...prev, [id]: { ...prev[id], status: 'saving' } }));
+    setEntries(prev => ({ ...prev, [id]: { ...prev[id], status: 'saving', error: undefined } }));
 
     // Use filename if file exists, otherwise use the text evidence
     const finalEvidence = entry.file ? `[Attached] ${entry.file.name}` : entry.evidence;
 
     // Call service
-    await saveValue(id, entry.value, entry.date, finalEvidence);
+    const indicator = indicators.find((item) => item.id === id);
+    const valuePayload =
+      indicator?.type === IndicatorType.NUMBER ||
+      indicator?.type === IndicatorType.PERCENTAGE ||
+      indicator?.type === IndicatorType.CURRENCY
+        ? Number(entry.value)
+        : entry.value;
+    try {
+      await api.createSubmission(id, {
+        reportedAt: entry.date,
+        value: valuePayload,
+        evidence: finalEvidence
+      });
+    } catch (err: any) {
+      setEntries(prev => ({ 
+        ...prev, 
+        [id]: { ...prev[id], status: 'idle', error: err?.message || 'Failed to submit value.' } 
+      }));
+      return;
+    }
 
     // Optimistically update the indicators list to show the new "Last Value" immediately
     setIndicators(prevIndicators => prevIndicators.map(ind => {
@@ -275,6 +323,9 @@ export const DataEntry: React.FC = () => {
                                           value={entry.value}
                                           onChange={(e) => handleEntryChange(indicator.id, 'value', e.target.value)}
                                       />
+                                      {entry.error && (
+                                        <p className="text-xs text-red-600 mt-1">{entry.error}</p>
+                                      )}
                                   </div>
 
                                   {/* Verification Evidence (Drag & Drop) */}

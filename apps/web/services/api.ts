@@ -1,4 +1,4 @@
-import { LogframeNode, NodeType, Project } from '../types';
+import { ActivityLog, Indicator, IndicatorType, IndicatorValue, LogframeNode, NodeType, Project, ProjectStats } from '../types';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000/api/v1';
 const tokenKey = 'merlin_token';
@@ -92,6 +92,63 @@ const mapProject = (p: any, logframe: LogframeNode[] = []): Project => ({
   logframe
 });
 
+const mapIndicatorType = (dataType?: string, unit?: string): IndicatorType => {
+  switch (dataType) {
+    case 'PERCENT':
+      return IndicatorType.PERCENTAGE;
+    case 'BOOLEAN':
+      return IndicatorType.BOOLEAN;
+    case 'NUMBER':
+      return unit === 'USD' || unit === 'usd' ? IndicatorType.CURRENCY : IndicatorType.NUMBER;
+    case 'TEXT':
+      return IndicatorType.TEXT;
+    default:
+      if (unit === '%' || unit === 'percent') return IndicatorType.PERCENTAGE;
+      return IndicatorType.NUMBER;
+  }
+};
+
+const mapIndicatorValue = (v: any, type: IndicatorType): IndicatorValue => {
+  const parsedValue =
+    type === IndicatorType.NUMBER || type === IndicatorType.PERCENTAGE || type === IndicatorType.CURRENCY
+      ? Number(v.value)
+      : v.value;
+  const isAnomaly = v.isAnomaly === true;
+  return {
+    id: String(v.id),
+    date: v.reportedAt ? new Date(v.reportedAt).toISOString() : '',
+    value: Number.isFinite(parsedValue) ? parsedValue : v.value,
+    isAnomaly,
+    anomalyReason: isAnomaly ? v.anomalyReason ?? undefined : undefined,
+    evidence: v.evidence ?? undefined
+  };
+};
+
+const mapIndicator = (indicator: any, values: IndicatorValue[] = []): Indicator => {
+  const type = mapIndicatorType(indicator.dataType, indicator.unit);
+  const isText = type === IndicatorType.TEXT;
+  return {
+    id: String(indicator.id),
+    projectId: String(indicator.projectId),
+    nodeId: String(indicator.logframeNodeId),
+    name: indicator.name ?? '',
+    description: indicator.description ?? undefined,
+    status: indicator.status ?? 'Active',
+    code: indicator.code ?? undefined,
+    type,
+    target: indicator.targetValue ?? (isText ? '' : 0),
+    baseline: indicator.baselineValue ?? (isText ? '' : 0),
+    minExpected: indicator.minValue ?? undefined,
+    maxExpected: indicator.maxValue ?? undefined,
+    unit: indicator.unit ?? undefined,
+    decimals: indicator.decimals ?? undefined,
+    frequency: indicator.frequency ?? 'Monthly',
+    currentVersion: indicator.currentVersion ?? 1,
+    versions: Array.isArray(indicator.versions) ? indicator.versions : [],
+    values
+  };
+};
+
 const getProjectLogframe = async (id: string): Promise<LogframeNode[]> => {
   const tree = await request<any[]>(`/projects/${id}/logframe/tree`);
   return tree.map(mapLogframeNode);
@@ -137,7 +194,93 @@ export const api = {
       }
     });
     return mapProject(created);
-  }
+  },
+  getIndicators: async (projectId: string): Promise<Indicator[]> => {
+    const indicators = await request<any[]>(`/projects/${projectId}/indicators`);
+    return indicators.map((indicator) => mapIndicator(indicator));
+  },
+  getIndicator: async (id: string): Promise<Indicator> => {
+    const indicator = await request<any>(`/indicators/${id}`);
+    return mapIndicator(indicator);
+  },
+  getIndicatorSubmissions: async (indicatorId: string): Promise<IndicatorValue[]> => {
+    const submissions = await request<any[]>(`/indicators/${indicatorId}/submissions`);
+    const indicator = await request<any>(`/indicators/${indicatorId}`);
+    const type = mapIndicatorType(indicator.dataType, indicator.unit);
+    return submissions.map((submission) => mapIndicatorValue(submission, type));
+  },
+  createIndicator: async (projectId: string, payload: Partial<Indicator>): Promise<Indicator> => {
+    const dataType =
+      payload.type === IndicatorType.PERCENTAGE
+        ? 'PERCENT'
+        : payload.type === IndicatorType.BOOLEAN
+        ? 'BOOLEAN'
+        : payload.type === IndicatorType.TEXT
+        ? 'TEXT'
+        : 'NUMBER';
+    const isNumeric =
+      payload.type === IndicatorType.NUMBER ||
+      payload.type === IndicatorType.PERCENTAGE ||
+      payload.type === IndicatorType.CURRENCY;
+    const unit =
+      payload.unit ||
+      (payload.type === IndicatorType.BOOLEAN ? 'yes/no' : payload.type === IndicatorType.TEXT ? 'text' : 'unit');
+    const baselineValue = isNumeric && payload.baseline !== undefined ? Number(payload.baseline) : null;
+    const targetValue = isNumeric && payload.target !== undefined ? Number(payload.target) : null;
+    const created = await request<any>(`/projects/${projectId}/indicators`, {
+      method: 'POST',
+      body: {
+        logframeNodeId: Number(payload.nodeId),
+        name: payload.name,
+        unit,
+        baselineValue,
+        targetValue,
+        dataType,
+        minValue: payload.minExpected ?? null,
+        maxValue: payload.maxExpected ?? null
+      }
+    });
+    return mapIndicator(created);
+  },
+  createSubmission: async (indicatorId: string, payload: { reportedAt: string; value: any; evidence?: string }) =>
+    request(`/indicators/${indicatorId}/submissions`, {
+      method: 'POST',
+      body: {
+        reportedAt: payload.reportedAt,
+        value: payload.value,
+        evidence: payload.evidence ?? null
+      }
+    }),
+  addLogframeNode: async (
+    projectId: string,
+    payload: { type: NodeType; title: string; description?: string; parentId?: string | null }
+  ) =>
+    request(`/projects/${projectId}/logframe/nodes`, {
+      method: 'POST',
+      body: {
+        type: payload.type.toUpperCase(),
+        title: payload.title,
+        description: payload.description,
+        parentId: payload.parentId ? Number(payload.parentId) : undefined
+      }
+    }),
+  updateLogframeNode: async (
+    nodeId: string,
+    payload: Partial<{ title: string; description?: string; parentId?: string | null; type?: NodeType }>
+  ) =>
+    request(`/logframe/nodes/${nodeId}`, {
+      method: 'PATCH',
+      body: {
+        title: payload.title,
+        description: payload.description,
+        parentId: payload.parentId ? Number(payload.parentId) : payload.parentId,
+        type: payload.type ? payload.type.toUpperCase() : undefined
+      }
+    }),
+  getProjectStats: async (projectId: string): Promise<ProjectStats> =>
+    request(`/projects/${projectId}/stats`),
+  getProjectActivities: async (projectId: string): Promise<ActivityLog[]> =>
+    request(`/projects/${projectId}/activities`)
 };
 
 export const authStorage = { getToken, setToken };

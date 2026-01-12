@@ -10,7 +10,7 @@ export enum IndicatorType {
   NUMBER = 'Number',
   PERCENTAGE = 'Percentage',
   CURRENCY = 'Currency',
-  CATEGORICAL = 'Categorical',
+  TEXT = 'Text',
   BOOLEAN = 'Boolean'
 }
 
@@ -78,7 +78,6 @@ export interface Indicator {
   // Formatting rules
   unit?: string; // e.g., "kg", "households"
   decimals?: number;
-  categories?: string[]; // For Categorical
   booleanLabels?: { true: string; false: string }; // For Boolean
   
   frequency: 'Weekly' | 'Monthly';

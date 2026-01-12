@@ -4,6 +4,7 @@ export const createSubmission = (data: {
   indicatorId: number;
   reportedAt: Date;
   value: string;
+  evidence?: string | null;
   createdByUserId: number;
 }) => prisma.submission.create({ data });
 
