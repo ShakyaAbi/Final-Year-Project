@@ -42,3 +42,6 @@ venv/
 
 
 .PROJECT_FEATURES.md
+.AGENTS.md
+
+.gitignore

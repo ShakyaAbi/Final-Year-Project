@@ -50,6 +50,37 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/LogframeNode'
+    AnomalyConfig:
+      type: object
+      properties:
+        enabled: { type: boolean, default: false }
+        outlier:
+          type: object
+          properties:
+            method: { type: string, enum: [MAD, IQR], default: MAD }
+            threshold: { type: number, default: 3.5 }
+            windowSize: { type: integer, default: 8, minimum: 2, maximum: 50 }
+            minPoints: { type: integer, default: 6, minimum: 2 }
+        trend:
+          type: object
+          properties:
+            method: { type: string, enum: [SLOPE_SHIFT, MEAN_SHIFT], default: SLOPE_SHIFT }
+            threshold: { type: number, default: 2 }
+            windowSize: { type: integer, default: 6, minimum: 3, maximum: 50 }
+    CategoryDefinition:
+      type: object
+      properties:
+        id: { type: string }
+        label: { type: string }
+        color: { type: string }
+        description: { type: string }
+    CategoryConfig:
+      type: object
+      properties:
+        allowMultiple: { type: boolean }
+        maxSelections: { type: integer, minimum: 1 }
+        required: { type: boolean }
+        allowOther: { type: boolean }
     Indicator:
       type: object
       properties:
@@ -60,10 +91,55 @@ components:
         unit: { type: string }
         baselineValue: { type: number, nullable: true }
         targetValue: { type: number, nullable: true }
-        dataType: { type: string, enum: [NUMBER, PERCENT, TEXT, BOOLEAN] }
+        dataType: { type: string, enum: [NUMBER, PERCENT, TEXT, BOOLEAN, CATEGORICAL] }
         minValue: { type: number, nullable: true }
         maxValue: { type: number, nullable: true }
+        anomalyConfig:
+          allOf:
+            - $ref: '#/components/schemas/AnomalyConfig'
+          nullable: true
+        categories:
+          type: array
+          items:
+            $ref: '#/components/schemas/CategoryDefinition'
+          nullable: true
+        categoryConfig:
+          allOf:
+            - $ref: '#/components/schemas/CategoryConfig'
+          nullable: true
         createdAt: { type: string, format: date-time }
+    CategoryStats:
+      type: object
+      properties:
+        categoryId: { type: string }
+        label: { type: string }
+        count: { type: integer }
+        percentage: { type: number }
+    IndicatorStats:
+      type: object
+      properties:
+        submissionCount: { type: integer }
+        anomalyCount: { type: integer }
+        anomalyRate: { type: number }
+        lastSubmissionDate: { type: string, format: date-time }
+        currentValue: { type: number, nullable: true }
+        progressToTarget: { type: number, nullable: true }
+        progressFromBaseline: { type: number, nullable: true }
+        average: { type: number, nullable: true }
+        min: { type: number, nullable: true }
+        max: { type: number, nullable: true }
+        categoryDistribution:
+          type: array
+          items:
+            $ref: '#/components/schemas/CategoryStats'
+        mostFrequent:
+          type: object
+          properties:
+            categoryId: { type: string }
+            label: { type: string }
+            count: { type: integer }
+          nullable: true
+        trend: { type: string, enum: [increasing, decreasing, stable], nullable: true }
     Submission:
       type: object
       properties:
@@ -71,8 +147,21 @@ components:
         indicatorId: { type: integer }
         reportedAt: { type: string, format: date }
         value: { type: string }
+        evidence: { type: string, nullable: true }
         createdByUserId: { type: integer }
         createdAt: { type: string, format: date-time }
+        isAnomaly: { type: boolean, default: false }
+        anomalyReason: { type: string, nullable: true }
+        anomalyStatus: { type: string, enum: [DETECTED, ACKNOWLEDGED, RESOLVED, FALSE_POSITIVE], nullable: true }
+        anomalyReviewedBy: { type: integer, nullable: true }
+        anomalyReviewedAt: { type: string, format: date-time, nullable: true }
+    ReportingGap:
+      type: object
+      properties:
+        from: { type: string, format: date-time }
+        to: { type: string, format: date-time }
+        daysMissing: { type: integer }
+        expectedSubmissions: { type: integer }
 paths:
   /auth/login:
     post:
@@ -266,6 +355,20 @@ paths:
       responses:
         '200': { description: Indicators }
   /indicators/{id}:
+    get:
+      security: [{ bearerAuth: [] }]
+      summary: Get indicator
+      parameters:
+        - in: path
+          name: id
+          schema: { type: integer }
+          required: true
+      responses:
+        '200':
+          description: Indicator
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Indicator' }
     patch:
       security: [{ bearerAuth: [] }]
       summary: Update indicator (ADMIN, MANAGER)
@@ -276,6 +379,95 @@ paths:
           required: true
       responses:
         '200': { description: Updated }
+  /indicators/{id}/stats:
+    get:
+      security: [{ bearerAuth: [] }]
+      summary: Get indicator with statistics
+      parameters:
+        - in: path
+          name: id
+          schema: { type: integer }
+          required: true
+      responses:
+        '200':
+          description: Indicator with stats
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Indicator'
+                  - type: object
+                    properties:
+                      stats:
+                        allOf:
+                          - $ref: '#/components/schemas/IndicatorStats'
+                        nullable: true
+  /indicators/{id}/gaps:
+    get:
+      security: [{ bearerAuth: [] }]
+      summary: Detect reporting gaps for an indicator
+      parameters:
+        - in: path
+          name: id
+          schema: { type: integer }
+          required: true
+        - in: query
+          name: frequency
+          schema: { type: string, enum: [DAILY, WEEKLY, MONTHLY], default: MONTHLY }
+        - in: query
+          name: includeSubmissions
+          schema: { type: boolean, default: true }
+      responses:
+        '200':
+          description: Reporting gaps analysis
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  indicatorId: { type: integer }
+                  frequency: { type: string }
+                  totalSubmissions: { type: integer }
+                  gaps:
+                    type: array
+                    items: { $ref: '#/components/schemas/ReportingGap' }
+  /indicators/{id}/category-distribution:
+    get:
+      security: [{ bearerAuth: [] }]
+      summary: Get category distribution for CATEGORICAL indicators
+      parameters:
+        - in: path
+          name: id
+          schema: { type: integer }
+          required: true
+      responses:
+        '200':
+          description: Category distribution statistics
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  indicatorId: { type: integer }
+                  indicatorName: { type: string }
+                  categories:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/CategoryDefinition'
+                  distribution:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/CategoryStats'
+                  mostFrequent:
+                    type: object
+                    properties:
+                      categoryId: { type: string }
+                      label: { type: string }
+                      count: { type: integer }
+                    nullable: true
+                  totalSubmissions: { type: integer }
+        '400':
+          description: Not a categorical indicator
   /indicators/{indicatorId}/submissions:
     post:
       security: [{ bearerAuth: [] }]
@@ -285,11 +477,25 @@ paths:
           name: indicatorId
           schema: { type: integer }
           required: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reportedAt: { type: string, format: date }
+                value: { oneOf: [{ type: string }, { type: number }, { type: boolean }] }
+                evidence: { type: string, nullable: true }
       responses:
-        '201': { description: Created }
+        '201':
+          description: Created with anomaly detection result
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Submission' }
     get:
       security: [{ bearerAuth: [] }]
-      summary: List submissions
+      summary: List submissions with anomaly flags
       parameters:
         - in: path
           name: indicatorId
@@ -302,6 +508,103 @@ paths:
           name: to
           schema: { type: string, format: date }
       responses:
-        '200': { description: Submissions }
+        '200':
+          description: Submissions
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Submission' }
+  /submissions/{id}/anomaly/acknowledge:
+    post:
+      security: [{ bearerAuth: [] }]
+      summary: Acknowledge an anomaly
+      parameters:
+        - in: path
+          name: id
+          schema: { type: integer }
+          required: true
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                notes: { type: string }
+      responses:
+        '200':
+          description: Anomaly acknowledged
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Submission' }
+  /submissions/{id}/anomaly/resolve:
+    post:
+      security: [{ bearerAuth: [] }]
+      summary: Resolve an anomaly
+      parameters:
+        - in: path
+          name: id
+          schema: { type: integer }
+          required: true
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                notes: { type: string }
+      responses:
+        '200':
+          description: Anomaly resolved
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Submission' }
+  /submissions/{id}/anomaly/false-positive:
+    post:
+      security: [{ bearerAuth: [] }]
+      summary: Mark an anomaly as false positive
+      parameters:
+        - in: path
+          name: id
+          schema: { type: integer }
+          required: true
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                notes: { type: string }
+      responses:
+        '200':
+          description: Anomaly marked as false positive
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Submission' }
+  /submissions/{id}/anomaly/status:
+    put:
+      security: [{ bearerAuth: [] }]
+      summary: Update anomaly status
+      parameters:
+        - in: path
+          name: id
+          schema: { type: integer }
+          required: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: { type: string, enum: [DETECTED, ACKNOWLEDGED, RESOLVED, FALSE_POSITIVE] }
+                notes: { type: string }
+      responses:
+        '200':
+          description: Status updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Submission' }
 security:
   - bearerAuth: []

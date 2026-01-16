@@ -13,3 +13,44 @@ export const listSubmissions = asyncHandler(async (req: Request, res: Response) 
   const submissions = await submissionService.listSubmissions(indicatorId, req.query as any);
   res.json(submissions);
 });
+
+export const acknowledgeAnomaly = asyncHandler(async (req: Request, res: Response) => {
+  const submissionId = Number(req.params.id);
+  const submission = await submissionService.acknowledgeAnomaly(
+    submissionId,
+    req.user!.id,
+    req.body.notes
+  );
+  res.json(submission);
+});
+
+export const resolveAnomaly = asyncHandler(async (req: Request, res: Response) => {
+  const submissionId = Number(req.params.id);
+  const submission = await submissionService.resolveAnomaly(
+    submissionId,
+    req.user!.id,
+    req.body.notes
+  );
+  res.json(submission);
+});
+
+export const markAnomalyFalsePositive = asyncHandler(async (req: Request, res: Response) => {
+  const submissionId = Number(req.params.id);
+  const submission = await submissionService.markAnomalyFalsePositive(
+    submissionId,
+    req.user!.id,
+    req.body.notes
+  );
+  res.json(submission);
+});
+
+export const updateAnomalyStatus = asyncHandler(async (req: Request, res: Response) => {
+  const submissionId = Number(req.params.id);
+  const submission = await submissionService.updateAnomalyStatus(
+    submissionId,
+    req.body.status,
+    req.user!.id,
+    req.body.notes
+  );
+  res.json(submission);
+});

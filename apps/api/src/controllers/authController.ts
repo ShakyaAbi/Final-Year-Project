@@ -16,3 +16,8 @@ export const me = asyncHandler(async (req: Request, res: Response) => {
   const user = await authService.getCurrentUser(req.user!.id);
   res.json(user);
 });
+
+export const updateMe = asyncHandler(async (req: Request, res: Response) => {
+  const user = await authService.updateCurrentUser(req.user!.id, req.body);
+  res.json(user);
+});

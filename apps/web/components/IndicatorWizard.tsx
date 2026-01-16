@@ -1,8 +1,8 @@
 
 import React, { useState, useEffect } from 'react';
-import { Project, LogframeNode, IndicatorType, Indicator, NodeType } from '../types';
+import { Project, LogframeNode, IndicatorType, Indicator, NodeType, AnomalyConfig, CategoryDefinition, CategoryConfig } from '../types';
 import { Button } from './ui/Button';
-import { ChevronRight, Check, CircleDot, Calendar, Layers, Hash, Type, AlertCircle, Target } from 'lucide-react';
+import { ChevronRight, Check, CircleDot, Calendar, Layers, Hash, Type, AlertCircle, Target, PieChart, Plus, Trash2 } from 'lucide-react';
 import { api } from '../services/api';
 import { useNavigate } from 'react-router-dom';
 
@@ -87,21 +87,46 @@ export const IndicatorWizard: React.FC<IndicatorWizardProps> = ({ project, onClo
     IndicatorType.NUMBER,
     IndicatorType.PERCENTAGE,
     IndicatorType.CURRENCY,
-    IndicatorType.BOOLEAN
+    IndicatorType.BOOLEAN,
+    IndicatorType.CATEGORICAL
   ];
 
   // Form State
+  const defaultAnomalyConfig: AnomalyConfig = {
+    enabled: true,
+    outlier: { method: 'MAD', threshold: 3.5, windowSize: 8, minPoints: 6 },
+    trend: { method: 'SLOPE_SHIFT', threshold: 2, windowSize: 6 }
+  };
+
   const [formData, setFormData] = useState<Partial<Indicator>>({
     projectId: project.id,
     nodeId: initialNodeId || undefined,
     type: IndicatorType.NUMBER,
     frequency: 'Weekly',
     booleanLabels: { true: 'Yes', false: 'No' },
-    decimals: 2
+    decimals: 2,
+    anomalyConfig: defaultAnomalyConfig,
+    categories: [],
+    categoryConfig: { allowMultiple: false, required: true }
   });
 
   const updateField = (field: keyof Indicator, value: any) => {
     setFormData(prev => ({ ...prev, [field]: value }));
+  };
+
+  const updateAnomalyConfig = (patch: Partial<AnomalyConfig>) => {
+    setFormData(prev => {
+      const current = prev.anomalyConfig ?? defaultAnomalyConfig;
+      return {
+        ...prev,
+        anomalyConfig: {
+          ...current,
+          ...patch,
+          outlier: { ...current.outlier, ...patch.outlier },
+          trend: { ...current.trend, ...patch.trend }
+        }
+      };
+    });
   };
 
   const handleNext = () => {
@@ -230,6 +255,7 @@ export const IndicatorWizard: React.FC<IndicatorWizardProps> = ({ project, onClo
                   {t === IndicatorType.CURRENCY && <span className="block text-xl font-bold mb-2">$</span>}
                   {t === IndicatorType.TEXT && <Type className="w-6 h-6 mx-auto mb-2" />}
                   {t === IndicatorType.BOOLEAN && <Check className="w-6 h-6 mx-auto mb-2" />}
+                  {t === IndicatorType.CATEGORICAL && <PieChart className="w-6 h-6 mx-auto mb-2" />}
                   <span className="font-semibold">{t}</span>
                 </div>
               ))}
@@ -282,6 +308,95 @@ export const IndicatorWizard: React.FC<IndicatorWizardProps> = ({ project, onClo
                        className="w-full px-3 py-2 border border-slate-300 rounded-md bg-white text-slate-900"
                     />
                  </div>
+              </div>
+            )}
+
+            {formData.type === IndicatorType.CATEGORICAL && (
+              <div className="bg-slate-50 p-4 rounded-lg space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">Categories</label>
+                  {(formData.categories || []).map((cat, idx) => (
+                    <div key={idx} className="flex gap-2 mb-2">
+                      <input
+                        type="text"
+                        value={cat.id}
+                        onChange={e => {
+                          const newCats = [...(formData.categories || [])];
+                          newCats[idx] = { ...cat, id: e.target.value };
+                          updateField('categories', newCats);
+                        }}
+                        placeholder="Category ID"
+                        className="flex-1 px-3 py-2 border border-slate-300 rounded-md bg-white text-slate-900 font-mono text-sm"
+                      />
+                      <input
+                        type="text"
+                        value={cat.label}
+                        onChange={e => {
+                          const newCats = [...(formData.categories || [])];
+                          newCats[idx] = { ...cat, label: e.target.value };
+                          updateField('categories', newCats);
+                        }}
+                        placeholder="Category Label"
+                        className="flex-1 px-3 py-2 border border-slate-300 rounded-md bg-white text-slate-900"
+                      />
+                      <input
+                        type="color"
+                        value={cat.color || '#3b82f6'}
+                        onChange={e => {
+                          const newCats = [...(formData.categories || [])];
+                          newCats[idx] = { ...cat, color: e.target.value };
+                          updateField('categories', newCats);
+                        }}
+                        className="w-12 h-10 border border-slate-300 rounded-md cursor-pointer"
+                      />
+                      <button
+                        onClick={() => {
+                          const newCats = (formData.categories || []).filter((_, i) => i !== idx);
+                          updateField('categories', newCats);
+                        }}
+                        className="px-3 py-2 text-red-600 hover:bg-red-50 rounded-md border border-slate-300"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ))}
+                  <button
+                    onClick={() => {
+                      const newCats = [...(formData.categories || []), { id: '', label: '', color: '#3b82f6' }];
+                      updateField('categories', newCats);
+                    }}
+                    className="w-full px-3 py-2 border border-dashed border-slate-300 rounded-md text-sm text-slate-600 hover:border-blue-400 hover:text-blue-600 flex items-center justify-center gap-2"
+                  >
+                    <Plus className="w-4 h-4" /> Add Category
+                  </button>
+                </div>
+                
+                <div className="border-t border-slate-200 pt-4 grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
+                      <input
+                        type="checkbox"
+                        checked={formData.categoryConfig?.allowMultiple || false}
+                        onChange={e => updateField('categoryConfig', { ...formData.categoryConfig, allowMultiple: e.target.checked })}
+                        className="rounded border-slate-300"
+                      />
+                      Allow Multiple Selections
+                    </label>
+                  </div>
+                  
+                  {formData.categoryConfig?.allowMultiple && (
+                    <div>
+                      <label className="block text-xs font-medium text-slate-600 mb-1">Max Selections</label>
+                      <input
+                        type="number"
+                        min={1}
+                        value={formData.categoryConfig?.maxSelections || 3}
+                        onChange={e => updateField('categoryConfig', { ...formData.categoryConfig, maxSelections: parseInt(e.target.value) })}
+                        className="w-full px-3 py-2 border border-slate-300 rounded-md bg-white text-slate-900 text-sm"
+                      />
+                    </div>
+                  )}
+                </div>
               </div>
             )}
           </div>
@@ -378,6 +493,117 @@ export const IndicatorWizard: React.FC<IndicatorWizardProps> = ({ project, onClo
                       className="w-full px-3 py-2 border border-slate-300 rounded-md bg-white text-slate-900"
                     />
                   </div>
+               </div>
+             )}
+
+             {(formData.type === IndicatorType.NUMBER || formData.type === IndicatorType.PERCENTAGE || formData.type === IndicatorType.CURRENCY) && (
+               <div className="border border-slate-200 rounded-lg p-4 space-y-4">
+                 <div className="flex items-center justify-between">
+                   <div>
+                     <h4 className="text-sm font-semibold text-slate-900">Anomaly Settings</h4>
+                     <p className="text-xs text-slate-500">Soft warnings for outliers and trend changes.</p>
+                   </div>
+                   <label className="flex items-center gap-2 text-xs font-medium text-slate-700">
+                     <input
+                       type="checkbox"
+                       checked={formData.anomalyConfig?.enabled ?? true}
+                       onChange={(e) => updateAnomalyConfig({ enabled: e.target.checked })}
+                       className="rounded border-slate-300 text-blue-600"
+                     />
+                     Enable
+                   </label>
+                 </div>
+
+                 {(formData.anomalyConfig?.enabled ?? true) && (
+                   <div className="space-y-4">
+                     <div className="grid grid-cols-2 gap-4">
+                       <div>
+                         <label className="block text-xs font-medium text-slate-600 mb-1">Outlier Method</label>
+                         <select
+                           value={formData.anomalyConfig?.outlier?.method ?? 'MAD'}
+                           onChange={(e) => updateAnomalyConfig({ outlier: { method: e.target.value as 'MAD' | 'IQR' } })}
+                           className="w-full px-3 py-2 border border-slate-300 rounded-md bg-white text-slate-900 text-sm"
+                         >
+                           <option value="MAD">MAD (Robust Z-score)</option>
+                           <option value="IQR">IQR (Boxplot)</option>
+                         </select>
+                       </div>
+                       <div>
+                         <label className="block text-xs font-medium text-slate-600 mb-1">Outlier Threshold</label>
+                         <input
+                           type="number"
+                           step="0.1"
+                           value={formData.anomalyConfig?.outlier?.threshold ?? 3.5}
+                           onChange={(e) => updateAnomalyConfig({ outlier: { threshold: parseFloat(e.target.value) } })}
+                           className="w-full px-3 py-2 border border-slate-300 rounded-md bg-white text-slate-900 text-sm"
+                         />
+                       </div>
+                     </div>
+
+                     <div className="grid grid-cols-2 gap-4">
+                       <div>
+                         <label className="block text-xs font-medium text-slate-600 mb-1">Outlier Window (weeks)</label>
+                         <input
+                           type="number"
+                           min={2}
+                           value={formData.anomalyConfig?.outlier?.windowSize ?? 8}
+                           onChange={(e) => updateAnomalyConfig({ outlier: { windowSize: parseInt(e.target.value, 10) } })}
+                           className="w-full px-3 py-2 border border-slate-300 rounded-md bg-white text-slate-900 text-sm"
+                         />
+                       </div>
+                       <div>
+                         <label className="block text-xs font-medium text-slate-600 mb-1">Min Points</label>
+                         <input
+                           type="number"
+                           min={2}
+                           value={formData.anomalyConfig?.outlier?.minPoints ?? 6}
+                           onChange={(e) => updateAnomalyConfig({ outlier: { minPoints: parseInt(e.target.value, 10) } })}
+                           className="w-full px-3 py-2 border border-slate-300 rounded-md bg-white text-slate-900 text-sm"
+                         />
+                       </div>
+                     </div>
+
+                     <div className="grid grid-cols-2 gap-4">
+                       <div>
+                         <label className="block text-xs font-medium text-slate-600 mb-1">Trend Method</label>
+                         <select
+                           value={formData.anomalyConfig?.trend?.method ?? 'SLOPE_SHIFT'}
+                           onChange={(e) => updateAnomalyConfig({ trend: { method: e.target.value as 'SLOPE_SHIFT' | 'MEAN_SHIFT' } })}
+                           className="w-full px-3 py-2 border border-slate-300 rounded-md bg-white text-slate-900 text-sm"
+                         >
+                           <option value="SLOPE_SHIFT">Slope Shift</option>
+                           <option value="MEAN_SHIFT">Mean Shift</option>
+                         </select>
+                       </div>
+                       <div>
+                         <label className="block text-xs font-medium text-slate-600 mb-1">Trend Threshold</label>
+                         <input
+                           type="number"
+                           step="0.1"
+                           value={formData.anomalyConfig?.trend?.threshold ?? 2}
+                           onChange={(e) => updateAnomalyConfig({ trend: { threshold: parseFloat(e.target.value) } })}
+                           className="w-full px-3 py-2 border border-slate-300 rounded-md bg-white text-slate-900 text-sm"
+                         />
+                       </div>
+                     </div>
+
+                     <div className="grid grid-cols-2 gap-4">
+                       <div>
+                         <label className="block text-xs font-medium text-slate-600 mb-1">Trend Window (weeks)</label>
+                         <input
+                           type="number"
+                           min={3}
+                           value={formData.anomalyConfig?.trend?.windowSize ?? 6}
+                           onChange={(e) => updateAnomalyConfig({ trend: { windowSize: parseInt(e.target.value, 10) } })}
+                           className="w-full px-3 py-2 border border-slate-300 rounded-md bg-white text-slate-900 text-sm"
+                         />
+                       </div>
+                       <div className="flex items-end text-xs text-slate-500">
+                         Used for trend detection (weekly default).
+                       </div>
+                     </div>
+                   </div>
+                 )}
                </div>
              )}
           </div>

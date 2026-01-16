@@ -8,6 +8,12 @@ const sanitizeUser = (user: any) => ({
   id: user.id,
   email: user.email,
   role: user.role,
+  name: user.name ?? null,
+  jobTitle: user.jobTitle ?? null,
+  organization: user.organization ?? null,
+  timezone: user.timezone ?? null,
+  avatar: user.avatar ?? null,
+  notificationPreferences: user.notificationPreferences ?? null,
   createdAt: user.createdAt
 });
 
@@ -39,5 +45,20 @@ export const getCurrentUser = async (id: number) => {
   if (!user) {
     throw new NotFoundError('USER_NOT_FOUND', 'User not found');
   }
+  return sanitizeUser(user);
+};
+
+export const updateCurrentUser = async (
+  id: number,
+  data: Partial<{
+    name: string | null;
+    jobTitle: string | null;
+    organization: string | null;
+    timezone: string | null;
+    avatar: string | null;
+    notificationPreferences: Record<string, any> | null;
+  }>
+) => {
+  const user = await userRepo.updateById(id, data);
   return sanitizeUser(user);
 };

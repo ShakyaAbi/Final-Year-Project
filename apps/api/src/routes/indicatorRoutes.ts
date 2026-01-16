@@ -13,7 +13,10 @@ import {
   createIndicator,
   getIndicator,
   getIndicatorsByProject,
-  updateIndicator
+  updateIndicator,
+  getIndicatorStats,
+  getReportingGaps,
+  getCategoryDistribution
 } from '../controllers/indicatorController';
 
 const router = Router();
@@ -38,6 +41,27 @@ router.get(
   authenticate,
   validate(indicatorIdParamsSchema),
   getIndicator
+);
+
+router.get(
+  '/indicators/:id/stats',
+  authenticate,
+  validate(indicatorIdParamsSchema),
+  getIndicatorStats
+);
+
+router.get(
+  '/indicators/:id/gaps',
+  authenticate,
+  validate(indicatorIdParamsSchema),
+  getReportingGaps
+);
+
+router.get(
+  '/indicators/:id/category-distribution',
+  authenticate,
+  validate(indicatorIdParamsSchema),
+  getCategoryDistribution
 );
 
 router.patch(

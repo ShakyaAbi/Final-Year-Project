@@ -30,33 +30,11 @@ export const IndicatorDetail: React.FC = () => {
   const [sortField, setSortField] = useState<'date' | 'value'>('date');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
 
-  const applyAnomalyRules = (values: Indicator['values'], min?: number, max?: number) => {
-    const hasMin = min !== undefined && min !== null;
-    const hasMax = max !== undefined && max !== null;
-    if (!hasMin && !hasMax) {
-      return values.map((v) => ({ ...v, isAnomaly: false, anomalyReason: undefined }));
-    }
-    return values.map((v) => {
-      const num = Number(v.value);
-      if (!Number.isFinite(num)) {
-        return { ...v, isAnomaly: false, anomalyReason: undefined };
-      }
-      if (hasMin && num < min!) {
-        return { ...v, isAnomaly: true, anomalyReason: `Value below expected minimum (${min})` };
-      }
-      if (hasMax && num > max!) {
-        return { ...v, isAnomaly: true, anomalyReason: `Value exceeds expected maximum (${max})` };
-      }
-      return { ...v, isAnomaly: false, anomalyReason: undefined };
-    });
-  };
-
   useEffect(() => {
     if (id) {
       Promise.all([api.getIndicator(id), api.getIndicatorSubmissions(id)])
         .then(([data, submissions]) => {
-          const values = applyAnomalyRules(submissions, data.minExpected, data.maxExpected);
-          setIndicator({ ...data, values });
+          setIndicator({ ...data, values: submissions });
           setLoading(false);
         })
         .catch((error) => {
@@ -108,10 +86,9 @@ export const IndicatorDetail: React.FC = () => {
       });
 
       const submissions = await api.getIndicatorSubmissions(indicator.id);
-      const values = applyAnomalyRules(submissions, indicator.minExpected, indicator.maxExpected);
       setIndicator(prev => prev ? ({
           ...prev,
-          values
+          values: submissions
       }) : undefined);
     } catch (err: any) {
       didError = true;
@@ -139,6 +116,34 @@ export const IndicatorDetail: React.FC = () => {
   if (!indicator) return <Layout><div className="p-8 text-center text-red-500">Indicator not found</div></Layout>;
 
   const anomalies = indicator.values.filter(v => v.isAnomaly);
+
+  const formatDate = (value: string) => {
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return value;
+    return parsed.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: '2-digit', timeZone: 'UTC' });
+  };
+
+  const inferAnomalyReason = (value: number | string, existing?: string, isAnomaly?: boolean) => {
+    if (!isAnomaly) return '';
+    if (existing && existing.trim()) return existing;
+    const numericValue = Number(value);
+    if (!Number.isFinite(numericValue)) return 'Anomaly detected';
+    if (indicator.type === IndicatorType.PERCENTAGE) {
+      const lower = indicator.minExpected ?? 0;
+      const upper = indicator.maxExpected ?? 100;
+      if (numericValue < lower) return `Percent must be between ${lower} and ${upper}`;
+      if (numericValue > upper) return `Percent must be between ${lower} and ${upper}`;
+    }
+    if (indicator.type === IndicatorType.NUMBER || indicator.type === IndicatorType.CURRENCY) {
+      if (indicator.minExpected !== undefined && numericValue < indicator.minExpected) {
+        return `Value below expected minimum (${indicator.minExpected})`;
+      }
+      if (indicator.maxExpected !== undefined && numericValue > indicator.maxExpected) {
+        return `Value exceeds expected maximum (${indicator.maxExpected})`;
+      }
+    }
+    return 'Anomaly detected';
+  };
 
   // Sort values for table
   const tableValues = [...indicator.values].sort((a, b) => {
@@ -197,10 +202,12 @@ export const IndicatorDetail: React.FC = () => {
                         {anomalies.slice(-3).reverse().map(a => (
                             <div key={a.id} className="bg-white p-3 rounded border border-red-100 text-sm flex justify-between items-center shadow-sm">
                                 <div>
-                                    <span className="font-medium text-slate-900 mr-2">{a.date}</span>
+                                    <span className="font-medium text-slate-900 mr-2">{formatDate(a.date)}</span>
                                     <span className="text-slate-500">Value: {a.value}</span>
                                 </div>
-                                <span className="text-red-600 font-medium text-xs bg-red-50 px-2 py-1 rounded-full border border-red-100">{a.anomalyReason}</span>
+                                <span className="text-red-600 font-medium text-xs bg-red-50 px-2 py-1 rounded-full border border-red-100">
+                                  {inferAnomalyReason(a.value, a.anomalyReason, a.isAnomaly)}
+                                </span>
                             </div>
                         ))}
                     </div>
@@ -237,19 +244,20 @@ export const IndicatorDetail: React.FC = () => {
                                         </div>
                                     </th>
                                     <th className="px-6 py-3">Status</th>
+                                    <th className="px-6 py-3">Anomaly Reason</th>
                                     <th className="px-6 py-3">Verification</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100">
                                 {tableValues.length === 0 ? (
                                     <tr>
-                                        <td colSpan={4} className="px-6 py-8 text-center text-slate-400 italic">No data entries recorded yet.</td>
+                                        <td colSpan={5} className="px-6 py-8 text-center text-slate-400 italic">No data entries recorded yet.</td>
                                     </tr>
                                 ) : (
                                     tableValues.map((row) => (
                                         <tr key={row.id} className={`hover:bg-slate-50 transition-colors ${row.isAnomaly ? 'bg-red-50/30' : ''}`}>
                                             <td className="px-6 py-4 font-medium text-slate-900 whitespace-nowrap">
-                                                {row.date}
+                                                {formatDate(row.date)}
                                             </td>
                                             <td className="px-6 py-4 font-mono text-slate-700">
                                                 {row.value}
@@ -257,7 +265,10 @@ export const IndicatorDetail: React.FC = () => {
                                             </td>
                                             <td className="px-6 py-4">
                                                 {row.isAnomaly ? (
-                                                    <div className="flex items-center gap-2 text-red-600">
+                                                    <div
+                                                      className="flex items-center gap-2 text-red-600"
+                                                      title={inferAnomalyReason(row.value, row.anomalyReason, row.isAnomaly)}
+                                                    >
                                                         <AlertTriangle className="w-4 h-4" />
                                                         <span className="text-xs font-semibold">Anomaly</span>
                                                     </div>
@@ -267,8 +278,17 @@ export const IndicatorDetail: React.FC = () => {
                                                         <span className="text-xs font-semibold">Verified</span>
                                                     </div>
                                                 )}
-                                                {row.anomalyReason && (
-                                                    <p className="text-[10px] text-red-500 mt-1 max-w-[150px] leading-tight">{row.anomalyReason}</p>
+                                            </td>
+                                            <td className="px-6 py-4">
+                                                {row.isAnomaly ? (
+                                                    <span
+                                                      className="text-xs text-red-600 block max-w-[220px] truncate"
+                                                      title={inferAnomalyReason(row.value, row.anomalyReason, row.isAnomaly)}
+                                                    >
+                                                        {inferAnomalyReason(row.value, row.anomalyReason, row.isAnomaly)}
+                                                    </span>
+                                                ) : (
+                                                    <span className="text-xs text-slate-300">-</span>
                                                 )}
                                             </td>
                                             <td className="px-6 py-4">

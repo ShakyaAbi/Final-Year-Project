@@ -6,6 +6,7 @@ import path from 'path';
 import swaggerUi from 'swagger-ui-express';
 import yaml from 'yaml';
 import routes from './routes';
+import { config } from './config/env';
 import { errorHandler } from './middleware/errorHandler';
 import { requestLogger } from './middleware/requestLogger';
 import { rateLimiter } from './middleware/rateLimiter';
@@ -17,7 +18,9 @@ app.use(helmet());
 app.use(cors());
 app.use(express.json({ limit: '1mb' }));
 app.use(requestLogger);
-app.use(rateLimiter);
+if (config.rateLimitEnabled) {
+  app.use(rateLimiter);
+}
 
 const openapiPath = path.join(process.cwd(), 'openapi', 'openapi.yml');
 let openapiDoc: any = { openapi: '3.0.0', info: { title: 'MERLIN Lite API', version: '1.0.0' } };

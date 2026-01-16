@@ -24,3 +24,49 @@ export const updateIndicator = asyncHandler(async (req: Request, res: Response) 
   const indicator = await indicatorService.updateIndicator(Number(req.params.id), req.body);
   res.json(indicator);
 });
+
+export const getIndicatorStats = asyncHandler(async (req: Request, res: Response) => {
+  const indicator = await indicatorService.getIndicatorWithStats(Number(req.params.id));
+  res.json(indicator);
+});
+
+export const getReportingGaps = asyncHandler(async (req: Request, res: Response) => {
+  const indicator = await indicatorService.getIndicatorById(
+    Number(req.params.id), 
+    true
+  );
+  
+  const frequency = (req.query.frequency as 'DAILY' | 'WEEKLY' | 'MONTHLY') || 'MONTHLY';
+  const submissions = (indicator as any).submissions || [];
+  const gaps = indicatorService.detectReportingGaps(submissions, frequency);
+  
+  res.json({
+    indicatorId: indicator.id,
+    frequency,
+    totalSubmissions: submissions.length,
+    gaps
+  });
+});
+
+export const getCategoryDistribution = asyncHandler(async (req: Request, res: Response) => {
+  const indicatorWithStats = await indicatorService.getIndicatorWithStats(Number(req.params.id));
+  
+  if (indicatorWithStats.dataType !== 'CATEGORICAL') {
+    res.status(400).json({
+      error: {
+        code: 'NOT_CATEGORICAL',
+        message: 'This endpoint only works with CATEGORICAL indicators'
+      }
+    });
+    return;
+  }
+  
+  res.json({
+    indicatorId: indicatorWithStats.id,
+    indicatorName: indicatorWithStats.name,
+    categories: indicatorWithStats.categories,
+    distribution: (indicatorWithStats.stats as any)?.categoryDistribution || [],
+    mostFrequent: (indicatorWithStats.stats as any)?.mostFrequent || null,
+    totalSubmissions: (indicatorWithStats.stats as any)?.submissionCount || 0
+  });
+});

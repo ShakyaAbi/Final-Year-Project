@@ -1,28 +1,40 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
-  ComposedChart, Line, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Scatter, ReferenceLine 
+  ComposedChart, Line, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Scatter, ReferenceLine,
+  PieChart, Pie, Cell, Legend
 } from 'recharts';
-import { Indicator, IndicatorType } from '../types';
+import { Indicator, IndicatorType, CategoryDefinition } from '../types';
 import { AlertTriangle } from 'lucide-react';
+import { api } from '../services/api';
 
 interface IndicatorChartsProps {
   indicator: Indicator;
 }
 
-const CustomTooltip = ({ active, payload, label }: any) => {
+const formatDate = (value?: string) => {
+  if (!value) return '';
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+  return parsed.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: '2-digit', timeZone: 'UTC' });
+};
+
+const CustomTooltip = ({ active, payload }: any) => {
   if (active && payload && payload.length) {
     const data = payload[0].payload;
     const isForecast = data.isForecast;
-    
+
     return (
       <div className={`bg-white p-0 border shadow-xl rounded-lg overflow-hidden min-w-[220px] ${data.isAnomaly ? 'border-red-200 ring-2 ring-red-50' : 'border-slate-200'}`}>
         <div className="bg-slate-50 px-4 py-2 border-b border-slate-100 flex justify-between items-center">
-           <span className="text-sm font-semibold text-slate-700">{data.date}</span>
+           <span className="text-sm font-semibold text-slate-700">{formatDate(data.date)}</span>
            {isForecast && <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full border border-blue-100 uppercase tracking-wider">Forecast</span>}
         </div>
-        
+
         <div className="p-4 space-y-3">
-            {payload.filter((entry: any) => entry.name !== 'Anomaly' && entry.name !== 'Predictive Trend').map((entry: any) => (
+            {payload
+              .filter((entry: any) => entry.name !== 'Anomaly' && entry.name !== 'Predictive Trend')
+              .filter((entry: any) => Number.isFinite(Number(entry.value)))
+              .map((entry: any) => (
             <div key={entry.dataKey} className="text-sm flex items-center justify-between gap-6">
                 <span className="flex items-center text-slate-600 font-medium">
                     <span className="w-2.5 h-2.5 rounded-full mr-2.5" style={{ backgroundColor: entry.color }}></span>
@@ -33,7 +45,7 @@ const CustomTooltip = ({ active, payload, label }: any) => {
                 </span>
             </div>
             ))}
-            
+
              {/* Special handling for Forecast tooltip since it might be separate */}
              {isForecast && payload.find((e: any) => e.name === 'Predictive Trend') && (
                 <div className="text-sm flex items-center justify-between gap-6">
@@ -56,7 +68,7 @@ const CustomTooltip = ({ active, payload, label }: any) => {
                  </div>
                  <div>
                     <span className="text-xs font-bold text-red-800 uppercase tracking-wider block mb-1">Anomaly Detected</span>
-                    <p className="text-xs text-red-600 leading-relaxed font-medium">{data.anomalyReason}</p>
+                    <p className="text-xs text-red-600 leading-relaxed font-medium">{data.anomalyReason || 'Anomaly detected'}</p>
                  </div>
             </div>
           </div>
@@ -104,7 +116,7 @@ const generateForecast = (historicalData: any[], periods = 4) => {
   for (let i = 1; i <= periods; i++) {
     const nextDate = new Date(lastDate);
     nextDate.setDate(lastDate.getDate() + (i * 7)); // Weekly steps
-    
+
     const x = n - 1 + i; // x index for regression
     const predictedValue = slope * x + intercept;
 
@@ -122,13 +134,13 @@ const generateForecast = (historicalData: any[], periods = 4) => {
 const CustomAnomalyShape = (props: any) => {
     const { cx, cy } = props;
     if (!cx || !cy) return null;
-    
+
     return (
         <g className="drop-shadow-sm hover:drop-shadow-md cursor-pointer group">
-             <path 
-                d={`M${cx} ${cy - 14} L${cx + 12} ${cy + 10} L${cx - 12} ${cy + 10} Z`} 
-                fill="#ef4444" 
-                stroke="#fff" 
+             <path
+                d={`M${cx} ${cy - 14} L${cx + 12} ${cy + 10} L${cx - 12} ${cy + 10} Z`}
+                fill="#ef4444"
+                stroke="#fff"
                 strokeWidth="2"
                 strokeLinejoin="round"
                 className="transition-transform duration-200 group-hover:scale-110 origin-center"
@@ -139,29 +151,142 @@ const CustomAnomalyShape = (props: any) => {
 };
 
 export const IndicatorCharts: React.FC<IndicatorChartsProps> = ({ indicator }) => {
+  const [categoryData, setCategoryData] = useState<Array<{name: string, value: number, color: string}>>([]);
+  const [loading, setLoading] = useState(false);
+  
   const isNumeric =
     indicator.type === IndicatorType.NUMBER ||
     indicator.type === IndicatorType.PERCENTAGE ||
     indicator.type === IndicatorType.CURRENCY;
 
-  if (!isNumeric) {
+  const isCategorical = indicator.type === IndicatorType.CATEGORICAL;
+
+  // Fetch category distribution for categorical indicators
+  useEffect(() => {
+    if (isCategorical && indicator.id) {
+      setLoading(true);
+      api.getCategoryDistribution(indicator.id)
+        .then(response => {
+          const distribution = response.distribution || [];
+          const categoryMap = new Map(
+            (indicator.categories || []).map((cat: CategoryDefinition) => [cat.id, cat])
+          );
+          
+          const chartData = distribution.map((item: any) => ({
+            name: categoryMap.get(item.categoryId)?.label || item.categoryId,
+            value: item.count,
+            color: categoryMap.get(item.categoryId)?.color || '#64748b'
+          }));
+          
+          setCategoryData(chartData);
+        })
+        .catch(err => {
+          console.error('Failed to fetch category distribution:', err);
+          setCategoryData([]);
+        })
+        .finally(() => setLoading(false));
+    }
+  }, [isCategorical, indicator.id, indicator.categories]);
+
+  // Render pie chart for categorical indicators
+  if (isCategorical) {
+    if (loading) {
+      return (
+        <div className="bg-white p-6 rounded-lg border border-slate-200 shadow-sm">
+          <p className="text-sm text-slate-500">Loading category distribution...</p>
+        </div>
+      );
+    }
+    
+    if (categoryData.length === 0) {
+      return (
+        <div className="bg-white p-6 rounded-lg border border-slate-200 shadow-sm">
+          <p className="text-sm text-slate-500">No data available for categorical chart. Submit some values to see the distribution.</p>
+        </div>
+      );
+    }
+
     return (
       <div className="bg-white p-6 rounded-lg border border-slate-200 shadow-sm">
-        <p className="text-sm text-slate-500">Charts are available for numeric indicators only.</p>
+        <h3 className="text-lg font-semibold text-slate-900 mb-4">Category Distribution</h3>
+        <ResponsiveContainer width="100%" height={350}>
+          <PieChart>
+            <Pie
+              data={categoryData}
+              cx="50%"
+              cy="50%"
+              labelLine={false}
+              label={(entry) => `${entry.name}: ${entry.value}`}
+              outerRadius={120}
+              fill="#8884d8"
+              dataKey="value"
+            >
+              {categoryData.map((entry, index) => (
+                <Cell key={`cell-${index}`} fill={entry.color} />
+              ))}
+            </Pie>
+            <Tooltip 
+              contentStyle={{ 
+                backgroundColor: 'white', 
+                border: '1px solid #e2e8f0',
+                borderRadius: '8px',
+                padding: '8px 12px'
+              }}
+            />
+            <Legend />
+          </PieChart>
+        </ResponsiveContainer>
       </div>
     );
   }
 
+  // For non-numeric, non-categorical types
+  if (!isNumeric) {
+    return (
+      <div className="bg-white p-6 rounded-lg border border-slate-200 shadow-sm">
+        <p className="text-sm text-slate-500">Charts are available for numeric and categorical indicators only.</p>
+      </div>
+    );
+  }
+
+  const inferAnomalyReason = (value: number, existing?: string, isAnomaly?: boolean) => {
+    if (!isAnomaly) return '';
+    if (existing && existing.trim()) return existing;
+    if (indicator.type === IndicatorType.PERCENTAGE) {
+      const lower = indicator.minExpected ?? 0;
+      const upper = indicator.maxExpected ?? 100;
+      if (value < lower || value > upper) {
+        return `Percent must be between ${lower} and ${upper}`;
+      }
+    }
+    if (indicator.type === IndicatorType.NUMBER || indicator.type === IndicatorType.CURRENCY) {
+      if (indicator.minExpected !== undefined && value < indicator.minExpected) {
+        return `Value below expected minimum (${indicator.minExpected})`;
+      }
+      if (indicator.maxExpected !== undefined && value > indicator.maxExpected) {
+        return `Value exceeds expected maximum (${indicator.maxExpected})`;
+      }
+    }
+    return 'Anomaly detected';
+  };
+
   const sortedValues = [...indicator.values]
     .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
-    .map(v => ({...v, value: Number(v.value)})); // Ensure numeric values
+    .map(v => {
+      const numericValue = Number(v.value);
+      return {
+        ...v,
+        value: numericValue,
+        anomalyReason: inferAnomalyReason(numericValue, v.anomalyReason, v.isAnomaly)
+      };
+    }); // Ensure numeric values
 
   const latestValue = sortedValues[sortedValues.length - 1]?.value || 0;
-  
+
   const currentValNum = Number(latestValue);
   const targetNum = Number(indicator.target);
-  const progress = (targetNum && !isNaN(currentValNum) && !isNaN(targetNum)) 
-    ? Math.min(Math.max((currentValNum / targetNum) * 100, 0), 100) 
+  const progress = (targetNum && !isNaN(currentValNum) && !isNaN(targetNum))
+    ? Math.min(Math.max((currentValNum / targetNum) * 100, 0), 100)
     : 0;
 
   const combinedData = [...sortedValues.map(v => ({ ...v, forecast: null }))];
@@ -201,7 +326,7 @@ export const IndicatorCharts: React.FC<IndicatorChartsProps> = ({ indicator }) =
 
   return (
     <div className="space-y-8">
-      
+
       {/* Progress Section */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="bg-white p-6 rounded-lg border border-slate-200 shadow-sm">
@@ -214,7 +339,7 @@ export const IndicatorCharts: React.FC<IndicatorChartsProps> = ({ indicator }) =
         <div className="bg-white p-6 rounded-lg border border-slate-200 shadow-sm md:col-span-2">
            <p className="text-sm text-slate-500 font-medium mb-4">Progress to Target</p>
            <div className="relative h-4 bg-slate-100 rounded-full overflow-hidden">
-              <div 
+              <div
                 className={`absolute top-0 left-0 h-full transition-all duration-1000 ${progress >= 100 ? 'bg-green-500' : 'bg-blue-500'}`}
                 style={{ width: `${progress}%` }}
               ></div>
@@ -252,6 +377,7 @@ export const IndicatorCharts: React.FC<IndicatorChartsProps> = ({ indicator }) =
                 tickLine={false} 
                 axisLine={{ stroke: '#e2e8f0' }}
                 minTickGap={30}
+                tickFormatter={(value) => formatDate(value)}
             />
             <YAxis 
                 domain={[yAxisMin, yAxisMax]}

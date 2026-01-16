@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { AnomalyStatus } from '@prisma/client';
 
 const numericId = z
   .string()
@@ -27,5 +28,26 @@ export const listSubmissionsQuerySchema = {
   query: z.object({
     from: dateString.optional(),
     to: dateString.optional()
+  })
+};
+
+export const submissionIdParamsSchema = {
+  params: z.object({
+    id: numericId
+  })
+};
+
+export const acknowledgeAnomalySchema = {
+  ...submissionIdParamsSchema,
+  body: z.object({
+    notes: z.string().optional()
+  })
+};
+
+export const updateAnomalyStatusSchema = {
+  ...submissionIdParamsSchema,
+  body: z.object({
+    status: z.nativeEnum(AnomalyStatus),
+    notes: z.string().optional()
   })
 };

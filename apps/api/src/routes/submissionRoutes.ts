@@ -4,9 +4,18 @@ import { validate } from '../middleware/validate';
 import {
   createSubmissionSchema,
   indicatorSubmissionsParamsSchema,
-  listSubmissionsQuerySchema
+  listSubmissionsQuerySchema,
+  acknowledgeAnomalySchema,
+  updateAnomalyStatusSchema
 } from '../validators/submissionValidators';
-import { createSubmission, listSubmissions } from '../controllers/submissionController';
+import { 
+  createSubmission, 
+  listSubmissions,
+  acknowledgeAnomaly,
+  resolveAnomaly,
+  markAnomalyFalsePositive,
+  updateAnomalyStatus
+} from '../controllers/submissionController';
 
 const router = Router();
 
@@ -22,6 +31,34 @@ router.get(
   authenticate,
   validate({ ...indicatorSubmissionsParamsSchema, ...listSubmissionsQuerySchema }),
   listSubmissions
+);
+
+router.post(
+  '/submissions/:id/anomaly/acknowledge',
+  authenticate,
+  validate(acknowledgeAnomalySchema),
+  acknowledgeAnomaly
+);
+
+router.post(
+  '/submissions/:id/anomaly/resolve',
+  authenticate,
+  validate(acknowledgeAnomalySchema),
+  resolveAnomaly
+);
+
+router.post(
+  '/submissions/:id/anomaly/false-positive',
+  authenticate,
+  validate(acknowledgeAnomalySchema),
+  markAnomalyFalsePositive
+);
+
+router.put(
+  '/submissions/:id/anomaly/status',
+  authenticate,
+  validate(updateAnomalyStatusSchema),
+  updateAnomalyStatus
 );
 
 export default router;

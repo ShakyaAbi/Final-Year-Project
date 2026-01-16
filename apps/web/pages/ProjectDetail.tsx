@@ -25,6 +25,21 @@ export const ProjectDetail: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'overview' | 'logframe' | 'indicators'>('overview');
   const [loading, setLoading] = useState(true);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isEditOpen, setIsEditOpen] = useState(false);
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState({
+    name: '',
+    description: '',
+    status: 'Draft',
+    startDate: '',
+    endDate: '',
+    sectors: '',
+    location: '',
+    donor: '',
+    budgetAmount: '',
+    budgetCurrency: ''
+  });
   const navigate = useNavigate();
 
   // Modal States
@@ -68,6 +83,31 @@ export const ProjectDetail: React.FC = () => {
     refreshData();
   }, [id, isWizardOpen]); // Also refresh when wizard closes (assuming success)
 
+  const toDateInputValue = (value?: string) => {
+    if (!value) return '';
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return '';
+    return parsed.toISOString().slice(0, 10);
+  };
+
+  const openEditModal = () => {
+    if (!project) return;
+    setEditForm({
+      name: project.name ?? '',
+      description: project.description ?? '',
+      status: project.status ?? 'Draft',
+      startDate: toDateInputValue(project.startDate),
+      endDate: toDateInputValue(project.endDate),
+      sectors: (project.sectors || []).join(', '),
+      location: project.location ?? '',
+      donor: project.donor ?? '',
+      budgetAmount: project.budgetAmount !== undefined && project.budgetAmount !== null ? String(project.budgetAmount) : '',
+      budgetCurrency: project.budgetCurrency ?? ''
+    });
+    setEditError(null);
+    setIsEditOpen(true);
+  };
+
   const handleAddRootGoal = () => {
     setSelectedNode(null);
     setNodeModalMode('create');
@@ -105,6 +145,43 @@ export const ProjectDetail: React.FC = () => {
       alert('Failed to delete project.');
     } finally {
       setIsDeleting(false);
+    }
+  };
+
+  const handleSaveProject = async () => {
+    if (!project || isSavingEdit) return;
+    setIsSavingEdit(true);
+    setEditError(null);
+    try {
+      const sectors = editForm.sectors
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
+      const budgetAmount =
+        editForm.budgetAmount.trim() === '' ? undefined : Number(editForm.budgetAmount);
+      if (budgetAmount !== undefined && Number.isNaN(budgetAmount)) {
+        setEditError('Budget amount must be a number.');
+        return;
+      }
+      const updated = await api.updateProject(project.id, {
+        name: editForm.name.trim(),
+        description: editForm.description.trim() || undefined,
+        status: editForm.status as Project['status'],
+        startDate: editForm.startDate || undefined,
+        endDate: editForm.endDate || undefined,
+        sectors,
+        location: editForm.location.trim() || undefined,
+        donor: editForm.donor.trim() || undefined,
+        budgetAmount,
+        budgetCurrency: editForm.budgetCurrency.trim() || undefined
+      });
+      setProject(updated);
+      setIsEditOpen(false);
+    } catch (error) {
+      console.error('Failed to update project', error);
+      setEditError(error instanceof Error ? error.message : 'Failed to update project');
+    } finally {
+      setIsSavingEdit(false);
     }
   };
 
@@ -156,6 +233,13 @@ export const ProjectDetail: React.FC = () => {
     return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(amount);
   };
 
+  const formatDate = (value?: string) => {
+    if (!value) return '—';
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return '—';
+    return parsed.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: '2-digit' });
+  };
+
   if (loading) return <Layout><div className="p-8 text-center text-slate-500">Loading Project...</div></Layout>;
   if (!project) return <Layout><div className="p-8 text-center text-red-500">Project not found</div></Layout>;
 
@@ -169,7 +253,7 @@ export const ProjectDetail: React.FC = () => {
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div>
             <h1 className="text-3xl font-bold text-slate-900">{project.name}</h1>
-            <p className="text-slate-500 mt-1">{project.startDate} — {project.endDate}</p>
+            <p className="text-slate-500 mt-1">{formatDate(project.startDate)} — {formatDate(project.endDate)}</p>
           </div>
           <div className="flex space-x-3">
              <Link to={`/data-entry?projectId=${project.id}`}>
@@ -177,7 +261,7 @@ export const ProjectDetail: React.FC = () => {
                   <ClipboardCheck className="w-4 h-4 mr-2" /> Data Entry
                 </Button>
              </Link>
-             <Button variant="outline">Edit Project</Button>
+             <Button variant="outline" onClick={openEditModal}>Edit Project</Button>
              <Button variant="danger" onClick={handleDeleteProject} isLoading={isDeleting}>
                Delete
              </Button>
@@ -187,6 +271,131 @@ export const ProjectDetail: React.FC = () => {
           </div>
         </div>
       </div>
+
+      <Modal isOpen={isEditOpen} onClose={() => setIsEditOpen(false)} title="Edit Project" size="md">
+        <div className="p-6 space-y-4 overflow-y-auto">
+          {editError && (
+            <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg p-3">
+              {editError}
+            </div>
+          )}
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Project Name</label>
+            <input
+              type="text"
+              value={editForm.name}
+              onChange={(e) => setEditForm((prev) => ({ ...prev, name: e.target.value }))}
+              className="w-full px-3 py-2 border border-slate-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none bg-white text-slate-900"
+              placeholder="Project name"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Description</label>
+            <textarea
+              rows={4}
+              value={editForm.description}
+              onChange={(e) => setEditForm((prev) => ({ ...prev, description: e.target.value }))}
+              className="w-full px-3 py-2 border border-slate-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none bg-white text-slate-900"
+              placeholder="Short summary"
+            />
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Start Date</label>
+              <input
+                type="date"
+                value={editForm.startDate}
+                onChange={(e) => setEditForm((prev) => ({ ...prev, startDate: e.target.value }))}
+                className="w-full px-3 py-2 border border-slate-300 rounded-md bg-white text-slate-900"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">End Date</label>
+              <input
+                type="date"
+                value={editForm.endDate}
+                onChange={(e) => setEditForm((prev) => ({ ...prev, endDate: e.target.value }))}
+                className="w-full px-3 py-2 border border-slate-300 rounded-md bg-white text-slate-900"
+              />
+            </div>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Status</label>
+              <select
+                value={editForm.status}
+                onChange={(e) => setEditForm((prev) => ({ ...prev, status: e.target.value }))}
+                className="w-full px-3 py-2 border border-slate-300 rounded-md bg-white text-slate-900"
+              >
+                <option value="Draft">Draft</option>
+                <option value="Active">Active</option>
+                <option value="Archived">Archived</option>
+                <option value="Completed">Completed</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Sectors</label>
+              <input
+                type="text"
+                value={editForm.sectors}
+                onChange={(e) => setEditForm((prev) => ({ ...prev, sectors: e.target.value }))}
+                className="w-full px-3 py-2 border border-slate-300 rounded-md bg-white text-slate-900"
+                placeholder="Agriculture, Education"
+              />
+            </div>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Location</label>
+              <input
+                type="text"
+                value={editForm.location}
+                onChange={(e) => setEditForm((prev) => ({ ...prev, location: e.target.value }))}
+                className="w-full px-3 py-2 border border-slate-300 rounded-md bg-white text-slate-900"
+                placeholder="Location"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Donor</label>
+              <input
+                type="text"
+                value={editForm.donor}
+                onChange={(e) => setEditForm((prev) => ({ ...prev, donor: e.target.value }))}
+                className="w-full px-3 py-2 border border-slate-300 rounded-md bg-white text-slate-900"
+                placeholder="Donor"
+              />
+            </div>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Budget Amount</label>
+              <input
+                type="text"
+                value={editForm.budgetAmount}
+                onChange={(e) => setEditForm((prev) => ({ ...prev, budgetAmount: e.target.value }))}
+                className="w-full px-3 py-2 border border-slate-300 rounded-md bg-white text-slate-900"
+                placeholder="50000"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Budget Currency</label>
+              <input
+                type="text"
+                value={editForm.budgetCurrency}
+                onChange={(e) => setEditForm((prev) => ({ ...prev, budgetCurrency: e.target.value }))}
+                className="w-full px-3 py-2 border border-slate-300 rounded-md bg-white text-slate-900"
+                placeholder="USD"
+              />
+            </div>
+          </div>
+          <div className="flex items-center justify-end gap-3 pt-2">
+            <Button variant="outline" onClick={() => setIsEditOpen(false)}>Cancel</Button>
+            <Button onClick={handleSaveProject} isLoading={isSavingEdit}>
+              Save Changes
+            </Button>
+          </div>
+        </div>
+      </Modal>
 
       {/* Tabs */}
       <div className="border-b border-slate-200 mb-8">

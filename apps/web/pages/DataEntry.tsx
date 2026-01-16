@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { Layout } from '../components/Layout';
 import { api } from '../services/api';
-import { Project, Indicator, IndicatorType, IndicatorValue } from '../types';
+import { Project, Indicator, IndicatorType, IndicatorValue, CategoryDefinition } from '../types';
 import { Button } from '../components/ui/Button';
 import { Search, Filter, Check, FileText, Calendar, AlertCircle, Link as LinkIcon, UploadCloud, X } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router-dom';
@@ -24,6 +24,7 @@ export const DataEntry: React.FC = () => {
   // Form State (Map of indicatorId -> Entry Data)
   const [entries, setEntries] = useState<Record<string, { 
     value: string, 
+    selectedCategories: string[], // For categorical indicators
     date: string, 
     evidence: string, 
     file: File | null,
@@ -62,6 +63,7 @@ export const DataEntry: React.FC = () => {
       indData.forEach(ind => {
         initialEntries[ind.id] = {
           value: '',
+          selectedCategories: [],
           date: today,
           evidence: '',
           file: null,
@@ -97,6 +99,34 @@ export const DataEntry: React.FC = () => {
       ...prev,
       [id]: { ...prev[id], [field]: value, status: 'idle', error: undefined }
     }));
+  };
+
+  const handleCategoryToggle = (indicatorId: string, categoryId: string, allowMultiple: boolean) => {
+    setEntries(prev => {
+      const current = prev[indicatorId].selectedCategories;
+      let newSelected: string[];
+      
+      if (allowMultiple) {
+        // Toggle in multi-select mode
+        newSelected = current.includes(categoryId)
+          ? current.filter(id => id !== categoryId)
+          : [...current, categoryId];
+      } else {
+        // Single select mode - replace
+        newSelected = [categoryId];
+      }
+      
+      return {
+        ...prev,
+        [indicatorId]: {
+          ...prev[indicatorId],
+          selectedCategories: newSelected,
+          value: newSelected.join(','), // Store as comma-separated for submission
+          status: 'idle',
+          error: undefined
+        }
+      };
+    });
   };
 
   // Drag & Drop Handlers
@@ -141,7 +171,14 @@ export const DataEntry: React.FC = () => {
 
   const handleSubmit = async (id: string) => {
     const entry = entries[id];
-    if (entry.value === '') return;
+    const indicator = indicators.find((item) => item.id === id);
+    
+    // For categorical, check selectedCategories, otherwise check value
+    const hasValue = indicator?.type === IndicatorType.CATEGORICAL
+      ? entry.selectedCategories.length > 0
+      : entry.value !== '';
+    
+    if (!hasValue) return;
 
     setEntries(prev => ({ ...prev, [id]: { ...prev[id], status: 'saving', error: undefined } }));
 
@@ -149,7 +186,6 @@ export const DataEntry: React.FC = () => {
     const finalEvidence = entry.file ? `[Attached] ${entry.file.name}` : entry.evidence;
 
     // Call service
-    const indicator = indicators.find((item) => item.id === id);
     const valuePayload =
       indicator?.type === IndicatorType.NUMBER ||
       indicator?.type === IndicatorType.PERCENTAGE ||
@@ -196,7 +232,7 @@ export const DataEntry: React.FC = () => {
     setTimeout(() => {
         setEntries(prev => ({ 
             ...prev, 
-            [id]: { ...prev[id], value: '', evidence: '', file: null, status: 'saved' } 
+            [id]: { ...prev[id], value: '', selectedCategories: [], evidence: '', file: null, status: 'saved' } 
         }));
         
         // Reset to idle after showing success
@@ -315,14 +351,61 @@ export const DataEntry: React.FC = () => {
 
                                   {/* Value */}
                                   <div className="md:col-span-2">
-                                      <label className="block text-xs font-semibold text-slate-500 mb-1.5">Value ({indicator.unit || 'Count'})</label>
-                                      <input 
-                                          type={getInputType(indicator.type)}
-                                          placeholder="0.00"
-                                          className="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm font-medium focus:ring-2 focus:ring-blue-500 outline-none bg-white text-slate-900"
-                                          value={entry.value}
-                                          onChange={(e) => handleEntryChange(indicator.id, 'value', e.target.value)}
-                                      />
+                                      <label className="block text-xs font-semibold text-slate-500 mb-1.5">
+                                        {indicator.type === IndicatorType.CATEGORICAL ? 'Category' : `Value (${indicator.unit || 'Count'})`}
+                                      </label>
+                                      
+                                      {indicator.type === IndicatorType.CATEGORICAL ? (
+                                        <div className="space-y-1.5">
+                                          {indicator.categories && indicator.categories.length > 0 ? (
+                                            indicator.categories.map((cat: CategoryDefinition) => {
+                                              const isChecked = entry.selectedCategories.includes(cat.id);
+                                              const allowMultiple = indicator.categoryConfig?.allowMultiple ?? false;
+                                              
+                                              return (
+                                                <label
+                                                  key={cat.id}
+                                                  className="flex items-center p-2 border border-slate-300 rounded-lg cursor-pointer hover:bg-slate-50 transition-colors"
+                                                  style={{
+                                                    borderColor: isChecked ? cat.color : undefined,
+                                                    backgroundColor: isChecked ? `${cat.color}15` : undefined
+                                                  }}
+                                                >
+                                                  <input
+                                                    type={allowMultiple ? 'checkbox' : 'radio'}
+                                                    name={`category-${indicator.id}`}
+                                                    checked={isChecked}
+                                                    onChange={() => handleCategoryToggle(indicator.id, cat.id, allowMultiple)}
+                                                    className="h-3.5 w-3.5 text-blue-600 focus:ring-blue-500 border-slate-300"
+                                                  />
+                                                  <div className="ml-2 flex items-center gap-1.5">
+                                                    <div
+                                                      className="w-3 h-3 rounded"
+                                                      style={{ backgroundColor: cat.color }}
+                                                    />
+                                                    <span className="text-sm font-medium text-slate-900">
+                                                      {cat.label}
+                                                    </span>
+                                                  </div>
+                                                </label>
+                                              );
+                                            })
+                                          ) : (
+                                            <p className="text-xs text-slate-500 italic p-2">
+                                              No categories defined
+                                            </p>
+                                          )}
+                                        </div>
+                                      ) : (
+                                        <input 
+                                            type={getInputType(indicator.type)}
+                                            placeholder="0.00"
+                                            className="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm font-medium focus:ring-2 focus:ring-blue-500 outline-none bg-white text-slate-900"
+                                            value={entry.value}
+                                            onChange={(e) => handleEntryChange(indicator.id, 'value', e.target.value)}
+                                        />
+                                      )}
+                                      
                                       {entry.error && (
                                         <p className="text-xs text-red-600 mt-1">{entry.error}</p>
                                       )}

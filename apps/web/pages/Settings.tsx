@@ -1,58 +1,30 @@
 
 import React, { useEffect, useState } from 'react';
 import { Layout } from '../components/Layout';
-import { UserProfile } from '../types';
-import { getUserProfile, updateUserProfile } from '../services/mockService';
-import { Button } from '../components/ui/Button';
-import { 
-  User, Bell, Lock, Mail, Globe, Briefcase, Camera, 
-  CheckCircle, AlertTriangle 
-} from 'lucide-react';
+import { CurrentUser } from '../types';
+import { api } from '../services/api';
+import { User, Bell, Lock, Mail, Shield, Calendar } from 'lucide-react';
 
 export const Settings: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'profile' | 'notifications' | 'security'>('profile');
-  const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [user, setUser] = useState<CurrentUser | null>(null);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [successMsg, setSuccessMsg] = useState('');
-
-  // Form states
-  const [formData, setFormData] = useState<Partial<UserProfile>>({});
-  
-  // Security Form
-  const [passwordData, setPasswordData] = useState({ current: '', new: '', confirm: '' });
 
   useEffect(() => {
-    getUserProfile().then(data => {
-      setProfile(data);
-      setFormData(data);
-      setLoading(false);
-    });
+    api.me()
+      .then((data) => setUser(data))
+      .catch((error) => {
+        console.error('Failed to load user profile', error);
+        setUser(null);
+      })
+      .finally(() => setLoading(false));
   }, []);
 
-  const handleSaveProfile = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setSaving(true);
-    try {
-      await updateUserProfile(formData);
-      setSuccessMsg('Profile updated successfully');
-      setTimeout(() => setSuccessMsg(''), 3000);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const toggleNotification = (key: keyof UserProfile['notificationPreferences']) => {
-    if (!formData.notificationPreferences) return;
-    setFormData(prev => ({
-      ...prev,
-      notificationPreferences: {
-        ...prev.notificationPreferences!,
-        [key]: !prev.notificationPreferences![key]
-      }
-    }));
+  const formatDate = (value?: string) => {
+    if (!value) return '—';
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return '—';
+    return parsed.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: '2-digit' });
   };
 
   if (loading) return <Layout><div className="p-8 text-center text-slate-500">Loading settings...</div></Layout>;
@@ -61,7 +33,7 @@ export const Settings: React.FC = () => {
     <Layout>
       <div className="mb-8">
         <h1 className="text-2xl font-bold text-slate-900">Account Settings</h1>
-        <p className="text-slate-500 mt-1">Manage your profile, preferences, and security settings.</p>
+        <p className="text-slate-500 mt-1">View your account details and system settings status.</p>
       </div>
       
       <div className="flex flex-col lg:flex-row gap-8">
@@ -94,215 +66,91 @@ export const Settings: React.FC = () => {
               
               {/* Profile Tab */}
               {activeTab === 'profile' && (
-                <form onSubmit={handleSaveProfile} className="p-6 md:p-8 space-y-8">
-                   <div className="flex items-start justify-between">
-                     <div>
-                       <h2 className="text-lg font-bold text-slate-900">Personal Information</h2>
-                       <p className="text-sm text-slate-500">Update your photo and personal details.</p>
-                     </div>
-                     <div className="flex items-center gap-4">
-                        <div className="relative group cursor-pointer">
-                           <div className="w-16 h-16 rounded-full bg-slate-200 flex items-center justify-center text-slate-400 overflow-hidden border-2 border-white shadow-sm">
-                             {formData.avatar ? <img src={formData.avatar} alt="Avatar" className="w-full h-full object-cover" /> : <User className="w-8 h-8" />}
-                           </div>
-                           <div className="absolute inset-0 bg-black/40 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                             <Camera className="w-5 h-5 text-white" />
-                           </div>
-                        </div>
-                     </div>
-                   </div>
+                <div className="p-6 md:p-8 space-y-6">
+                  <div>
+                    <h2 className="text-lg font-bold text-slate-900">Account Information</h2>
+                    <p className="text-sm text-slate-500">These details are pulled from your authenticated account.</p>
+                  </div>
 
-                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      <div className="md:col-span-2">
-                        <label className="block text-sm font-medium text-slate-700 mb-1">Full Name</label>
-                        <input 
-                           type="text" 
-                           value={formData.name || ''}
-                           onChange={e => setFormData({...formData, name: e.target.value})}
-                           className="w-full px-3 py-2 border border-slate-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none bg-white text-slate-900"
-                        />
-                      </div>
-                      
-                      <div className="md:col-span-1">
-                        <label className="block text-sm font-medium text-slate-700 mb-1">Email Address</label>
+                  {!user && (
+                    <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg p-3">
+                      Unable to load account details. Please log in again.
+                    </div>
+                  )}
+
+                  {user && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">Email</label>
                         <div className="relative">
-                          <input 
-                             type="email" 
-                             value={formData.email || ''}
-                             onChange={e => setFormData({...formData, email: e.target.value})}
-                             className="w-full pl-9 px-3 py-2 border border-slate-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none bg-white text-slate-900"
+                          <input
+                            type="text"
+                            value={user.email}
+                            disabled
+                            className="w-full pl-9 px-3 py-2 border border-slate-200 bg-slate-50 rounded-md text-slate-600"
                           />
                           <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                         </div>
                       </div>
-
-                      <div className="md:col-span-1">
-                        <label className="block text-sm font-medium text-slate-700 mb-1">Job Title</label>
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">Role</label>
                         <div className="relative">
-                          <input 
-                             type="text" 
-                             value={formData.role || ''}
-                             onChange={e => setFormData({...formData, role: e.target.value})}
-                             className="w-full pl-9 px-3 py-2 border border-slate-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none bg-white text-slate-900"
+                          <input
+                            type="text"
+                            value={user.role}
+                            disabled
+                            className="w-full pl-9 px-3 py-2 border border-slate-200 bg-slate-50 rounded-md text-slate-600"
                           />
-                          <Briefcase className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                          <Shield className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                         </div>
                       </div>
-
-                      <div className="md:col-span-2">
-                        <label className="block text-sm font-medium text-slate-700 mb-1">Organization</label>
-                        <input 
-                           type="text" 
-                           value={formData.organization || ''}
-                           disabled
-                           className="w-full px-3 py-2 border border-slate-200 bg-slate-50 rounded-md text-slate-500"
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">User ID</label>
+                        <input
+                          type="text"
+                          value={user.id}
+                          disabled
+                          className="w-full px-3 py-2 border border-slate-200 bg-slate-50 rounded-md text-slate-600"
                         />
                       </div>
-                      
-                      <div className="md:col-span-2">
-                        <label className="block text-sm font-medium text-slate-700 mb-1">Timezone</label>
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">Joined</label>
                         <div className="relative">
-                          <select 
-                            value={formData.timezone}
-                            onChange={e => setFormData({...formData, timezone: e.target.value})}
-                            className="w-full pl-9 px-3 py-2 border border-slate-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none bg-white text-slate-900 appearance-none"
-                          >
-                             <option>UTC-8 (Pacific Time)</option>
-                             <option>UTC-5 (Eastern Time)</option>
-                             <option>UTC+0 (London)</option>
-                             <option>UTC+1 (Paris)</option>
-                             <option>UTC+3 (Nairobi)</option>
-                             <option>UTC+5:30 (Mumbai)</option>
-                          </select>
-                          <Globe className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                          <input
+                            type="text"
+                            value={formatDate(user.createdAt)}
+                            disabled
+                            className="w-full pl-9 px-3 py-2 border border-slate-200 bg-slate-50 rounded-md text-slate-600"
+                          />
+                          <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                         </div>
                       </div>
-                   </div>
-
-                   <div className="flex items-center justify-between pt-6 border-t border-slate-100">
-                      {successMsg && (
-                        <div className="text-green-600 text-sm font-medium flex items-center animate-in fade-in">
-                           <CheckCircle className="w-4 h-4 mr-2" /> {successMsg}
-                        </div>
-                      )}
-                      <div className="ml-auto">
-                        <Button type="submit" isLoading={saving}>Save Changes</Button>
-                      </div>
-                   </div>
-                </form>
+                    </div>
+                  )}
+                </div>
               )}
 
               {/* Notifications Tab */}
               {activeTab === 'notifications' && (
-                <div className="p-6 md:p-8 space-y-8">
-                   <div>
-                       <h2 className="text-lg font-bold text-slate-900">Notification Preferences</h2>
-                       <p className="text-sm text-slate-500">Choose how and when you want to be notified.</p>
-                   </div>
-
-                   <div className="space-y-6">
-                      <div className="flex items-center justify-between p-4 border border-slate-200 rounded-lg">
-                         <div>
-                            <h3 className="text-sm font-semibold text-slate-900">Email Alerts</h3>
-                            <p className="text-xs text-slate-500 mt-1">Receive critical updates via email.</p>
-                         </div>
-                         <label className="relative inline-flex items-center cursor-pointer">
-                            <input 
-                              type="checkbox" 
-                              className="sr-only peer"
-                              checked={formData.notificationPreferences?.emailAlerts}
-                              onChange={() => toggleNotification('emailAlerts')}
-                            />
-                            <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-                         </label>
-                      </div>
-
-                      <div className="flex items-center justify-between p-4 border border-slate-200 rounded-lg">
-                         <div>
-                            <h3 className="text-sm font-semibold text-slate-900">Anomaly Detections</h3>
-                            <p className="text-xs text-slate-500 mt-1">Instant alerts when data deviates significantly.</p>
-                         </div>
-                         <label className="relative inline-flex items-center cursor-pointer">
-                            <input 
-                              type="checkbox" 
-                              className="sr-only peer"
-                              checked={formData.notificationPreferences?.anomalyAlerts}
-                              onChange={() => toggleNotification('anomalyAlerts')}
-                            />
-                            <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-                         </label>
-                      </div>
-
-                      <div className="flex items-center justify-between p-4 border border-slate-200 rounded-lg">
-                         <div>
-                            <h3 className="text-sm font-semibold text-slate-900">Weekly Digest</h3>
-                            <p className="text-xs text-slate-500 mt-1">A summary of project progress every Monday.</p>
-                         </div>
-                         <label className="relative inline-flex items-center cursor-pointer">
-                            <input 
-                              type="checkbox" 
-                              className="sr-only peer"
-                              checked={formData.notificationPreferences?.weeklyDigest}
-                              onChange={() => toggleNotification('weeklyDigest')}
-                            />
-                            <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-                         </label>
-                      </div>
-                   </div>
-
-                   <div className="flex justify-end pt-6 border-t border-slate-100">
-                      <Button onClick={handleSaveProfile} isLoading={saving}>Save Preferences</Button>
-                   </div>
+                <div className="p-6 md:p-8 space-y-4">
+                  <div>
+                    <h2 className="text-lg font-bold text-slate-900">Notification Preferences</h2>
+                    <p className="text-sm text-slate-500">
+                      Notification settings are not available yet. This section will be enabled once the API supports it.
+                    </p>
+                  </div>
                 </div>
               )}
 
               {/* Security Tab */}
               {activeTab === 'security' && (
-                <div className="p-6 md:p-8 space-y-8">
-                   <div>
-                       <h2 className="text-lg font-bold text-slate-900">Security Settings</h2>
-                       <p className="text-sm text-slate-500">Update your password and security keys.</p>
-                   </div>
-
-                   <form className="max-w-md space-y-4">
-                      <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-1">Current Password</label>
-                        <input 
-                           type="password" 
-                           className="w-full px-3 py-2 border border-slate-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none bg-white text-slate-900"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-1">New Password</label>
-                        <input 
-                           type="password" 
-                           className="w-full px-3 py-2 border border-slate-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none bg-white text-slate-900"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-1">Confirm New Password</label>
-                        <input 
-                           type="password" 
-                           className="w-full px-3 py-2 border border-slate-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none bg-white text-slate-900"
-                        />
-                      </div>
-                      
-                      <div className="pt-2">
-                         <Button type="button" onClick={() => setSuccessMsg("Password updated!")} isLoading={saving}>Update Password</Button>
-                      </div>
-                      {successMsg && (
-                        <p className="text-green-600 text-sm font-medium mt-2">{successMsg}</p>
-                      )}
-                   </form>
-
-                   <div className="p-4 bg-red-50 border border-red-100 rounded-lg flex items-start gap-4">
-                      <AlertTriangle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
-                      <div>
-                         <h3 className="text-sm font-bold text-red-900">Danger Zone</h3>
-                         <p className="text-xs text-red-700 mt-1 mb-3">Deleting your account is permanent. All your data will be wiped immediately.</p>
-                         <Button variant="danger" size="sm">Delete Account</Button>
-                      </div>
-                   </div>
+                <div className="p-6 md:p-8 space-y-4">
+                  <div>
+                    <h2 className="text-lg font-bold text-slate-900">Security Settings</h2>
+                    <p className="text-sm text-slate-500">
+                      Password updates and account deletion are not available yet. These actions will appear once the API supports them.
+                    </p>
+                  </div>
                 </div>
               )}
 

@@ -1,4 +1,14 @@
-import { ActivityLog, Indicator, IndicatorType, IndicatorValue, LogframeNode, NodeType, Project, ProjectStats } from '../types';
+import {
+  ActivityLog,
+  Indicator,
+  IndicatorType,
+  IndicatorValue,
+  LogframeNode,
+  NodeType,
+  Project,
+  ProjectStats,
+  CurrentUser
+} from '../types';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000/api/v1';
 const tokenKey = 'merlin_token';
@@ -98,6 +108,8 @@ const mapIndicatorType = (dataType?: string, unit?: string): IndicatorType => {
       return IndicatorType.PERCENTAGE;
     case 'BOOLEAN':
       return IndicatorType.BOOLEAN;
+    case 'CATEGORICAL':
+      return IndicatorType.CATEGORICAL;
     case 'NUMBER':
       return unit === 'USD' || unit === 'usd' ? IndicatorType.CURRENCY : IndicatorType.NUMBER;
     case 'TEXT':
@@ -140,14 +152,24 @@ const mapIndicator = (indicator: any, values: IndicatorValue[] = []): Indicator 
     baseline: indicator.baselineValue ?? (isText ? '' : 0),
     minExpected: indicator.minValue ?? undefined,
     maxExpected: indicator.maxValue ?? undefined,
+    anomalyConfig: indicator.anomalyConfig ?? undefined,
     unit: indicator.unit ?? undefined,
     decimals: indicator.decimals ?? undefined,
+    categories: indicator.categories ?? undefined,
+    categoryConfig: indicator.categoryConfig ?? undefined,
     frequency: indicator.frequency ?? 'Monthly',
     currentVersion: indicator.currentVersion ?? 1,
     versions: Array.isArray(indicator.versions) ? indicator.versions : [],
     values
   };
 };
+
+const mapCurrentUser = (user: any): CurrentUser => ({
+  id: String(user.id),
+  email: user.email ?? '',
+  role: user.role ?? '',
+  createdAt: user.createdAt ? new Date(user.createdAt).toISOString() : undefined
+});
 
 const getProjectLogframe = async (id: string): Promise<LogframeNode[]> => {
   const tree = await request<any[]>(`/projects/${id}/logframe/tree`);
@@ -163,7 +185,10 @@ export const api = {
     setToken(result.token);
     return result;
   },
-  me: async () => request('/auth/me'),
+  me: async (): Promise<CurrentUser> => {
+    const user = await request('/auth/me');
+    return mapCurrentUser(user);
+  },
   getProjects: async (): Promise<Project[]> => {
     const projects = await request<any[]>('/projects');
     return projects.map((project) => mapProject(project));
@@ -195,6 +220,24 @@ export const api = {
     });
     return mapProject(created);
   },
+  updateProject: async (id: string, payload: Partial<Project>): Promise<Project> => {
+    const updated = await request<any>(`/projects/${id}`, {
+      method: 'PATCH',
+      body: {
+        name: payload.name,
+        description: payload.description,
+        status: payload.status ? payload.status.toUpperCase() : undefined,
+        startDate: payload.startDate,
+        endDate: payload.endDate,
+        sectors: payload.sectors,
+        location: payload.location,
+        donor: payload.donor,
+        budgetAmount: payload.budgetAmount,
+        budgetCurrency: payload.budgetCurrency
+      }
+    });
+    return mapProject(updated);
+  },
   getIndicators: async (projectId: string): Promise<Indicator[]> => {
     const indicators = await request<any[]>(`/projects/${projectId}/indicators`);
     return indicators.map((indicator) => mapIndicator(indicator));
@@ -217,6 +260,8 @@ export const api = {
         ? 'BOOLEAN'
         : payload.type === IndicatorType.TEXT
         ? 'TEXT'
+        : payload.type === IndicatorType.CATEGORICAL
+        ? 'CATEGORICAL'
         : 'NUMBER';
     const isNumeric =
       payload.type === IndicatorType.NUMBER ||
@@ -224,7 +269,9 @@ export const api = {
       payload.type === IndicatorType.CURRENCY;
     const unit =
       payload.unit ||
-      (payload.type === IndicatorType.BOOLEAN ? 'yes/no' : payload.type === IndicatorType.TEXT ? 'text' : 'unit');
+      (payload.type === IndicatorType.BOOLEAN ? 'yes/no' : 
+       payload.type === IndicatorType.TEXT ? 'text' : 
+       payload.type === IndicatorType.CATEGORICAL ? 'category' : 'unit');
     const baselineValue = isNumeric && payload.baseline !== undefined ? Number(payload.baseline) : null;
     const targetValue = isNumeric && payload.target !== undefined ? Number(payload.target) : null;
     const created = await request<any>(`/projects/${projectId}/indicators`, {
@@ -237,7 +284,10 @@ export const api = {
         targetValue,
         dataType,
         minValue: payload.minExpected ?? null,
-        maxValue: payload.maxExpected ?? null
+        maxValue: payload.maxExpected ?? null,
+        anomalyConfig: payload.anomalyConfig ?? null,
+        categories: payload.categories ?? null,
+        categoryConfig: payload.categoryConfig ?? null
       }
     });
     return mapIndicator(created);
@@ -280,7 +330,9 @@ export const api = {
   getProjectStats: async (projectId: string): Promise<ProjectStats> =>
     request(`/projects/${projectId}/stats`),
   getProjectActivities: async (projectId: string): Promise<ActivityLog[]> =>
-    request(`/projects/${projectId}/activities`)
+    request(`/projects/${projectId}/activities`),
+  getCategoryDistribution: async (indicatorId: string): Promise<any> =>
+    request(`/indicators/${indicatorId}/category-distribution`)
 };
 
 export const authStorage = { getToken, setToken };

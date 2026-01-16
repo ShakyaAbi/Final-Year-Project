@@ -11,7 +11,8 @@ export enum IndicatorType {
   PERCENTAGE = 'Percentage',
   CURRENCY = 'Currency',
   TEXT = 'Text',
-  BOOLEAN = 'Boolean'
+  BOOLEAN = 'Boolean',
+  CATEGORICAL = 'Categorical'
 }
 
 export interface LogframeNode {
@@ -52,6 +53,35 @@ export interface IndicatorValue {
   evidence?: string; // Added for verification source/notes
 }
 
+export interface AnomalyConfig {
+  enabled?: boolean;
+  outlier?: {
+    method?: 'MAD' | 'IQR';
+    threshold?: number;
+    windowSize?: number;
+    minPoints?: number;
+  };
+  trend?: {
+    method?: 'SLOPE_SHIFT' | 'MEAN_SHIFT';
+    threshold?: number;
+    windowSize?: number;
+  };
+}
+
+export interface CategoryDefinition {
+  id: string;
+  label: string;
+  color?: string;
+  description?: string;
+}
+
+export interface CategoryConfig {
+  allowMultiple?: boolean;
+  maxSelections?: number;
+  required?: boolean;
+  allowOther?: boolean;
+}
+
 export interface IndicatorVersion {
   version: number;
   createdAt: string;
@@ -74,11 +104,14 @@ export interface Indicator {
   baseline: number | string;
   minExpected?: number;
   maxExpected?: number;
+  anomalyConfig?: AnomalyConfig;
   
   // Formatting rules
   unit?: string; // e.g., "kg", "households"
   decimals?: number;
   booleanLabels?: { true: string; false: string }; // For Boolean
+  categories?: CategoryDefinition[]; // For Categorical
+  categoryConfig?: CategoryConfig; // For Categorical
   
   frequency: 'Weekly' | 'Monthly';
   currentVersion: number;
@@ -107,18 +140,9 @@ export interface ProjectStats {
   activitiesCompleted: number;
 }
 
-export interface UserProfile {
+export interface CurrentUser {
   id: string;
-  name: string;
   email: string;
   role: string;
-  avatar?: string;
-  organization: string;
-  timezone: string;
-  notificationPreferences: {
-    emailAlerts: boolean;
-    browserPush: boolean;
-    weeklyDigest: boolean;
-    anomalyAlerts: boolean;
-  };
+  createdAt?: string;
 }

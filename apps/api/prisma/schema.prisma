@@ -32,15 +32,30 @@ enum IndicatorDataType {
   PERCENT
   TEXT
   BOOLEAN
+  CATEGORICAL
+}
+
+enum AnomalyStatus {
+  DETECTED
+  ACKNOWLEDGED
+  RESOLVED
+  FALSE_POSITIVE
 }
 
 model User {
-  id           Int       @id @default(autoincrement())
-  email        String    @unique
-  passwordHash String
-  role         Role
-  createdAt    DateTime  @default(now())
-  submissions  Submission[]
+  id                      Int       @id @default(autoincrement())
+  email                   String    @unique
+  passwordHash            String
+  role                    Role
+  name                    String?
+  jobTitle                String?
+  organization            String?
+  timezone                String?
+  avatar                  String?
+  notificationPreferences Json?
+  createdAt               DateTime  @default(now())
+  submissions             Submission[]
+  anomalyReviews          Submission[] @relation("AnomalyReviews")
 }
 
 model Project {
@@ -91,6 +106,9 @@ model Indicator {
   dataType       IndicatorDataType
   minValue       Float?
   maxValue       Float?
+  anomalyConfig  Json?
+  categories     Json?             // For CATEGORICAL type: array of category definitions
+  categoryConfig Json?             // For CATEGORICAL type: configuration (allowMultiple, maxSelections, etc.)
   createdAt      DateTime          @default(now())
   submissions    Submission[]
 
@@ -108,6 +126,14 @@ model Submission {
   createdByUser   User     @relation(fields: [createdByUserId], references: [id], onDelete: Cascade)
   createdByUserId Int
   createdAt       DateTime @default(now())
+  
+  isAnomaly        Boolean        @default(false)
+  anomalyReason    String?
+  anomalyStatus    AnomalyStatus?
+  anomalyReviewedBy Int?
+  anomalyReviewedAt DateTime?
+  reviewer         User?          @relation("AnomalyReviews", fields: [anomalyReviewedBy], references: [id])
 
   @@index([indicatorId])
+  @@index([anomalyReviewedBy])
 }
