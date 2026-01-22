@@ -7,11 +7,12 @@ import {
   NodeType,
   Project,
   ProjectStats,
-  CurrentUser
-} from '../types';
+  CurrentUser,
+} from "../types";
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000/api/v1';
-const tokenKey = 'merlin_token';
+const API_BASE =
+  import.meta.env.VITE_API_BASE_URL || "http://localhost:4000/api/v1";
+const tokenKey = "merlin_token";
 
 const getToken = () => localStorage.getItem(tokenKey);
 const setToken = (token: string) => localStorage.setItem(tokenKey, token);
@@ -21,18 +22,21 @@ type RequestOptions = {
   body?: any;
 };
 
-const request = async <T>(path: string, options: RequestOptions = {}): Promise<T> => {
+const request = async <T>(
+  path: string,
+  options: RequestOptions = {},
+): Promise<T> => {
   const headers: Record<string, string> = {
-    'Content-Type': 'application/json'
+    "Content-Type": "application/json",
   };
 
   const token = getToken();
   if (token) headers.Authorization = `Bearer ${token}`;
 
   const res = await fetch(`${API_BASE}${path}`, {
-    method: options.method || 'GET',
+    method: options.method || "GET",
     headers,
-    body: options.body ? JSON.stringify(options.body) : undefined
+    body: options.body ? JSON.stringify(options.body) : undefined,
   });
 
   if (!res.ok) {
@@ -44,34 +48,34 @@ const request = async <T>(path: string, options: RequestOptions = {}): Promise<T
   return res.json() as Promise<T>;
 };
 
-const mapStatus = (status?: string): Project['status'] => {
+const mapStatus = (status?: string): Project["status"] => {
   switch (status) {
-    case 'ACTIVE':
-    case 'Active':
-      return 'Active';
-    case 'DRAFT':
-    case 'Draft':
-      return 'Draft';
-    case 'ARCHIVED':
-    case 'Archived':
-      return 'Archived';
-    case 'COMPLETED':
-    case 'Completed':
-      return 'Completed';
+    case "ACTIVE":
+    case "Active":
+      return "Active";
+    case "DRAFT":
+    case "Draft":
+      return "Draft";
+    case "ARCHIVED":
+    case "Archived":
+      return "Archived";
+    case "COMPLETED":
+    case "Completed":
+      return "Completed";
     default:
-      return 'Draft';
+      return "Draft";
   }
 };
 
 const mapNodeType = (type?: string): NodeType => {
   switch (type) {
-    case 'GOAL':
+    case "GOAL":
       return NodeType.GOAL;
-    case 'OUTCOME':
+    case "OUTCOME":
       return NodeType.OUTCOME;
-    case 'OUTPUT':
+    case "OUTPUT":
       return NodeType.OUTPUT;
-    case 'ACTIVITY':
+    case "ACTIVITY":
       return NodeType.ACTIVITY;
     default:
       return NodeType.GOAL;
@@ -81,75 +85,84 @@ const mapNodeType = (type?: string): NodeType => {
 const mapLogframeNode = (node: any): LogframeNode => ({
   id: String(node.id),
   type: mapNodeType(node.type),
-  title: node.title ?? '',
+  title: node.title ?? "",
   description: node.description ?? undefined,
-  children: Array.isArray(node.children) ? node.children.map(mapLogframeNode) : [],
-  indicatorCount: node.indicatorCount ?? undefined
+  children: Array.isArray(node.children)
+    ? node.children.map(mapLogframeNode)
+    : [],
+  indicatorCount: node.indicatorCount ?? undefined,
 });
 
 const mapProject = (p: any, logframe: LogframeNode[] = []): Project => ({
   id: String(p.id),
-  name: p.name ?? '',
-  description: p.description ?? '',
-  startDate: p.startDate ? new Date(p.startDate).toISOString() : '',
-  endDate: p.endDate ? new Date(p.endDate).toISOString() : '',
+  name: p.name ?? "",
+  description: p.description ?? "",
+  startDate: p.startDate ? new Date(p.startDate).toISOString() : "",
+  endDate: p.endDate ? new Date(p.endDate).toISOString() : "",
   status: mapStatus(p.status),
   sectors: Array.isArray(p.sectors) ? p.sectors.map(String) : [],
   location: p.location ?? undefined,
   donor: p.donor ?? undefined,
   budgetAmount: p.budgetAmount ?? undefined,
   budgetCurrency: p.budgetCurrency ?? undefined,
-  logframe
+  logframe,
 });
 
 const mapIndicatorType = (dataType?: string, unit?: string): IndicatorType => {
   switch (dataType) {
-    case 'PERCENT':
+    case "PERCENT":
       return IndicatorType.PERCENTAGE;
-    case 'BOOLEAN':
+    case "BOOLEAN":
       return IndicatorType.BOOLEAN;
-    case 'CATEGORICAL':
+    case "CATEGORICAL":
       return IndicatorType.CATEGORICAL;
-    case 'NUMBER':
-      return unit === 'USD' || unit === 'usd' ? IndicatorType.CURRENCY : IndicatorType.NUMBER;
-    case 'TEXT':
+    case "NUMBER":
+      return unit === "USD" || unit === "usd"
+        ? IndicatorType.CURRENCY
+        : IndicatorType.NUMBER;
+    case "TEXT":
       return IndicatorType.TEXT;
     default:
-      if (unit === '%' || unit === 'percent') return IndicatorType.PERCENTAGE;
+      if (unit === "%" || unit === "percent") return IndicatorType.PERCENTAGE;
       return IndicatorType.NUMBER;
   }
 };
 
 const mapIndicatorValue = (v: any, type: IndicatorType): IndicatorValue => {
   const parsedValue =
-    type === IndicatorType.NUMBER || type === IndicatorType.PERCENTAGE || type === IndicatorType.CURRENCY
+    type === IndicatorType.NUMBER ||
+    type === IndicatorType.PERCENTAGE ||
+    type === IndicatorType.CURRENCY
       ? Number(v.value)
       : v.value;
   const isAnomaly = v.isAnomaly === true;
   return {
     id: String(v.id),
-    date: v.reportedAt ? new Date(v.reportedAt).toISOString() : '',
+    date: v.reportedAt ? new Date(v.reportedAt).toISOString() : "",
     value: Number.isFinite(parsedValue) ? parsedValue : v.value,
     isAnomaly,
-    anomalyReason: isAnomaly ? v.anomalyReason ?? undefined : undefined,
-    evidence: v.evidence ?? undefined
+    anomalyReason: isAnomaly ? (v.anomalyReason ?? undefined) : undefined,
+    evidence: v.evidence ?? undefined,
   };
 };
 
-const mapIndicator = (indicator: any, values: IndicatorValue[] = []): Indicator => {
+const mapIndicator = (
+  indicator: any,
+  values: IndicatorValue[] = [],
+): Indicator => {
   const type = mapIndicatorType(indicator.dataType, indicator.unit);
   const isText = type === IndicatorType.TEXT;
   return {
     id: String(indicator.id),
     projectId: String(indicator.projectId),
     nodeId: String(indicator.logframeNodeId),
-    name: indicator.name ?? '',
+    name: indicator.name ?? "",
     description: indicator.description ?? undefined,
-    status: indicator.status ?? 'Active',
+    status: indicator.status ?? "Active",
     code: indicator.code ?? undefined,
     type,
-    target: indicator.targetValue ?? (isText ? '' : 0),
-    baseline: indicator.baselineValue ?? (isText ? '' : 0),
+    target: indicator.targetValue ?? (isText ? "" : 0),
+    baseline: indicator.baselineValue ?? (isText ? "" : 0),
     minExpected: indicator.minValue ?? undefined,
     maxExpected: indicator.maxValue ?? undefined,
     anomalyConfig: indicator.anomalyConfig ?? undefined,
@@ -157,18 +170,20 @@ const mapIndicator = (indicator: any, values: IndicatorValue[] = []): Indicator 
     decimals: indicator.decimals ?? undefined,
     categories: indicator.categories ?? undefined,
     categoryConfig: indicator.categoryConfig ?? undefined,
-    frequency: indicator.frequency ?? 'Monthly',
+    frequency: indicator.frequency ?? "Monthly",
     currentVersion: indicator.currentVersion ?? 1,
     versions: Array.isArray(indicator.versions) ? indicator.versions : [],
-    values
+    values,
   };
 };
 
 const mapCurrentUser = (user: any): CurrentUser => ({
   id: String(user.id),
-  email: user.email ?? '',
-  role: user.role ?? '',
-  createdAt: user.createdAt ? new Date(user.createdAt).toISOString() : undefined
+  email: user.email ?? "",
+  role: user.role ?? "",
+  createdAt: user.createdAt
+    ? new Date(user.createdAt).toISOString()
+    : undefined,
 });
 
 const getProjectLogframe = async (id: string): Promise<LogframeNode[]> => {
@@ -178,19 +193,19 @@ const getProjectLogframe = async (id: string): Promise<LogframeNode[]> => {
 
 export const api = {
   login: async (email: string, password: string) => {
-    const result = await request<{ token: string; user: any }>('/auth/login', {
-      method: 'POST',
-      body: { email, password }
+    const result = await request<{ token: string; user: any }>("/auth/login", {
+      method: "POST",
+      body: { email, password },
     });
     setToken(result.token);
     return result;
   },
   me: async (): Promise<CurrentUser> => {
-    const user = await request('/auth/me');
+    const user = await request("/auth/me");
     return mapCurrentUser(user);
   },
   getProjects: async (): Promise<Project[]> => {
-    const projects = await request<any[]>('/projects');
+    const projects = await request<any[]>("/projects");
     return projects.map((project) => mapProject(project));
   },
   getProject: async (id: string): Promise<Project> => {
@@ -199,12 +214,12 @@ export const api = {
     return mapProject(project, logframe);
   },
   deleteProject: async (id: string): Promise<Project> => {
-    const project = await request<any>(`/projects/${id}`, { method: 'DELETE' });
+    const project = await request<any>(`/projects/${id}`, { method: "DELETE" });
     return mapProject(project);
   },
   createProject: async (payload: Partial<Project>): Promise<Project> => {
-    const created = await request<any>('/projects', {
-      method: 'POST',
+    const created = await request<any>("/projects", {
+      method: "POST",
       body: {
         name: payload.name,
         description: payload.description,
@@ -215,14 +230,17 @@ export const api = {
         location: payload.location,
         donor: payload.donor,
         budgetAmount: payload.budgetAmount,
-        budgetCurrency: payload.budgetCurrency
-      }
+        budgetCurrency: payload.budgetCurrency,
+      },
     });
     return mapProject(created);
   },
-  updateProject: async (id: string, payload: Partial<Project>): Promise<Project> => {
+  updateProject: async (
+    id: string,
+    payload: Partial<Project>,
+  ): Promise<Project> => {
     const updated = await request<any>(`/projects/${id}`, {
-      method: 'PATCH',
+      method: "PATCH",
       body: {
         name: payload.name,
         description: payload.description,
@@ -233,106 +251,362 @@ export const api = {
         location: payload.location,
         donor: payload.donor,
         budgetAmount: payload.budgetAmount,
-        budgetCurrency: payload.budgetCurrency
-      }
+        budgetCurrency: payload.budgetCurrency,
+      },
     });
     return mapProject(updated);
   },
   getIndicators: async (projectId: string): Promise<Indicator[]> => {
-    const indicators = await request<any[]>(`/projects/${projectId}/indicators`);
+    const indicators = await request<any[]>(
+      `/projects/${projectId}/indicators`,
+    );
     return indicators.map((indicator) => mapIndicator(indicator));
   },
   getIndicator: async (id: string): Promise<Indicator> => {
     const indicator = await request<any>(`/indicators/${id}`);
     return mapIndicator(indicator);
   },
-  getIndicatorSubmissions: async (indicatorId: string): Promise<IndicatorValue[]> => {
-    const submissions = await request<any[]>(`/indicators/${indicatorId}/submissions`);
+  getIndicatorSubmissions: async (
+    indicatorId: string,
+  ): Promise<IndicatorValue[]> => {
+    const submissions = await request<any[]>(
+      `/indicators/${indicatorId}/submissions`,
+    );
     const indicator = await request<any>(`/indicators/${indicatorId}`);
     const type = mapIndicatorType(indicator.dataType, indicator.unit);
     return submissions.map((submission) => mapIndicatorValue(submission, type));
   },
-  createIndicator: async (projectId: string, payload: Partial<Indicator>): Promise<Indicator> => {
+  createIndicator: async (
+    projectId: string,
+    payload: Partial<Indicator>,
+  ): Promise<Indicator> => {
     const dataType =
       payload.type === IndicatorType.PERCENTAGE
-        ? 'PERCENT'
+        ? "PERCENT"
         : payload.type === IndicatorType.BOOLEAN
-        ? 'BOOLEAN'
-        : payload.type === IndicatorType.TEXT
-        ? 'TEXT'
-        : payload.type === IndicatorType.CATEGORICAL
-        ? 'CATEGORICAL'
-        : 'NUMBER';
+          ? "BOOLEAN"
+          : payload.type === IndicatorType.TEXT
+            ? "TEXT"
+            : payload.type === IndicatorType.CATEGORICAL
+              ? "CATEGORICAL"
+              : "NUMBER";
     const isNumeric =
       payload.type === IndicatorType.NUMBER ||
       payload.type === IndicatorType.PERCENTAGE ||
       payload.type === IndicatorType.CURRENCY;
+    const isCategorical = payload.type === IndicatorType.CATEGORICAL;
     const unit =
       payload.unit ||
-      (payload.type === IndicatorType.BOOLEAN ? 'yes/no' : 
-       payload.type === IndicatorType.TEXT ? 'text' : 
-       payload.type === IndicatorType.CATEGORICAL ? 'category' : 'unit');
-    const baselineValue = isNumeric && payload.baseline !== undefined ? Number(payload.baseline) : null;
-    const targetValue = isNumeric && payload.target !== undefined ? Number(payload.target) : null;
+      (payload.type === IndicatorType.BOOLEAN
+        ? "yes/no"
+        : payload.type === IndicatorType.TEXT
+          ? "text"
+          : payload.type === IndicatorType.CATEGORICAL
+            ? "category"
+            : "unit");
+
+    // For numeric indicators: use baselineValue/targetValue
+    // For categorical indicators: use baselineCategory/targetCategory
+    const baselineValue =
+      isNumeric && payload.baseline !== undefined
+        ? Number(payload.baseline)
+        : null;
+    const targetValue =
+      isNumeric && payload.target !== undefined ? Number(payload.target) : null;
+    const baselineCategory =
+      isCategorical && payload.baseline !== undefined
+        ? String(payload.baseline)
+        : null;
+    const targetCategory =
+      isCategorical && payload.target !== undefined
+        ? String(payload.target)
+        : null;
+
     const created = await request<any>(`/projects/${projectId}/indicators`, {
-      method: 'POST',
+      method: "POST",
       body: {
         logframeNodeId: Number(payload.nodeId),
         name: payload.name,
         unit,
         baselineValue,
         targetValue,
+        baselineCategory,
+        targetCategory,
         dataType,
         minValue: payload.minExpected ?? null,
         maxValue: payload.maxExpected ?? null,
         anomalyConfig: payload.anomalyConfig ?? null,
         categories: payload.categories ?? null,
-        categoryConfig: payload.categoryConfig ?? null
-      }
+        categoryConfig: payload.categoryConfig ?? null,
+      },
     });
     return mapIndicator(created);
   },
-  createSubmission: async (indicatorId: string, payload: { reportedAt: string; value: any; evidence?: string }) =>
+  updateIndicator: async (
+    indicatorId: string,
+    payload: Partial<Indicator>,
+  ): Promise<Indicator> => {
+    const dataType =
+      payload.type === IndicatorType.PERCENTAGE
+        ? "PERCENT"
+        : payload.type === IndicatorType.BOOLEAN
+          ? "BOOLEAN"
+          : payload.type === IndicatorType.TEXT
+            ? "TEXT"
+            : payload.type === IndicatorType.CATEGORICAL
+              ? "CATEGORICAL"
+              : "NUMBER";
+    const isNumeric =
+      payload.type === IndicatorType.NUMBER ||
+      payload.type === IndicatorType.PERCENTAGE ||
+      payload.type === IndicatorType.CURRENCY;
+    const isCategorical = payload.type === IndicatorType.CATEGORICAL;
+    const unit =
+      payload.unit ||
+      (payload.type === IndicatorType.BOOLEAN
+        ? "yes/no"
+        : payload.type === IndicatorType.TEXT
+          ? "text"
+          : payload.type === IndicatorType.CATEGORICAL
+            ? "category"
+            : "unit");
+
+    const baselineValue =
+      isNumeric && payload.baseline !== undefined
+        ? Number(payload.baseline)
+        : null;
+    const targetValue =
+      isNumeric && payload.target !== undefined ? Number(payload.target) : null;
+    const baselineCategory =
+      isCategorical && payload.baseline !== undefined
+        ? String(payload.baseline)
+        : null;
+    const targetCategory =
+      isCategorical && payload.target !== undefined
+        ? String(payload.target)
+        : null;
+
+    const updated = await request<any>(`/indicators/${indicatorId}`, {
+      method: "PUT",
+      body: {
+        logframeNodeId: payload.nodeId ? Number(payload.nodeId) : undefined,
+        name: payload.name,
+        unit,
+        baselineValue,
+        targetValue,
+        baselineCategory,
+        targetCategory,
+        dataType,
+        minValue: payload.minExpected ?? null,
+        maxValue: payload.maxExpected ?? null,
+        anomalyConfig: payload.anomalyConfig ?? null,
+        categories: payload.categories ?? null,
+        categoryConfig: payload.categoryConfig ?? null,
+      },
+    });
+    return mapIndicator(updated);
+  },
+  createSubmission: async (
+    indicatorId: string,
+    payload: { reportedAt: string; value: any; evidence?: string },
+  ) =>
     request(`/indicators/${indicatorId}/submissions`, {
-      method: 'POST',
+      method: "POST",
       body: {
         reportedAt: payload.reportedAt,
         value: payload.value,
-        evidence: payload.evidence ?? null
-      }
+        evidence: payload.evidence ?? null,
+      },
     }),
   addLogframeNode: async (
     projectId: string,
-    payload: { type: NodeType; title: string; description?: string; parentId?: string | null }
+    payload: {
+      type: NodeType;
+      title: string;
+      description?: string;
+      parentId?: string | null;
+    },
   ) =>
     request(`/projects/${projectId}/logframe/nodes`, {
-      method: 'POST',
+      method: "POST",
       body: {
         type: payload.type.toUpperCase(),
         title: payload.title,
         description: payload.description,
-        parentId: payload.parentId ? Number(payload.parentId) : undefined
-      }
+        parentId: payload.parentId ? Number(payload.parentId) : undefined,
+      },
     }),
   updateLogframeNode: async (
     nodeId: string,
-    payload: Partial<{ title: string; description?: string; parentId?: string | null; type?: NodeType }>
+    payload: Partial<{
+      title: string;
+      description?: string;
+      parentId?: string | null;
+      type?: NodeType;
+    }>,
   ) =>
     request(`/logframe/nodes/${nodeId}`, {
-      method: 'PATCH',
+      method: "PATCH",
       body: {
         title: payload.title,
         description: payload.description,
-        parentId: payload.parentId ? Number(payload.parentId) : payload.parentId,
-        type: payload.type ? payload.type.toUpperCase() : undefined
-      }
+        parentId: payload.parentId
+          ? Number(payload.parentId)
+          : payload.parentId,
+        type: payload.type ? payload.type.toUpperCase() : undefined,
+      },
     }),
   getProjectStats: async (projectId: string): Promise<ProjectStats> =>
     request(`/projects/${projectId}/stats`),
   getProjectActivities: async (projectId: string): Promise<ActivityLog[]> =>
     request(`/projects/${projectId}/activities`),
   getCategoryDistribution: async (indicatorId: string): Promise<any> =>
-    request(`/indicators/${indicatorId}/category-distribution`)
+    request(`/indicators/${indicatorId}/category-distribution`),
+  deleteIndicator: async (id: string): Promise<void> =>
+    request(`/indicators/${id}`, { method: "DELETE" }),
+
+  // Import/Export API methods
+  uploadImportCSV: async (
+    indicatorId: string,
+    file: File,
+    templateId?: number,
+  ): Promise<any> => {
+    const formData = new FormData();
+    formData.append("file", file);
+    if (templateId) formData.append("templateId", String(templateId));
+
+    const token = getToken();
+    const response = await fetch(
+      `${API_BASE_URL}/indicators/${indicatorId}/import/upload`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        body: formData,
+      },
+    );
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error?.message || "Upload failed");
+    }
+
+    return response.json();
+  },
+
+  executeImport: async (jobId: number): Promise<void> =>
+    request(`/import-jobs/${jobId}/execute`, { method: "POST" }),
+
+  getImportJobStatus: async (jobId: number): Promise<any> =>
+    request(`/import-jobs/${jobId}`),
+
+  cancelImport: async (jobId: number): Promise<void> =>
+    request(`/import-jobs/${jobId}/cancel`, { method: "POST" }),
+
+  exportIndicatorCSV: async (
+    indicatorId: string,
+    filters?: Record<string, any>,
+  ): Promise<Blob> => {
+    const token = getToken();
+    const queryParams = new URLSearchParams(
+      filters
+        ? Object.entries(filters).reduce(
+            (acc, [key, value]) => {
+              if (value !== undefined && value !== null) {
+                acc[key] = String(value);
+              }
+              return acc;
+            },
+            {} as Record<string, string>,
+          )
+        : {},
+    );
+
+    const response = await fetch(
+      `${API_BASE_URL}/indicators/${indicatorId}/export?${queryParams}`,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      },
+    );
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error?.message || "Export failed");
+    }
+
+    return response.blob();
+  },
+
+  // Import Templates
+  getImportTemplates: async (indicatorId: string): Promise<any[]> =>
+    request(`/indicators/${indicatorId}/import-templates`),
+
+  createImportTemplate: async (
+    indicatorId: string,
+    template: any,
+  ): Promise<any> =>
+    request(`/indicators/${indicatorId}/import-templates`, {
+      method: "POST",
+      body: template,
+    }),
+
+  updateImportTemplate: async (
+    templateId: number,
+    template: any,
+  ): Promise<any> =>
+    request(`/import-templates/${templateId}`, {
+      method: "PUT",
+      body: template,
+    }),
+
+  deleteImportTemplate: async (templateId: number): Promise<void> =>
+    request(`/import-templates/${templateId}`, { method: "DELETE" }),
+
+  cloneImportTemplate: async (templateId: number): Promise<any> =>
+    request(`/import-templates/${templateId}/clone`, { method: "POST" }),
+
+  // Export Templates
+  getExportTemplates: async (indicatorId: string): Promise<any[]> =>
+    request(`/indicators/${indicatorId}/export-templates`),
+
+  createExportTemplate: async (
+    indicatorId: string,
+    template: any,
+  ): Promise<any> =>
+    request(`/indicators/${indicatorId}/export-templates`, {
+      method: "POST",
+      body: template,
+    }),
+
+  updateExportTemplate: async (
+    templateId: number,
+    template: any,
+  ): Promise<any> =>
+    request(`/export-templates/${templateId}`, {
+      method: "PUT",
+      body: template,
+    }),
+
+  deleteExportTemplate: async (templateId: number): Promise<void> =>
+    request(`/export-templates/${templateId}`, { method: "DELETE" }),
+
+  cloneExportTemplate: async (templateId: number): Promise<any> =>
+    request(`/export-templates/${templateId}/clone`, { method: "POST" }),
+
+  // Generic HTTP methods for dynamic endpoints
+  get: async <T = any>(path: string): Promise<T> => request<T>(path),
+
+  post: async <T = any>(path: string, body?: any): Promise<T> =>
+    request<T>(path, { method: "POST", body }),
+
+  put: async <T = any>(path: string, body?: any): Promise<T> =>
+    request<T>(path, { method: "PUT", body }),
+
+  delete: async <T = any>(path: string): Promise<T> =>
+    request<T>(path, { method: "DELETE" }),
 };
 
 export const authStorage = { getToken, setToken };

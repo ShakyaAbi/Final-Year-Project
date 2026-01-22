@@ -1,18 +1,17 @@
-
 export enum NodeType {
-  GOAL = 'Goal',
-  OUTCOME = 'Outcome',
-  OUTPUT = 'Output',
-  ACTIVITY = 'Activity'
+  GOAL = "Goal",
+  OUTCOME = "Outcome",
+  OUTPUT = "Output",
+  ACTIVITY = "Activity",
 }
 
 export enum IndicatorType {
-  NUMBER = 'Number',
-  PERCENTAGE = 'Percentage',
-  CURRENCY = 'Currency',
-  TEXT = 'Text',
-  BOOLEAN = 'Boolean',
-  CATEGORICAL = 'Categorical'
+  NUMBER = "Number",
+  PERCENTAGE = "Percentage",
+  CURRENCY = "Currency",
+  TEXT = "Text",
+  BOOLEAN = "Boolean",
+  CATEGORICAL = "Categorical",
 }
 
 export interface LogframeNode {
@@ -34,7 +33,7 @@ export interface Project {
   description: string;
   startDate: string;
   endDate: string;
-  status: 'Active' | 'Draft' | 'Archived' | 'Completed';
+  status: "Active" | "Draft" | "Archived" | "Completed";
   sectors: string[];
   location?: string;
   donor?: string;
@@ -46,7 +45,7 @@ export interface Project {
 export interface IndicatorValue {
   id: string;
   date: string;
-  value: number | string; // Updated to support non-numeric
+  value: number | string; // For categorical: stores category ID(s), for others: numeric/text value
   isAnomaly: boolean;
   anomalyReason?: string;
   comment?: string;
@@ -56,13 +55,13 @@ export interface IndicatorValue {
 export interface AnomalyConfig {
   enabled?: boolean;
   outlier?: {
-    method?: 'MAD' | 'IQR';
+    method?: "MAD" | "IQR";
     threshold?: number;
     windowSize?: number;
     minPoints?: number;
   };
   trend?: {
-    method?: 'SLOPE_SHIFT' | 'MEAN_SHIFT';
+    method?: "SLOPE_SHIFT" | "MEAN_SHIFT";
     threshold?: number;
     windowSize?: number;
   };
@@ -75,11 +74,20 @@ export interface CategoryDefinition {
   description?: string;
 }
 
+export interface DisaggregationDimension {
+  key: string;
+  label: string;
+  description?: string;
+  values: string[];
+}
+
 export interface CategoryConfig {
   allowMultiple?: boolean;
   maxSelections?: number;
   required?: boolean;
   allowOther?: boolean;
+  disaggregationDimensions?: DisaggregationDimension[];
+  expectedReportingEntities?: number;
 }
 
 export interface IndicatorVersion {
@@ -96,24 +104,26 @@ export interface Indicator {
   name: string;
   code?: string; // Added
   description?: string;
-  status?: 'Active' | 'Inactive' | 'Under Review';
+  status?: "Active" | "Inactive" | "Under Review";
   type: IndicatorType;
-  
+
   // Target & Validation
   target: number | string; // Updated to support non-numeric
   baseline: number | string;
+  baselineCategory?: string; // For categorical baseline
+  targetCategory?: string; // For categorical target
   minExpected?: number;
   maxExpected?: number;
   anomalyConfig?: AnomalyConfig;
-  
+
   // Formatting rules
   unit?: string; // e.g., "kg", "households"
   decimals?: number;
   booleanLabels?: { true: string; false: string }; // For Boolean
   categories?: CategoryDefinition[]; // For Categorical
   categoryConfig?: CategoryConfig; // For Categorical
-  
-  frequency: 'Weekly' | 'Monthly';
+
+  frequency: "Weekly" | "Monthly";
   currentVersion: number;
   versions: IndicatorVersion[];
   values: IndicatorValue[];
@@ -126,7 +136,7 @@ export interface ActivityLog {
   action: string;
   item: string;
   date: string;
-  type: 'info' | 'warning' | 'success' | 'danger';
+  type: "info" | "warning" | "success" | "danger";
 }
 
 export interface ProjectStats {
