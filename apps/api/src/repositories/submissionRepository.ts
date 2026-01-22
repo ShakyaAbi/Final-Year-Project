@@ -1,10 +1,12 @@
-import { prisma } from '../prisma';
-import { AnomalyStatus } from '@prisma/client';
+import { prisma } from "../prisma";
+import { AnomalyStatus } from "@prisma/client";
 
 export const createSubmission = (data: {
   indicatorId: number;
   reportedAt: Date;
   value: string;
+  categoryValue?: string | null;
+  disaggregationKey?: string | null;
   evidence?: string | null;
   createdByUserId: number;
   isAnomaly?: boolean;
@@ -14,33 +16,30 @@ export const createSubmission = (data: {
 
 export const listSubmissions = (
   indicatorId: number,
-  filters: { from?: Date | null; to?: Date | null }
+  filters: { from?: Date | null; to?: Date | null },
 ) =>
   prisma.submission.findMany({
     where: {
       indicatorId,
       reportedAt: {
         gte: filters.from ?? undefined,
-        lte: filters.to ?? undefined
-      }
+        lte: filters.to ?? undefined,
+      },
     },
-    orderBy: { reportedAt: 'desc' }
+    orderBy: { reportedAt: "desc" },
   });
 
-export const getById = (id: number) => 
-  prisma.submission.findUnique({ 
+export const getById = (id: number) =>
+  prisma.submission.findUnique({
     where: { id },
-    include: { indicator: true }
+    include: { indicator: true },
   });
 
-export const getRecentSubmissions = (
-  indicatorId: number,
-  limit: number
-) =>
+export const getRecentSubmissions = (indicatorId: number, limit: number) =>
   prisma.submission.findMany({
     where: { indicatorId },
-    orderBy: { reportedAt: 'desc' },
-    take: limit
+    orderBy: { reportedAt: "desc" },
+    take: limit,
   });
 
 export const updateSubmission = (
@@ -50,5 +49,5 @@ export const updateSubmission = (
     anomalyReviewedBy: number;
     anomalyReviewedAt: Date;
     anomalyReason: string;
-  }>
+  }>,
 ) => prisma.submission.update({ where: { id }, data });

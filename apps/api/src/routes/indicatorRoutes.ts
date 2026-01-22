@@ -1,75 +1,114 @@
-import { Router } from 'express';
-import { Role } from '@prisma/client';
-import { authenticate } from '../middleware/auth';
-import { requireRoles } from '../middleware/rbac';
-import { validate } from '../middleware/validate';
+import { Router } from "express";
+import { Role } from "@prisma/client";
+import { authenticate } from "../middleware/auth";
+import { requireRoles } from "../middleware/rbac";
+import { validate } from "../middleware/validate";
 import {
   createIndicatorSchema,
   projectIndicatorParamsSchema,
   indicatorIdParamsSchema,
-  updateIndicatorSchema
-} from '../validators/indicatorValidators';
+  updateIndicatorSchema,
+} from "../validators/indicatorValidators";
 import {
   createIndicator,
   getIndicator,
   getIndicatorsByProject,
   updateIndicator,
+  deleteIndicator,
   getIndicatorStats,
   getReportingGaps,
-  getCategoryDistribution
-} from '../controllers/indicatorController';
+  getCategoryDistribution,
+  getIndicatorTemplates,
+  getDisaggregatedCategoryStats,
+  getReportingCompliance,
+  getCategoryTimeSeries,
+} from "../controllers/indicatorController";
 
 const router = Router();
 
 router.post(
-  '/projects/:projectId/indicators',
+  "/projects/:projectId/indicators",
   authenticate,
   requireRoles(Role.ADMIN, Role.MANAGER),
   validate({ ...projectIndicatorParamsSchema, ...createIndicatorSchema }),
-  createIndicator
+  createIndicator,
 );
 
 router.get(
-  '/projects/:projectId/indicators',
+  "/projects/:projectId/indicators",
   authenticate,
   validate(projectIndicatorParamsSchema),
-  getIndicatorsByProject
+  getIndicatorsByProject,
 );
 
 router.get(
-  '/indicators/:id',
+  "/indicators/:id",
   authenticate,
   validate(indicatorIdParamsSchema),
-  getIndicator
+  getIndicator,
 );
 
 router.get(
-  '/indicators/:id/stats',
+  "/indicators/:id/stats",
   authenticate,
   validate(indicatorIdParamsSchema),
-  getIndicatorStats
+  getIndicatorStats,
 );
 
 router.get(
-  '/indicators/:id/gaps',
+  "/indicators/:id/gaps",
   authenticate,
   validate(indicatorIdParamsSchema),
-  getReportingGaps
+  getReportingGaps,
 );
 
 router.get(
-  '/indicators/:id/category-distribution',
+  "/indicators/:id/category-distribution",
   authenticate,
   validate(indicatorIdParamsSchema),
-  getCategoryDistribution
+  getCategoryDistribution,
 );
 
+router.get(
+  "/indicators/:id/templates",
+  authenticate,
+  validate(indicatorIdParamsSchema),
+  getIndicatorTemplates,
+);
+
+router.get(
+  "/indicators/:id/disaggregated-stats",
+  authenticate,
+  validate(indicatorIdParamsSchema),
+  getDisaggregatedCategoryStats,
+);
+router.get(
+  "/indicators/:id/reporting-compliance",
+  authenticate,
+  validate(indicatorIdParamsSchema),
+  getReportingCompliance,
+);
+
+router.get(
+  "/indicators/:id/category-time-series",
+  authenticate,
+  validate(indicatorIdParamsSchema),
+  getCategoryTimeSeries,
+);
 router.patch(
-  '/indicators/:id',
+  "/indicators/:id",
   authenticate,
   requireRoles(Role.ADMIN, Role.MANAGER),
   validate(updateIndicatorSchema),
-  updateIndicator
+  updateIndicator,
+);
+
+router.delete(
+  "/indicators/:id",
+  authenticate,
+  requireRoles(Role.ADMIN, Role.MANAGER),
+  validate(indicatorIdParamsSchema),
+  deleteIndicator,
 );
 
 export default router;
