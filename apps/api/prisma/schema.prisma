@@ -42,6 +42,35 @@ enum AnomalyStatus {
   FALSE_POSITIVE
 }
 
+enum ImportType {
+  INDICATOR_DEFINITION
+  SUBMISSION
+}
+
+enum ImportStatus {
+  PENDING
+  VALIDATING
+  VALIDATED
+  IMPORTING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum ImportMode {
+  CREATE_ONLY
+  UPSERT
+}
+
+enum RowStatus {
+  PENDING
+  VALID
+  WARNING
+  ERROR
+  IMPORTED
+  SKIPPED
+}
+
 model User {
   id                      Int       @id @default(autoincrement())
   email                   String    @unique
@@ -56,6 +85,9 @@ model User {
   createdAt               DateTime  @default(now())
   submissions             Submission[]
   anomalyReviews          Submission[] @relation("AnomalyReviews")
+  importJobs              ImportJob[]
+  importTemplates         ImportTemplate[]
+  exportTemplates         ExportTemplate[]
 }
 
 model Project {
@@ -101,16 +133,22 @@ model Indicator {
   logframeNodeId Int
   name           String
   unit           String
-  baselineValue  Float?
-  targetValue    Float?
+  baselineValue  Float?            // For numeric types
+  targetValue    Float?            // For numeric types
+  baselineCategory String?         // For CATEGORICAL type
+  targetCategory String?           // For CATEGORICAL type
   dataType       IndicatorDataType
   minValue       Float?
   maxValue       Float?
   anomalyConfig  Json?
+  validationConfig Json?           // Canonical validation rules
   categories     Json?             // For CATEGORICAL type: array of category definitions
   categoryConfig Json?             // For CATEGORICAL type: configuration (allowMultiple, maxSelections, etc.)
   createdAt      DateTime          @default(now())
   submissions    Submission[]
+  importTemplates ImportTemplate[]
+  importJobs     ImportJob[]
+  exportTemplates ExportTemplate[]
 
   @@index([projectId])
   @@index([logframeNodeId])
@@ -122,9 +160,13 @@ model Submission {
   indicatorId     Int
   reportedAt      DateTime
   value           String
+  categoryValue   String?          // For CATEGORICAL type
+  disaggregationKey String?        // For disaggregated data
   evidence        String?
   createdByUser   User     @relation(fields: [createdByUserId], references: [id], onDelete: Cascade)
   createdByUserId Int
+  sourceImportJob ImportJob? @relation(fields: [sourceImportJobId], references: [id], onDelete: SetNull)
+  sourceImportJobId Int?           // Tracks which import created this record
   createdAt       DateTime @default(now())
   
   isAnomaly        Boolean        @default(false)
@@ -134,6 +176,92 @@ model Submission {
   anomalyReviewedAt DateTime?
   reviewer         User?          @relation("AnomalyReviews", fields: [anomalyReviewedBy], references: [id])
 
+  @@unique([indicatorId, reportedAt, disaggregationKey])
   @@index([indicatorId])
   @@index([anomalyReviewedBy])
+  @@index([sourceImportJobId])
+}
+
+model ImportTemplate {
+  id              Int       @id @default(autoincrement())
+  indicator       Indicator @relation(fields: [indicatorId], references: [id], onDelete: Cascade)
+  indicatorId     Int
+  name            String
+  description     String?
+  isDefault       Boolean   @default(false)
+  columnMapping   Json
+  createdBy       User      @relation(fields: [createdByUserId], references: [id])
+  createdByUserId Int
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  
+  importJobs      ImportJob[]
+  
+  @@index([indicatorId])
+  @@index([createdByUserId])
+}
+
+model ImportJob {
+  id              Int           @id @default(autoincrement())
+  importType      ImportType
+  indicator       Indicator?    @relation(fields: [indicatorId], references: [id], onDelete: Cascade)
+  indicatorId     Int?
+  template        ImportTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  templateId      Int?
+  user            User          @relation(fields: [userId], references: [id])
+  userId          Int
+  fileName        String
+  fileSize        Int
+  totalRows       Int
+  processedRows   Int           @default(0)
+  successfulRows  Int           @default(0)
+  failedRows      Int           @default(0)
+  warningRows     Int           @default(0)
+  status          ImportStatus  @default(PENDING)
+  importMode      ImportMode    @default(CREATE_ONLY)
+  createdAt       DateTime      @default(now())
+  completedAt     DateTime?
+  
+  stagingRows     ImportJobRow[]
+  submissions     Submission[]
+  
+  @@index([indicatorId])
+  @@index([userId])
+  @@index([status])
+}
+
+model ImportJobRow {
+  id               Int       @id @default(autoincrement())
+  job              ImportJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  jobId            Int
+  rowNumber        Int
+  rawData          Json
+  normalizedData   Json?
+  validationStatus RowStatus @default(PENDING)
+  errors           Json?
+  warnings         Json?
+  createdAt        DateTime  @default(now())
+  
+  @@unique([jobId, rowNumber])
+  @@index([jobId])
+  @@index([validationStatus])
+}
+
+model ExportTemplate {
+  id              Int       @id @default(autoincrement())
+  indicator       Indicator @relation(fields: [indicatorId], references: [id], onDelete: Cascade)
+  indicatorId     Int
+  name            String
+  description     String?
+  isDefault       Boolean   @default(false)
+  columnConfig    Json
+  filterConfig    Json?
+  formatConfig    Json?
+  createdBy       User      @relation(fields: [createdByUserId], references: [id])
+  createdByUserId Int
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  
+  @@index([indicatorId])
+  @@index([createdByUserId])
 }

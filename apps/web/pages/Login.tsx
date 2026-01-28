@@ -1,7 +1,8 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Eye, EyeOff, Facebook, Mail } from "lucide-react";
+import { Eye, EyeOff, Mail } from "lucide-react";
 import { api } from "../services/api";
+import Silk from "../components/ui/Silk";
 
 const GoogleIcon = () => (
   <svg className="w-5 h-5" viewBox="0 0 24 24">
@@ -48,14 +49,7 @@ export const Login: React.FC = () => {
 
   return (
     <div className="min-h-screen w-full flex items-center justify-center p-4 relative overflow-hidden bg-blue-900 font-sans">
-      {/* Background Abstract Shapes simulating the wave */}
-      <div className="absolute inset-0 z-0 pointer-events-none">
-        <div className="absolute top-[-20%] left-[-10%] w-[70%] h-[70%] bg-blue-600/40 rounded-full blur-[100px] transform rotate-12"></div>
-        <div className="absolute bottom-[-20%] right-[-10%] w-[70%] h-[70%] bg-cyan-500/30 rounded-full blur-[100px]"></div>
-        <div className="absolute top-[30%] right-[10%] w-[40%] h-[40%] bg-blue-500/30 rounded-full blur-[80px]"></div>
-        <div className="absolute inset-0 bg-gradient-to-br from-slate-900/80 via-blue-900/50 to-slate-900/80 mix-blend-multiply"></div>
-        <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-10 mix-blend-soft-light"></div>
-      </div>
+      <Silk speed={5} scale={1} color="#4d66ff" noiseIntensity={0.8} rotation={0} />
 
       <div className="relative z-10 w-full max-w-4xl bg-white rounded-[2rem] shadow-2xl overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-300">
         {/* Card Header with Logo */}
@@ -79,10 +73,6 @@ export const Login: React.FC = () => {
               <button className="w-full flex items-center justify-center gap-3 px-4 py-2.5 border border-slate-300 rounded-full text-slate-600 font-medium hover:bg-slate-50 transition-colors text-sm bg-white">
                 <GoogleIcon />
                 Continue with Google
-              </button>
-              <button className="w-full flex items-center justify-center gap-3 px-4 py-2.5 border border-slate-300 rounded-full text-slate-600 font-medium hover:bg-slate-50 transition-colors text-sm bg-white">
-                <Facebook className="w-5 h-5 text-blue-600" />
-                Continue with Facebook
               </button>
               <button className="w-full flex items-center justify-center gap-3 px-4 py-2.5 border border-slate-300 rounded-full text-slate-600 font-medium hover:bg-slate-50 transition-colors text-sm bg-white">
                 <Mail className="w-5 h-5 text-slate-600" />

@@ -1,4 +1,10 @@
-import { IndicatorDataType, NodeType, PrismaClient, ProjectStatus, Role } from "@prisma/client";
+import {
+  IndicatorDataType,
+  NodeType,
+  PrismaClient,
+  ProjectStatus,
+  Role,
+} from "@prisma/client";
 import { hashPassword } from "../src/utils/password";
 
 const prisma = new PrismaClient();
@@ -6,6 +12,87 @@ const prisma = new PrismaClient();
 // Static seed credentials so reseeding doesn't depend on .env
 const SEED_ADMIN_EMAIL = "admin@gmail.com";
 const SEED_ADMIN_PASSWORD = "admin1234";
+
+// Nepal's 77 districts for realistic disaggregation data
+const NEPAL_DISTRICTS = [
+  "Kathmandu",
+  "Lalitpur",
+  "Bhaktapur",
+  "Kavrepalanchok",
+  "Sindhupalchok",
+  "Dhading",
+  "Nuwakot",
+  "Rasuwa",
+  "Makwanpur",
+  "Chitwan",
+  "Pokhara",
+  "Kaski",
+  "Syangja",
+  "Tanahu",
+  "Lamjung",
+  "Gorkha",
+  "Manang",
+  "Mustang",
+  "Parbat",
+  "Baglung",
+  "Myagdi",
+  "Beni",
+  "Nawalparasi East",
+  "Nawalparasi West",
+  "Rupandehi",
+  "Kapilvastu",
+  "Palpa",
+  "Arghakhanchi",
+  "Gulmi",
+  "Pyuthan",
+  "Rolpa",
+  "Rukum East",
+  "Rukum West",
+  "Salyan",
+  "Dang",
+  "Banke",
+  "Bardiya",
+  "Surkhet",
+  "Dailekh",
+  "Jajarkot",
+  "Dolpa",
+  "Jumla",
+  "Kalikot",
+  "Mugu",
+  "Humla",
+  "Bajura",
+  "Bajhang",
+  "Achham",
+  "Doti",
+  "Kailali",
+  "Kanchanpur",
+  "Dadeldhura",
+  "Baitadi",
+  "Darchula",
+  "Mahottari",
+  "Dhanusha",
+  "Siraha",
+  "Saptari",
+  "Sunsari",
+  "Morang",
+  "Jhapa",
+  "Ilam",
+  "Panchthar",
+  "Taplejung",
+  "Sankhuwasabha",
+  "Terhathum",
+  "Dhankuta",
+  "Bhojpur",
+  "Solukhumbu",
+  "Okhaldhunga",
+  "Khotang",
+  "Udayapur",
+  "Sarlahi",
+  "Rautahat",
+  "Bara",
+  "Parsa",
+  "Sindhuli",
+];
 
 type NodeKey = "goal" | "outcome" | "output" | "activity";
 
@@ -23,13 +110,31 @@ type SeedProject = {
     dataType: IndicatorDataType;
     baselineValue?: number | null;
     targetValue?: number | null;
+    baselineCategory?: string | null;
+    targetCategory?: string | null;
     minValue?: number | null;
     maxValue?: number | null;
+    categories?: Array<{ id: string; label: string; color?: string }>;
+    categoryConfig?: {
+      allowMultiple?: boolean;
+      required?: boolean;
+      disaggregationDimensions?: Array<{
+        key: string;
+        label: string;
+        values: string[];
+      }>;
+      expectedReportingEntities?: number;
+    };
   }>;
 };
 
-const createLogframeAndIndicators = async (projectId: number, project: SeedProject) => {
-  const existingNode = await prisma.logframeNode.findFirst({ where: { projectId } });
+const createLogframeAndIndicators = async (
+  projectId: number,
+  project: SeedProject,
+) => {
+  const existingNode = await prisma.logframeNode.findFirst({
+    where: { projectId },
+  });
   if (!existingNode) {
     const goal = await prisma.logframeNode.create({
       data: {
@@ -37,8 +142,8 @@ const createLogframeAndIndicators = async (projectId: number, project: SeedProje
         type: NodeType.GOAL,
         title: project.nodes.goal.title,
         description: project.nodes.goal.description ?? null,
-        sortOrder: 1
-      }
+        sortOrder: 1,
+      },
     });
 
     const outcome = await prisma.logframeNode.create({
@@ -48,8 +153,8 @@ const createLogframeAndIndicators = async (projectId: number, project: SeedProje
         title: project.nodes.outcome.title,
         description: project.nodes.outcome.description ?? null,
         parentId: goal.id,
-        sortOrder: 2
-      }
+        sortOrder: 2,
+      },
     });
 
     const output = await prisma.logframeNode.create({
@@ -59,8 +164,8 @@ const createLogframeAndIndicators = async (projectId: number, project: SeedProje
         title: project.nodes.output.title,
         description: project.nodes.output.description ?? null,
         parentId: outcome.id,
-        sortOrder: 3
-      }
+        sortOrder: 3,
+      },
     });
 
     const activity = await prisma.logframeNode.create({
@@ -70,18 +175,20 @@ const createLogframeAndIndicators = async (projectId: number, project: SeedProje
         title: project.nodes.activity.title,
         description: project.nodes.activity.description ?? null,
         parentId: output.id,
-        sortOrder: 4
-      }
+        sortOrder: 4,
+      },
     });
 
     const nodeIds: Record<NodeKey, number> = {
       goal: goal.id,
       outcome: outcome.id,
       output: output.id,
-      activity: activity.id
+      activity: activity.id,
     };
 
-    const existingIndicators = await prisma.indicator.findFirst({ where: { projectId } });
+    const existingIndicators = await prisma.indicator.findFirst({
+      where: { projectId },
+    });
     if (!existingIndicators) {
       await prisma.indicator.createMany({
         data: project.indicators.map((indicator) => ({
@@ -91,285 +198,399 @@ const createLogframeAndIndicators = async (projectId: number, project: SeedProje
           unit: indicator.unit,
           baselineValue: indicator.baselineValue ?? null,
           targetValue: indicator.targetValue ?? null,
+          baselineCategory: indicator.baselineCategory ?? null,
+          targetCategory: indicator.targetCategory ?? null,
           dataType: indicator.dataType,
           minValue: indicator.minValue ?? null,
-          maxValue: indicator.maxValue ?? null
-        }))
+          maxValue: indicator.maxValue ?? null,
+          categories: indicator.categories as any,
+          categoryConfig: indicator.categoryConfig as any,
+        })),
       });
     }
 
     return;
   }
 
-  const existingIndicators = await prisma.indicator.findFirst({ where: { projectId } });
+  const existingIndicators = await prisma.indicator.findFirst({
+    where: { projectId },
+  });
   if (!existingIndicators) {
-    console.log(`Indicators missing for project ${project.name}, but logframe exists; add manually if needed.`);
+    console.log(
+      `Indicators missing for project ${project.name}, but logframe exists; add manually if needed.`,
+    );
   }
+};
+
+// Generate realistic submission data for 3+ months
+const generateSubmissionsForIndicator = async (
+  indicatorId: number,
+  indicator: SeedProject["indicators"][0],
+  userId: number,
+  startDate: Date,
+) => {
+  const submissions: any[] = [];
+
+  if (
+    indicator.dataType === IndicatorDataType.CATEGORICAL &&
+    indicator.categoryConfig?.disaggregationDimensions
+  ) {
+    const dimension = indicator.categoryConfig.disaggregationDimensions[0];
+    const categoryIds = indicator.categories?.map((c) => c.id) || [];
+
+    // Generate 4 months of data (October 2025 - January 2026)
+    for (let month = 0; month < 4; month++) {
+      const reportDate = new Date(startDate);
+      reportDate.setMonth(reportDate.getMonth() + month);
+      reportDate.setDate(15); // Mid-month reporting
+
+      // Each district reports (with some random missing for realism)
+      for (const districtValue of dimension.values) {
+        // 85% reporting compliance (some districts don't report each month)
+        if (Math.random() > 0.15) {
+          // Weight towards positive categories as time progresses
+          let categoryValue: string;
+          const progress = month / 3; // 0 to 1
+
+          if (indicator.name.includes("Infrastructure")) {
+            const rand = Math.random();
+            if (rand < 0.15 + progress * 0.4) categoryValue = "completed";
+            else if (rand < 0.5 + progress * 0.2) categoryValue = "ongoing";
+            else if (rand < 0.85) categoryValue = "delayed";
+            else categoryValue = "not_started";
+          } else if (indicator.name.includes("Health Facility")) {
+            const rand = Math.random();
+            if (rand < 0.25 + progress * 0.3)
+              categoryValue = "fully_operational";
+            else if (rand < 0.8) categoryValue = "partial";
+            else categoryValue = "non_operational";
+          } else {
+            // Agricultural extension
+            const rand = Math.random();
+            if (rand < 0.2 + progress * 0.25) categoryValue = "comprehensive";
+            else if (rand < 0.45 + progress * 0.2) categoryValue = "moderate";
+            else if (rand < 0.85) categoryValue = "limited";
+            else categoryValue = "none";
+          }
+
+          submissions.push({
+            indicatorId,
+            reportedAt: reportDate,
+            value: categoryValue,
+            categoryValue,
+            disaggregationKey: districtValue,
+            evidence: `Monthly report from ${districtValue} - ${reportDate.toLocaleString("default", { month: "long", year: "numeric" })}`,
+            createdByUserId: userId,
+          });
+        }
+      }
+    }
+  } else if (
+    indicator.dataType === IndicatorDataType.PERCENT ||
+    indicator.dataType === IndicatorDataType.NUMBER
+  ) {
+    // Generate monthly aggregate data for numeric indicators
+    for (let month = 0; month < 4; month++) {
+      const reportDate = new Date(startDate);
+      reportDate.setMonth(reportDate.getMonth() + month);
+      reportDate.setDate(15);
+
+      const baseline = indicator.baselineValue || 0;
+      const target = indicator.targetValue || 100;
+      const progress = month / 3;
+
+      // Linear interpolation with some randomness
+      const value =
+        baseline +
+        (target - baseline) * progress * 0.6 +
+        (Math.random() * 10 - 5);
+
+      submissions.push({
+        indicatorId,
+        reportedAt: reportDate,
+        value: value.toFixed(2),
+        evidence: `Aggregate monthly report - ${reportDate.toLocaleString("default", { month: "long", year: "numeric" })}`,
+        createdByUserId: userId,
+      });
+    }
+  }
+
+  return submissions;
 };
 
 const seedProjects: SeedProject[] = [
   {
-    name: "Clean Water Access Initiative",
-    description: "Improve access to safe water in Rural District A.",
+    name: "National Infrastructure Development Program",
+    description:
+      "Track infrastructure project status across all 77 districts of Nepal",
     status: ProjectStatus.ACTIVE,
-    startDate: new Date("2024-01-15"),
-    endDate: null,
+    startDate: new Date("2025-10-01"),
+    endDate: new Date("2026-09-30"),
     nodes: {
       goal: {
-        title: "Increase access to safe water in Rural District A",
-        description: "Expand reliable, safe water coverage for target communities."
+        title: "Complete infrastructure development nationwide",
+        description:
+          "Achieve 85% project completion rate across all districts.",
       },
       outcome: {
-        title: "Households with year-round access to safe water",
-        description: "Sustained household use of protected water sources."
+        title: "District-level infrastructure completion",
+        description: "Track monthly progress and compliance across districts.",
       },
       output: {
-        title: "Boreholes constructed and functional",
-        description: "Deliver functional boreholes that pass quality standards."
+        title: "Infrastructure projects operational",
+        description: "Monitor project status and quality standards.",
       },
       activity: {
-        title: "Train water committees for maintenance",
-        description: "Capacity-building for operation and maintenance."
-      }
+        title: "Monthly district reporting",
+        description: "Districts submit monthly status reports.",
+      },
     },
     indicators: [
       {
-        nodeKey: "goal",
-        name: "Population with access to safe water",
-        unit: "%",
-        dataType: IndicatorDataType.PERCENT,
-        baselineValue: 48,
-        targetValue: 80,
-        minValue: 0,
-        maxValue: 100
+        nodeKey: "outcome",
+        name: "District Infrastructure Project Status",
+        unit: "status",
+        dataType: IndicatorDataType.CATEGORICAL,
+        baselineCategory: "not_started",
+        targetCategory: "completed",
+        categories: [
+          { id: "completed", label: "Completed", color: "#10b981" },
+          { id: "ongoing", label: "Ongoing", color: "#f59e0b" },
+          { id: "delayed", label: "Delayed", color: "#ef4444" },
+          { id: "not_started", label: "Not Started", color: "#6b7280" },
+        ],
+        categoryConfig: {
+          allowMultiple: false,
+          required: true,
+          disaggregationDimensions: [
+            {
+              key: "district",
+              label: "District",
+              values: NEPAL_DISTRICTS,
+            },
+          ],
+          expectedReportingEntities: 77,
+        },
       },
       {
-        nodeKey: "outcome",
-        name: "Households using protected water sources",
-        unit: "households",
-        dataType: IndicatorDataType.NUMBER,
-        baselineValue: 1200,
-        targetValue: 3000,
+        nodeKey: "goal",
+        name: "Overall Completion Rate",
+        unit: "%",
+        dataType: IndicatorDataType.PERCENT,
+        baselineValue: 15,
+        targetValue: 85,
         minValue: 0,
-        maxValue: 5000
+        maxValue: 100,
       },
       {
         nodeKey: "output",
-        name: "Boreholes meet quality standard",
-        unit: "yes/no",
-        dataType: IndicatorDataType.BOOLEAN
+        name: "Projects Meeting Quality Standards",
+        unit: "projects",
+        dataType: IndicatorDataType.NUMBER,
+        baselineValue: 20,
+        targetValue: 65,
+        minValue: 0,
+        maxValue: 77,
       },
-      {
-        nodeKey: "activity",
-        name: "Maintenance training status",
-        unit: "status",
-        dataType: IndicatorDataType.TEXT
-      }
-    ]
+    ],
   },
   {
-    name: "Maternal Health Outreach",
-    description: "Reduce maternal mortality through outreach and facility care.",
+    name: "Community Health Program - Province 1",
+    description:
+      "Monitor health service delivery across 14 districts in Province 1",
     status: ProjectStatus.ACTIVE,
-    startDate: new Date("2024-03-01"),
-    endDate: null,
+    startDate: new Date("2025-09-01"),
+    endDate: new Date("2027-08-31"),
     nodes: {
       goal: {
-        title: "Reduce maternal mortality in District B",
-        description: "Improve maternal outcomes through quality care and outreach."
+        title: "Improve health outcomes in Province 1",
+        description: "Achieve 90% service coverage across all districts.",
       },
       outcome: {
-        title: "Increase facility-based deliveries",
-        description: "More deliveries attended by skilled staff in facilities."
+        title: "Health facility operational status",
+        description:
+          "Track monthly health facility operations and service delivery.",
       },
       output: {
-        title: "Community health workers trained",
-        description: "CHWs trained on maternal care and referral pathways."
+        title: "Healthcare workers trained",
+        description: "Train and deploy healthcare workers across districts.",
       },
       activity: {
-        title: "Monthly outreach sessions delivered",
-        description: "Community sessions delivered on maternal health services."
-      }
+        title: "Monthly service delivery reporting",
+        description: "Districts report on health service delivery monthly.",
+      },
     },
     indicators: [
       {
+        nodeKey: "outcome",
+        name: "Health Facility Service Status",
+        unit: "status",
+        dataType: IndicatorDataType.CATEGORICAL,
+        baselineCategory: "partial",
+        targetCategory: "fully_operational",
+        categories: [
+          {
+            id: "fully_operational",
+            label: "Fully Operational",
+            color: "#10b981",
+          },
+          { id: "partial", label: "Partial Services", color: "#f59e0b" },
+          { id: "non_operational", label: "Non-Operational", color: "#ef4444" },
+        ],
+        categoryConfig: {
+          allowMultiple: false,
+          required: true,
+          disaggregationDimensions: [
+            {
+              key: "district",
+              label: "District",
+              values: [
+                "Jhapa",
+                "Ilam",
+                "Panchthar",
+                "Taplejung",
+                "Sankhuwasabha",
+                "Terhathum",
+                "Dhankuta",
+                "Bhojpur",
+                "Solukhumbu",
+                "Okhaldhunga",
+                "Khotang",
+                "Udayapur",
+                "Morang",
+                "Sunsari",
+              ],
+            },
+          ],
+          expectedReportingEntities: 14,
+        },
+      },
+      {
         nodeKey: "goal",
-        name: "Skilled birth attendance rate",
+        name: "Service Coverage Rate",
         unit: "%",
         dataType: IndicatorDataType.PERCENT,
         baselineValue: 55,
-        targetValue: 85,
+        targetValue: 90,
         minValue: 0,
-        maxValue: 100
+        maxValue: 100,
       },
-      {
-        nodeKey: "outcome",
-        name: "Facility-based deliveries per year",
-        unit: "deliveries",
-        dataType: IndicatorDataType.NUMBER,
-        baselineValue: 900,
-        targetValue: 1800,
-        minValue: 0,
-        maxValue: 3000
-      },
-      {
-        nodeKey: "output",
-        name: "CHW training completed",
-        unit: "yes/no",
-        dataType: IndicatorDataType.BOOLEAN
-      },
-      {
-        nodeKey: "activity",
-        name: "Outreach session report status",
-        unit: "status",
-        dataType: IndicatorDataType.TEXT
-      }
-    ]
+    ],
   },
   {
-    name: "Education Access Boost",
-    description: "Increase enrollment and attendance in underserved communities.",
+    name: "Agricultural Productivity Enhancement - Terai Region",
+    description: "Track agricultural interventions across 16 Terai districts",
     status: ProjectStatus.ACTIVE,
-    startDate: new Date("2024-02-10"),
-    endDate: null,
+    startDate: new Date("2025-08-15"),
+    endDate: new Date("2028-08-14"),
     nodes: {
       goal: {
-        title: "Improve access to quality education in District C",
-        description: "Raise enrollment and reduce dropout rates for primary schools."
+        title: "Increase agricultural productivity in Terai",
+        description: "Double crop yields through improved practices.",
       },
       outcome: {
-        title: "Higher attendance rates among primary students",
-        description: "Students attend school regularly throughout the year."
+        title: "Farmer adoption of improved practices",
+        description: "Monitor adoption rates across districts.",
       },
       output: {
-        title: "Schools upgraded with learning materials",
-        description: "Learning kits and classroom materials delivered."
+        title: "Extension services operational",
+        description: "Track agricultural extension service delivery.",
       },
       activity: {
-        title: "Distribute learning kits",
-        description: "Quarterly distribution of learning kits to schools."
-      }
+        title: "Monthly agricultural extension reporting",
+        description:
+          "Districts submit monthly progress on extension activities.",
+      },
     },
     indicators: [
       {
+        nodeKey: "outcome",
+        name: "Extension Service Delivery Status",
+        unit: "status",
+        dataType: IndicatorDataType.CATEGORICAL,
+        baselineCategory: "limited",
+        targetCategory: "comprehensive",
+        categories: [
+          {
+            id: "comprehensive",
+            label: "Comprehensive Coverage",
+            color: "#10b981",
+          },
+          { id: "moderate", label: "Moderate Coverage", color: "#3b82f6" },
+          { id: "limited", label: "Limited Coverage", color: "#f59e0b" },
+          { id: "none", label: "No Services", color: "#ef4444" },
+        ],
+        categoryConfig: {
+          allowMultiple: false,
+          required: true,
+          disaggregationDimensions: [
+            {
+              key: "district",
+              label: "District",
+              values: [
+                "Jhapa",
+                "Morang",
+                "Sunsari",
+                "Saptari",
+                "Siraha",
+                "Dhanusha",
+                "Mahottari",
+                "Sarlahi",
+                "Rautahat",
+                "Bara",
+                "Parsa",
+                "Rupandehi",
+                "Kapilvastu",
+                "Banke",
+                "Bardiya",
+                "Kailali",
+              ],
+            },
+          ],
+          expectedReportingEntities: 16,
+        },
+      },
+      {
         nodeKey: "goal",
-        name: "Net enrollment rate",
+        name: "Average Crop Yield Increase",
         unit: "%",
         dataType: IndicatorDataType.PERCENT,
-        baselineValue: 62,
-        targetValue: 85,
-        minValue: 0,
-        maxValue: 100
+        baselineValue: 0,
+        targetValue: 100,
+        minValue: -20,
+        maxValue: 200,
       },
-      {
-        nodeKey: "outcome",
-        name: "Average attendance per term",
-        unit: "days",
-        dataType: IndicatorDataType.NUMBER,
-        baselineValue: 48,
-        targetValue: 60,
-        minValue: 0,
-        maxValue: 70
-      },
-      {
-        nodeKey: "output",
-        name: "Learning materials delivered",
-        unit: "yes/no",
-        dataType: IndicatorDataType.BOOLEAN
-      },
-      {
-        nodeKey: "activity",
-        name: "Distribution report status",
-        unit: "status",
-        dataType: IndicatorDataType.TEXT
-      }
-    ]
+    ],
   },
-  {
-    name: "Climate Smart Farming",
-    description: "Improve resilience through climate-smart agriculture practices.",
-    status: ProjectStatus.ACTIVE,
-    startDate: new Date("2024-04-05"),
-    endDate: null,
-    nodes: {
-      goal: {
-        title: "Increase climate resilience for smallholder farmers",
-        description: "Adopt climate-smart practices to stabilize yields."
-      },
-      outcome: {
-        title: "Farmers adopt climate-smart practices",
-        description: "Increased adoption of improved seeds and soil management."
-      },
-      output: {
-        title: "Demonstration plots established",
-        description: "Operational demo plots for training and learning."
-      },
-      activity: {
-        title: "Run farmer field schools",
-        description: "Monthly sessions on climate-smart methods."
-      }
-    },
-    indicators: [
-      {
-        nodeKey: "goal",
-        name: "Yield stability index",
-        unit: "index",
-        dataType: IndicatorDataType.NUMBER,
-        baselineValue: 0.6,
-        targetValue: 0.8,
-        minValue: 0,
-        maxValue: 1
-      },
-      {
-        nodeKey: "outcome",
-        name: "Farmers using improved seeds",
-        unit: "farmers",
-        dataType: IndicatorDataType.NUMBER,
-        baselineValue: 300,
-        targetValue: 900,
-        minValue: 0,
-        maxValue: 2000
-      },
-      {
-        nodeKey: "output",
-        name: "Demo plots meet standards",
-        unit: "yes/no",
-        dataType: IndicatorDataType.BOOLEAN
-      },
-      {
-        nodeKey: "activity",
-        name: "Field school session log",
-        unit: "status",
-        dataType: IndicatorDataType.TEXT
-      }
-    ]
-  }
 ];
 
 async function main() {
   const email = SEED_ADMIN_EMAIL;
   const password = SEED_ADMIN_PASSWORD;
 
-  const existing = await prisma.user.findUnique({ where: { email } });
-  if (!existing) {
+  // Get or create admin user
+  let adminUser = await prisma.user.findUnique({ where: { email } });
+  if (!adminUser) {
     const passwordHash = await hashPassword(password);
-    await prisma.user.create({
+    adminUser = await prisma.user.create({
       data: {
         email,
         passwordHash,
-        role: Role.ADMIN
-      }
+        role: Role.ADMIN,
+      },
     });
-    console.log(`Seeded admin user ${email} with provided password.`);
+    console.log(`✓ Seeded admin user ${email}`);
   } else {
-    console.log(`Admin already exists: ${email}`);
+    console.log(`✓ Admin user exists: ${email}`);
   }
 
+  // Seed projects with indicators and submissions
   for (const project of seedProjects) {
-    const existingProject = await prisma.project.findFirst({ where: { name: project.name } });
+    const existingProject = await prisma.project.findFirst({
+      where: { name: project.name },
+    });
     if (existingProject) {
-      await createLogframeAndIndicators(existingProject.id, project);
-      console.log(`Project already exists: ${project.name}`);
+      console.log(`⚠ Project already exists: ${project.name}`);
       continue;
     }
 
@@ -379,13 +600,59 @@ async function main() {
         description: project.description,
         status: project.status,
         startDate: project.startDate,
-        endDate: project.endDate ?? null
-      }
+        endDate: project.endDate ?? null,
+      },
     });
 
     await createLogframeAndIndicators(createdProject.id, project);
-    console.log(`Seeded project: ${project.name}`);
+    console.log(`✓ Created project: ${project.name}`);
+
+    // Generate submission data for all indicators
+    const indicators = await prisma.indicator.findMany({
+      where: { projectId: createdProject.id },
+    });
+
+    for (const indicator of indicators) {
+      const indicatorConfig = project.indicators.find(
+        (ind) => ind.name === indicator.name,
+      );
+
+      if (indicatorConfig) {
+        const submissions = await generateSubmissionsForIndicator(
+          indicator.id,
+          indicatorConfig,
+          adminUser.id,
+          project.startDate,
+        );
+
+        if (submissions.length > 0) {
+          // Use upsert to handle duplicates
+          for (const submission of submissions) {
+            await prisma.submission.upsert({
+              where: {
+                indicatorId_reportedAt_disaggregationKey: {
+                  indicatorId: submission.indicatorId,
+                  reportedAt: submission.reportedAt,
+                  disaggregationKey: submission.disaggregationKey || "",
+                },
+              },
+              create: submission,
+              update: submission,
+            });
+          }
+          console.log(
+            `  ✓ Generated ${submissions.length} submissions for "${indicator.name}"`,
+          );
+        }
+      }
+    }
   }
+
+  console.log("\n✅ Database seeding complete!");
+  console.log(`\n📊 Summary:`);
+  console.log(`   - Projects: ${seedProjects.length}`);
+  console.log(`   - Admin user: ${email} / ${password}`);
+  console.log(`   - Data period: October 2025 - January 2026 (4 months)`);
 }
 
 main()

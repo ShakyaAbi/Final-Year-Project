@@ -16,7 +16,8 @@ export const config = {
   jwtExpiresIn: process.env.JWT_EXPIRES_IN ?? '1h',
   rateLimitEnabled: (process.env.RATE_LIMIT_ENABLED ?? 'true') === 'true',
   rateLimitWindowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS ?? '900000', 10),
-  rateLimitMax: parseInt(process.env.RATE_LIMIT_MAX ?? '100', 10)
+  rateLimitMax: parseInt(process.env.RATE_LIMIT_MAX ?? '100', 10),
+  authDisabled: (process.env.AUTH_DISABLED ?? 'true') === 'true'
 };
 
 export const adminSeed = {

@@ -1,9 +1,9 @@
-import request from 'supertest';
-import app from '../src/app';
-import { prisma } from '../src/prisma';
-import { Role, IndicatorDataType } from '@prisma/client';
+import request from "supertest";
+import app from "../src/app";
+import { prisma } from "../src/prisma";
+import { Role, IndicatorDataType } from "@prisma/client";
 
-describe('Indicator Statistics', () => {
+describe("Indicator Statistics", () => {
   let authToken: string;
   let userId: number;
   let projectId: number;
@@ -13,31 +13,31 @@ describe('Indicator Statistics', () => {
   beforeAll(async () => {
     const user = await prisma.user.create({
       data: {
-        email: 'stats-test@test.com',
-        passwordHash: '$2b$10$validhash',
+        email: "stats-test@test.com",
+        passwordHash: "$2b$10$validhash",
         role: Role.ADMIN,
-        name: 'Stats Tester'
-      }
+        name: "Stats Tester",
+      },
     });
     userId = user.id;
 
     const loginRes = await request(app)
-      .post('/api/auth/login')
-      .send({ email: 'stats-test@test.com', password: 'password123' });
+      .post("/api/auth/login")
+      .send({ email: "stats-test@test.com", password: "password123" });
     authToken = loginRes.body.token;
 
     const project = await prisma.project.create({
-      data: { name: 'Stats Test Project', status: 'ACTIVE' }
+      data: { name: "Stats Test Project", status: "ACTIVE" },
     });
     projectId = project.id;
 
     const node = await prisma.logframeNode.create({
       data: {
         projectId,
-        type: 'OUTPUT',
-        title: 'Test Output',
-        sortOrder: 0
-      }
+        type: "OUTPUT",
+        title: "Test Output",
+        sortOrder: 0,
+      },
     });
     nodeId = node.id;
   });
@@ -47,22 +47,22 @@ describe('Indicator Statistics', () => {
     await prisma.indicator.deleteMany();
     await prisma.logframeNode.deleteMany();
     await prisma.project.deleteMany();
-    await prisma.user.deleteMany({ where: { email: 'stats-test@test.com' } });
+    await prisma.user.deleteMany({ where: { email: "stats-test@test.com" } });
     await prisma.$disconnect();
   });
 
-  describe('GET /indicators/:id/stats', () => {
+  describe("GET /indicators/:id/stats", () => {
     beforeEach(async () => {
       const indicator = await prisma.indicator.create({
         data: {
           projectId,
           logframeNodeId: nodeId,
-          name: 'Stats Indicator',
-          unit: 'units',
+          name: "Stats Indicator",
+          unit: "units",
           dataType: IndicatorDataType.NUMBER,
           baselineValue: 50,
-          targetValue: 100
-        }
+          targetValue: 100,
+        },
       });
       indicatorId = indicator.id;
 
@@ -74,8 +74,8 @@ describe('Indicator Statistics', () => {
             indicatorId,
             reportedAt: new Date(2025, 0, i + 1),
             value: String(values[i]),
-            createdByUserId: userId
-          }
+            createdByUserId: userId,
+          },
         });
       }
 
@@ -84,11 +84,11 @@ describe('Indicator Statistics', () => {
         data: {
           indicatorId,
           reportedAt: new Date(2025, 0, 8),
-          value: '200',
+          value: "200",
           createdByUserId: userId,
           isAnomaly: true,
-          anomalyReason: 'Outlier detected'
-        }
+          anomalyReason: "Outlier detected",
+        },
       });
     });
 
@@ -97,10 +97,10 @@ describe('Indicator Statistics', () => {
       await prisma.indicator.delete({ where: { id: indicatorId } });
     });
 
-    test('should return comprehensive statistics', async () => {
+    test("should return comprehensive statistics", async () => {
       const res = await request(app)
         .get(`/api/indicators/${indicatorId}/stats`)
-        .set('Authorization', `Bearer ${authToken}`);
+        .set("Authorization", `Bearer ${authToken}`);
 
       expect(res.status).toBe(200);
       expect(res.body.stats).toBeDefined();
@@ -116,44 +116,44 @@ describe('Indicator Statistics', () => {
       expect(res.body.stats.progressFromBaseline).toBeDefined();
     });
 
-    test('should calculate progress to target correctly', async () => {
+    test("should calculate progress to target correctly", async () => {
       const res = await request(app)
         .get(`/api/indicators/${indicatorId}/stats`)
-        .set('Authorization', `Bearer ${authToken}`);
+        .set("Authorization", `Bearer ${authToken}`);
 
       // Current value is 200, target is 100
       expect(res.body.stats.progressToTarget).toBeCloseTo(200, 0);
     });
 
-    test('should calculate progress from baseline correctly', async () => {
+    test("should calculate progress from baseline correctly", async () => {
       const res = await request(app)
         .get(`/api/indicators/${indicatorId}/stats`)
-        .set('Authorization', `Bearer ${authToken}`);
+        .set("Authorization", `Bearer ${authToken}`);
 
       // Current value is 200, baseline is 50
       expect(res.body.stats.progressFromBaseline).toBe(150);
     });
 
-    test('should detect increasing trend', async () => {
+    test("should detect increasing trend", async () => {
       const res = await request(app)
         .get(`/api/indicators/${indicatorId}/stats`)
-        .set('Authorization', `Bearer ${authToken}`);
+        .set("Authorization", `Bearer ${authToken}`);
 
-      expect(res.body.stats.trend).toBe('increasing');
+      expect(res.body.stats.trend).toBe("increasing");
     });
   });
 
-  describe('Trend Detection', () => {
-    test('should detect decreasing trend', async () => {
+  describe("Trend Detection", () => {
+    test("should detect decreasing trend", async () => {
       const indicator = await prisma.indicator.create({
         data: {
           projectId,
           logframeNodeId: nodeId,
-          name: 'Decreasing Trend Indicator',
-          unit: 'units',
+          name: "Decreasing Trend Indicator",
+          unit: "units",
           dataType: IndicatorDataType.NUMBER,
-          targetValue: 100
-        }
+          targetValue: 100,
+        },
       });
 
       const values = [100, 90, 80, 70, 60, 50];
@@ -163,32 +163,34 @@ describe('Indicator Statistics', () => {
             indicatorId: indicator.id,
             reportedAt: new Date(2025, 0, i + 1),
             value: String(values[i]),
-            createdByUserId: userId
-          }
+            createdByUserId: userId,
+          },
         });
       }
 
       const res = await request(app)
         .get(`/api/indicators/${indicator.id}/stats`)
-        .set('Authorization', `Bearer ${authToken}`);
+        .set("Authorization", `Bearer ${authToken}`);
 
       expect(res.status).toBe(200);
-      expect(res.body.stats.trend).toBe('decreasing');
+      expect(res.body.stats.trend).toBe("decreasing");
 
-      await prisma.submission.deleteMany({ where: { indicatorId: indicator.id } });
+      await prisma.submission.deleteMany({
+        where: { indicatorId: indicator.id },
+      });
       await prisma.indicator.delete({ where: { id: indicator.id } });
     });
 
-    test('should detect stable trend', async () => {
+    test("should detect stable trend", async () => {
       const indicator = await prisma.indicator.create({
         data: {
           projectId,
           logframeNodeId: nodeId,
-          name: 'Stable Trend Indicator',
-          unit: 'units',
+          name: "Stable Trend Indicator",
+          unit: "units",
           dataType: IndicatorDataType.NUMBER,
-          targetValue: 100
-        }
+          targetValue: 100,
+        },
       });
 
       const values = [50, 52, 48, 51, 49, 50, 51];
@@ -198,38 +200,40 @@ describe('Indicator Statistics', () => {
             indicatorId: indicator.id,
             reportedAt: new Date(2025, 0, i + 1),
             value: String(values[i]),
-            createdByUserId: userId
-          }
+            createdByUserId: userId,
+          },
         });
       }
 
       const res = await request(app)
         .get(`/api/indicators/${indicator.id}/stats`)
-        .set('Authorization', `Bearer ${authToken}`);
+        .set("Authorization", `Bearer ${authToken}`);
 
       expect(res.status).toBe(200);
-      expect(res.body.stats.trend).toBe('stable');
+      expect(res.body.stats.trend).toBe("stable");
 
-      await prisma.submission.deleteMany({ where: { indicatorId: indicator.id } });
+      await prisma.submission.deleteMany({
+        where: { indicatorId: indicator.id },
+      });
       await prisma.indicator.delete({ where: { id: indicator.id } });
     });
   });
 
-  describe('Empty Indicator Stats', () => {
-    test('should return null stats for indicator with no submissions', async () => {
+  describe("Empty Indicator Stats", () => {
+    test("should return null stats for indicator with no submissions", async () => {
       const indicator = await prisma.indicator.create({
         data: {
           projectId,
           logframeNodeId: nodeId,
-          name: 'Empty Indicator',
-          unit: 'units',
-          dataType: IndicatorDataType.NUMBER
-        }
+          name: "Empty Indicator",
+          unit: "units",
+          dataType: IndicatorDataType.NUMBER,
+        },
       });
 
       const res = await request(app)
         .get(`/api/indicators/${indicator.id}/stats`)
-        .set('Authorization', `Bearer ${authToken}`);
+        .set("Authorization", `Bearer ${authToken}`);
 
       expect(res.status).toBe(200);
       expect(res.body.stats).toBeNull();

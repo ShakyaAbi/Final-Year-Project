@@ -18,6 +18,7 @@ import {
   AlertCircle,
 } from "lucide-react";
 import { ActivityLog } from "../types";
+import Silk from "./ui/Silk";
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -70,14 +71,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
 
   return (
     <div className="h-screen w-full bg-blue-900 flex overflow-hidden font-sans p-2 lg:p-4 gap-4 relative">
-      {/* Background Abstract Shapes (Same as Login) */}
-      <div className="absolute inset-0 z-0 pointer-events-none">
-        <div className="absolute top-[-20%] left-[-10%] w-[70%] h-[70%] bg-blue-600/40 rounded-full blur-[100px] transform rotate-12"></div>
-        <div className="absolute bottom-[-20%] right-[-10%] w-[70%] h-[70%] bg-cyan-500/30 rounded-full blur-[100px]"></div>
-        <div className="absolute top-[30%] right-[10%] w-[40%] h-[40%] bg-blue-500/30 rounded-full blur-[80px]"></div>
-        <div className="absolute inset-0 bg-gradient-to-br from-slate-900/80 via-blue-900/50 to-slate-900/80 mix-blend-multiply"></div>
-        <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-10 mix-blend-soft-light"></div>
-      </div>
+      <Silk speed={5} scale={1} color="#4d66ff" noiseIntensity={0.8} rotation={0} />
 
       {/* Mobile Sidebar Overlay */}
       {sidebarOpen && (
@@ -92,7 +86,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
         className={`
         fixed inset-y-0 left-0 z-50 
         bg-slate-900/90 backdrop-blur-xl border-r border-white/10 lg:border-0 lg:bg-slate-900/40 lg:backdrop-blur-md lg:rounded-2xl lg:shadow-xl
-        transition-all duration-300 ease-in-out flex flex-col lg:h-full
+        transition-all duration-200 ease-out flex flex-col lg:h-full
         ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}
         lg:relative lg:translate-x-0
         ${isCollapsed ? "lg:w-20" : "lg:w-72"}
@@ -147,19 +141,6 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
             </button>
           )}
         </div>
-
-        {/* Expand Button if Collapsed */}
-        {isCollapsed && (
-          <div className="hidden lg:flex justify-center py-2 border-b border-white/5">
-            <button
-              className="text-slate-400 hover:text-white p-1"
-              onClick={() => setIsCollapsed(false)}
-              title="Expand"
-            >
-              <ChevronsRight className="w-4 h-4" />
-            </button>
-          </div>
-        )}
 
         {/* Navigation */}
         <nav className="flex-1 overflow-y-auto p-4 space-y-6 overflow-x-hidden">
