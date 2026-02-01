@@ -258,8 +258,14 @@ describe("Disaggregated Categorical Indicators - District Reporting", () => {
     expect(columns[1].csvHeader).toBe("Date");
     expect(columns[1].fieldName).toBe("reportedAt");
 
-    // Then category column
-    const categoryColumn = columns.find((c: any) => c.fieldName === "value");
+    // Then value and category columns
+    const valueColumn = columns.find((c: any) => c.fieldName === "value");
+    const categoryColumn = columns.find(
+      (c: any) => c.fieldName === "categoryValue",
+    );
+    expect(valueColumn).toBeDefined();
+    expect(valueColumn.csvHeader).toBe("Value");
+    expect(valueColumn.dataType).toBe("number");
     expect(categoryColumn).toBeDefined();
     expect(categoryColumn.csvHeader).toBe("Category");
     expect(categoryColumn.dataType).toBe("category");

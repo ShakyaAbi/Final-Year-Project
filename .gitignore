@@ -45,3 +45,6 @@ venv/
 .AGENTS.md
 .github/
 .gitignore
+AGENTS.md
+.gitignore
+APP_OVERVIEW.md

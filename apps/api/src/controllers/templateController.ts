@@ -163,7 +163,10 @@ export const downloadImportTemplateSample = asyncHandler(
     }
 
     // Generate CSV sample
-    const csv = templateService.generateSampleCSV(indicator, template.columnMapping as any);
+    const csv = templateService.generateSampleCSV(
+      indicator,
+      template.columnMapping as any,
+    );
 
     res.setHeader("Content-Type", "text/csv");
     res.setHeader(

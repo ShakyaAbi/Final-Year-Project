@@ -119,10 +119,15 @@ describe("Template Auto-Creation", () => {
     expect(templatesRes.status).toBe(200);
 
     const importTemplate = templatesRes.body.importTemplates[0];
-    const categoryColumn = importTemplate.columnMapping.columns.find(
+    const valueColumn = importTemplate.columnMapping.columns.find(
       (col: any) => col.fieldName === "value",
     );
+    const categoryColumn = importTemplate.columnMapping.columns.find(
+      (col: any) => col.fieldName === "categoryValue",
+    );
 
+    expect(valueColumn.csvHeader).toBe("Value");
+    expect(valueColumn.dataType).toBe("number");
     expect(categoryColumn.csvHeader).toBe("Category");
     expect(categoryColumn.dataType).toBe("category");
     expect(categoryColumn.transform.categoryMapping).toBeDefined();

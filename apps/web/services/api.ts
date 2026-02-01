@@ -129,17 +129,25 @@ const mapIndicatorType = (dataType?: string, unit?: string): IndicatorType => {
 };
 
 const mapIndicatorValue = (v: any, type: IndicatorType): IndicatorValue => {
-  const parsedValue =
+  const isNumericType =
     type === IndicatorType.NUMBER ||
     type === IndicatorType.PERCENTAGE ||
-    type === IndicatorType.CURRENCY
-      ? Number(v.value)
-      : v.value;
+    type === IndicatorType.CURRENCY ||
+    type === IndicatorType.CATEGORICAL;
+  const parsedValue = isNumericType ? Number(v.value) : v.value;
   const isAnomaly = v.isAnomaly === true;
+  const rawCategoryValue =
+    v.categoryValue ??
+    (type === IndicatorType.CATEGORICAL &&
+    typeof v.value === "string" &&
+    !Number.isFinite(Number(v.value))
+      ? v.value
+      : undefined);
   return {
     id: String(v.id),
     date: v.reportedAt ? new Date(v.reportedAt).toISOString() : "",
     value: Number.isFinite(parsedValue) ? parsedValue : v.value,
+    categoryValue: rawCategoryValue ?? undefined,
     isAnomaly,
     anomalyReason: isAnomaly ? (v.anomalyReason ?? undefined) : undefined,
     evidence: v.evidence ?? undefined,
@@ -408,7 +416,12 @@ export const api = {
   },
   createSubmission: async (
     indicatorId: string,
-    payload: { reportedAt: string; value: any; evidence?: string },
+    payload: {
+      reportedAt: string;
+      value: any;
+      evidence?: string;
+      categoryValue?: string;
+    },
   ) =>
     request(`/indicators/${indicatorId}/submissions`, {
       method: "POST",
@@ -416,6 +429,7 @@ export const api = {
         reportedAt: payload.reportedAt,
         value: payload.value,
         evidence: payload.evidence ?? null,
+        categoryValue: payload.categoryValue ?? null,
       },
     }),
   addLogframeNode: async (

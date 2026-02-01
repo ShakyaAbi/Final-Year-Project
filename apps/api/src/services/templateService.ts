@@ -99,6 +99,8 @@ export class TemplateService {
         if (indicator.categories) {
           const categories = indicator.categories as any;
           const categoryMapping: any = {};
+          const categoryConfig = indicator.categoryConfig as any;
+          const categoryRequired = categoryConfig?.required ?? true;
 
           categories.forEach((cat: any) => {
             categoryMapping[cat.label] = cat.id;
@@ -108,10 +110,21 @@ export class TemplateService {
           });
 
           columns.push({
-            csvHeader: "Category",
+            csvHeader: "Value",
             fieldName: "value",
-            dataType: "category",
+            dataType: "number",
             required: true,
+            transform: {
+              trim: true,
+              removeCommas: true,
+            },
+          } as any);
+
+          columns.push({
+            csvHeader: "Category",
+            fieldName: "categoryValue",
+            dataType: "category",
+            required: categoryRequired,
             transform: {
               categoryMapping,
               caseSensitive: false,
@@ -208,13 +221,21 @@ export class TemplateService {
     // Add value column based on indicator type
     switch (indicator.dataType) {
       case "CATEGORICAL":
-        columns.push({
-          field: "value",
-          header: "Category",
-          showLabel: true,
-          showCategoryLabel: true,
-          width: 20,
-        } as any);
+        columns.push(
+          {
+            field: "value",
+            header: "Value",
+            format: "2",
+            width: 10,
+          } as any,
+          {
+            field: "categoryValue",
+            header: "Category",
+            showLabel: true,
+            showCategoryLabel: true,
+            width: 20,
+          } as any,
+        );
         break;
 
       case "BOOLEAN":
@@ -338,8 +359,8 @@ export class TemplateService {
               indicator.dataType === "CATEGORICAL" &&
               categories?.length > 0
             ) {
-              const category = categories[i % categories.length];
-              row.push(category.label);
+              const baseValue = indicator.baselineValue || 0;
+              row.push(String(baseValue + i * 10));
             } else if (indicator.dataType === "BOOLEAN") {
               row.push(i % 2 === 0 ? "true" : "false");
             } else if (
@@ -350,6 +371,15 @@ export class TemplateService {
               row.push(String(baseValue + i * 10));
             } else {
               row.push(`Sample value ${i + 1}`);
+            }
+            break;
+          case "categoryValue":
+            if (
+              indicator.dataType === "CATEGORICAL" &&
+              categories?.length > 0
+            ) {
+              const category = categories[i % categories.length];
+              row.push(category.label);
             }
             break;
 

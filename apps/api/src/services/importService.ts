@@ -342,8 +342,13 @@ export class ImportService {
         normalized[colDef.fieldName] = parseFloat(value);
       } else if (colDef.dataType === "category") {
         const categoryMap = transform.categoryMapping || {};
-        normalized[colDef.fieldName] =
-          categoryMap[value] || value.toLowerCase();
+        const trimmed = String(value).trim();
+        const isCaseSensitive = transform.caseSensitive === true;
+        const lookupKey = isCaseSensitive ? trimmed : trimmed.toLowerCase();
+        const mapped =
+          categoryMap[trimmed] ??
+          (!isCaseSensitive ? categoryMap[lookupKey] : undefined);
+        normalized[colDef.fieldName] = mapped ?? trimmed;
       } else {
         normalized[colDef.fieldName] = value;
       }

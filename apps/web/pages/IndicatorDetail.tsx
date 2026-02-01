@@ -106,23 +106,32 @@ export const IndicatorDetail: React.FC = () => {
     e.preventDefault();
     if (!indicator) return;
 
-    // For CATEGORICAL, check selectedCategories; for others, check entryValue
-    if (indicator.type === IndicatorType.CATEGORICAL) {
-      if (selectedCategories.length === 0) return;
-    } else if (entryValue === "") return;
+    const hasCategories = !!indicator.categories?.length;
+    const categoryRequired = indicator.categoryConfig?.required === true;
+
+    if (entryValue === "") return;
+    if (
+      hasCategories &&
+      categoryRequired &&
+      selectedCategories.length === 0
+    ) {
+      return;
+    }
 
     setSaving(true);
     setError(null);
 
-    // For CATEGORICAL: value is the category ID(s), for others: value is numeric/text
+    // Value is numeric/text; categories are stored separately when used
     const valuePayload =
-      indicator.type === IndicatorType.CATEGORICAL
-        ? selectedCategories.join(",")
-        : indicator.type === IndicatorType.NUMBER ||
+      indicator.type === IndicatorType.NUMBER ||
             indicator.type === IndicatorType.PERCENTAGE ||
             indicator.type === IndicatorType.CURRENCY
           ? Number(entryValue)
           : entryValue;
+    const categoryValuePayload =
+      hasCategories && selectedCategories.length > 0
+        ? selectedCategories.join(",")
+        : undefined;
 
     const finalEvidence = attachedFile
       ? `[Attached] ${attachedFile.name}`
@@ -134,6 +143,7 @@ export const IndicatorDetail: React.FC = () => {
         reportedAt: entryDate,
         value: valuePayload,
         evidence: finalEvidence,
+        categoryValue: categoryValuePayload,
       });
 
       const submissions = await api.getIndicatorSubmissions(indicator.id);
@@ -196,8 +206,8 @@ export const IndicatorDetail: React.FC = () => {
 
   // Helper to format category values for display
   const formatCategoryValue = (value: string | number | undefined): string => {
-    if (indicator.type !== IndicatorType.CATEGORICAL || !indicator.categories) {
-      return String(value);
+    if (!indicator.categories || indicator.categories.length === 0) {
+      return String(value ?? "");
     }
 
     if (value === undefined || value === null || value === "") return "";
@@ -215,13 +225,10 @@ export const IndicatorDetail: React.FC = () => {
 
   const formatCategoricalDisplay = (
     value: string | number | undefined,
+    categoryValue?: string,
   ): string => {
-    if (!indicator || indicator.type !== IndicatorType.CATEGORICAL) {
-      return String(value ?? "N/A");
-    }
-    // For categorical indicators, value contains the category ID(s)
-    const label = formatCategoryValue(value);
-    return label || String(value ?? "N/A");
+    const label = formatCategoryValue(categoryValue);
+    return label ? `${value ?? "N/A"} (${label})` : String(value ?? "N/A");
   };
 
   const inferAnomalyReason = (
@@ -354,7 +361,11 @@ export const IndicatorDetail: React.FC = () => {
                             {formatDate(a.date)}
                           </span>
                           <span className="text-slate-500">
-                            Category: {formatCategoricalDisplay(a.value)}
+                            Category:{" "}
+                            {formatCategoricalDisplay(
+                              a.value,
+                              a.categoryValue ?? undefined,
+                            )}
                           </span>
                         </div>
                         <span className="text-red-600 font-medium text-xs bg-red-50 px-2 py-1 rounded-full border border-red-100">
@@ -451,7 +462,10 @@ export const IndicatorDetail: React.FC = () => {
                             {formatDate(row.date)}
                           </td>
                           <td className="px-6 py-4 font-mono text-slate-700">
-                            {formatCategoricalDisplay(row.value)}
+                            {formatCategoricalDisplay(
+                              row.value,
+                              row.categoryValue ?? undefined,
+                            )}
                             <span className="text-xs text-slate-400 ml-1">
                               {indicator.unit}
                             </span>
@@ -562,21 +576,24 @@ export const IndicatorDetail: React.FC = () => {
                   type={
                     indicator.type === IndicatorType.NUMBER ||
                     indicator.type === IndicatorType.PERCENTAGE ||
-                    indicator.type === IndicatorType.CURRENCY
+                    indicator.type === IndicatorType.CURRENCY ||
+                    indicator.type === IndicatorType.CATEGORICAL
                       ? "number"
                       : "text"
                   }
                   step={
                     indicator.type === IndicatorType.NUMBER ||
                     indicator.type === IndicatorType.PERCENTAGE ||
-                    indicator.type === IndicatorType.CURRENCY
+                    indicator.type === IndicatorType.CURRENCY ||
+                    indicator.type === IndicatorType.CATEGORICAL
                       ? "0.01"
                       : undefined
                   }
                   placeholder={
                     indicator.type === IndicatorType.NUMBER ||
                     indicator.type === IndicatorType.PERCENTAGE ||
-                    indicator.type === IndicatorType.CURRENCY
+                    indicator.type === IndicatorType.CURRENCY ||
+                    indicator.type === IndicatorType.CATEGORICAL
                       ? "e.g. 45"
                       : "e.g. Completed"
                   }
@@ -586,7 +603,8 @@ export const IndicatorDetail: React.FC = () => {
                 />
                 {(indicator.type === IndicatorType.NUMBER ||
                   indicator.type === IndicatorType.PERCENTAGE ||
-                  indicator.type === IndicatorType.CURRENCY) && (
+                  indicator.type === IndicatorType.CURRENCY ||
+                  indicator.type === IndicatorType.CATEGORICAL) && (
                   <p className="text-xs text-slate-400 mt-1">
                     Expected range: {indicator.minExpected} -{" "}
                     {indicator.maxExpected}
@@ -594,13 +612,14 @@ export const IndicatorDetail: React.FC = () => {
                 )}
               </div>
 
-              {/* Category Selection (for categorical indicators only) */}
-              {indicator.type === IndicatorType.CATEGORICAL &&
-                indicator.categories &&
-                indicator.categories.length > 0 && (
+              {/* Category Selection */}
+              {indicator.categories && indicator.categories.length > 0 && (
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-2">
-                      Category
+                      Category{" "}
+                      {indicator.categoryConfig?.required && (
+                        <span className="text-red-500">*</span>
+                      )}
                     </label>
                     <div className="space-y-1.5 max-h-40 overflow-y-auto border border-slate-200 rounded-md p-2 bg-slate-50">
                       {indicator.categories.map((cat: CategoryDefinition) => {
@@ -726,10 +745,19 @@ export const IndicatorDetail: React.FC = () => {
               <div className="flex justify-between">
                 <dt className="text-slate-500">Target</dt>
                 <dd className="font-medium text-slate-900">
-                  {indicator.type === IndicatorType.CATEGORICAL &&
-                  indicator.targetCategory
-                    ? formatCategoryValue(indicator.targetCategory)
-                    : indicator.target}
+                  {indicator.type === IndicatorType.CATEGORICAL ? (
+                    indicator.targetCategory ? (
+                      formatCategoryValue(indicator.targetCategory)
+                    ) : indicator.target === undefined ||
+                      indicator.target === null ||
+                      indicator.target === "" ? (
+                      "No target set"
+                    ) : (
+                      indicator.target
+                    )
+                  ) : (
+                    indicator.target
+                  )}
                 </dd>
               </div>
               <div className="flex justify-between">

@@ -273,10 +273,11 @@ const generateSubmissionsForIndicator = async (
             else categoryValue = "none";
           }
 
+          const numericValue = (Math.random() * 100).toFixed(2);
           submissions.push({
             indicatorId,
             reportedAt: reportDate,
-            value: categoryValue,
+            value: numericValue,
             categoryValue,
             disaggregationKey: districtValue,
             evidence: `Monthly report from ${districtValue} - ${reportDate.toLocaleString("default", { month: "long", year: "numeric" })}`,
@@ -313,6 +314,26 @@ const generateSubmissionsForIndicator = async (
         createdByUserId: userId,
       });
     }
+  } else if (indicator.dataType === IndicatorDataType.CATEGORICAL) {
+    // At least 1 month of data for categorical indicators without disaggregation
+    const reportDate = new Date(startDate);
+    reportDate.setDate(15);
+    const categories = indicator.categories || [];
+    const fallbackCategory = categories.length > 0 ? categories[0].id : "other";
+    const categoryValue =
+      categories.length > 0
+        ? categories[Math.floor(Math.random() * categories.length)].id
+        : fallbackCategory;
+    const numericValue = (Math.random() * 100).toFixed(2);
+
+    submissions.push({
+      indicatorId,
+      reportedAt: reportDate,
+      value: numericValue,
+      categoryValue,
+      evidence: `Monthly report - ${reportDate.toLocaleString("default", { month: "long", year: "numeric" })}`,
+      createdByUserId: userId,
+    });
   }
 
   return submissions;

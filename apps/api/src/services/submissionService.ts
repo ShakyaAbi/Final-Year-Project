@@ -93,15 +93,17 @@ const normalizeValue = (
       return String(value);
     }
     case "CATEGORICAL": {
-      // CATEGORICAL indicators store category ID(s) in the value field
-      if (typeof value !== "string" || value.trim() === "") {
-        throw new BadRequestError(
-          "INVALID_VALUE",
-          "Categorical indicators require a category selection",
-        );
+      const num = Number(value);
+      if (!Number.isFinite(num)) {
+        throw new BadRequestError("INVALID_VALUE", "Value must be numeric");
       }
-      // Value is the category ID (or comma-separated IDs for multi-select)
-      return String(value).trim();
+      if (min !== null && min !== undefined && num < min) {
+        throw new BadRequestError("VALUE_TOO_LOW", `Value must be >= ${min}`);
+      }
+      if (max !== null && max !== undefined && num > max) {
+        throw new BadRequestError("VALUE_TOO_HIGH", `Value must be <= ${max}`);
+      }
+      return num.toString();
     }
     default:
       throw new BadRequestError("INVALID_VALUE", "Unsupported data type");
@@ -374,22 +376,30 @@ export const createSubmission = async (
     validateDisaggregationKey(data.disaggregationKey, categoryConfig);
   }
 
-  // For CATEGORICAL indicators: validate that value is a valid category ID
-  if (indicator.dataType === "CATEGORICAL") {
-    if (!categories || categories.length === 0) {
-      throw new BadRequestError(
-        "NO_CATEGORIES",
-        "Indicator has no categories defined",
+  let normalizedCategoryValue: string | null = null;
+  if (categories && categories.length > 0) {
+    const config = categoryConfig || { required: false };
+    const rawCategoryValue =
+      data.categoryValue ?? (indicator.dataType === "CATEGORICAL" ? "" : null);
+    const shouldValidate =
+      indicator.dataType === "CATEGORICAL" ||
+      config.required === true ||
+      (rawCategoryValue !== null && rawCategoryValue !== undefined);
+
+    if (shouldValidate) {
+      const selectedIds = validateCategoricalValue(
+        String(rawCategoryValue ?? ""),
+        categories,
+        config,
       );
+      normalizedCategoryValue =
+        selectedIds.length > 0 ? formatCategoricalValue(selectedIds) : null;
     }
-    const config = categoryConfig || { required: true };
-    // Validate that the value contains valid category ID(s)
-    const selectedIds = validateCategoricalValue(
-      String(data.value),
-      categories,
-      config,
+  } else if (indicator.dataType === "CATEGORICAL") {
+    throw new BadRequestError(
+      "NO_CATEGORIES",
+      "Indicator has no categories defined",
     );
-    // Value is already set to the category ID(s), no need to modify
   }
 
   // Normalize value - always required, including for CATEGORICAL (numeric)
@@ -429,7 +439,7 @@ export const createSubmission = async (
     indicatorId,
     reportedAt: reportedAt!,
     value: normalizedValue,
-    categoryValue: null, // Category is now stored in value field
+    categoryValue: normalizedCategoryValue,
     disaggregationKey: data.disaggregationKey ?? null,
     evidence: data.evidence ?? null,
     createdByUserId: userId,

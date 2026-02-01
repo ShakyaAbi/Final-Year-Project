@@ -127,8 +127,8 @@ export const DataEntry: React.FC = () => {
     value: string | number | undefined,
     indicator: Indicator,
   ): string => {
-    if (indicator.type !== IndicatorType.CATEGORICAL || !indicator.categories) {
-      return String(value);
+    if (!indicator.categories || indicator.categories.length === 0) {
+      return String(value ?? "");
     }
     if (value === undefined || value === null || value === "") return "";
 
@@ -149,7 +149,6 @@ export const DataEntry: React.FC = () => {
     categoryValue: string | undefined,
     indicator: Indicator,
   ): string => {
-    if (indicator.type !== IndicatorType.CATEGORICAL) return String(value);
     const label = formatCategoryValue(categoryValue, indicator);
     return label ? `${value} (${label})` : String(value);
   };
@@ -235,14 +234,22 @@ export const DataEntry: React.FC = () => {
   const handleSubmit = async (id: string) => {
     const entry = entries[id];
     const indicator = indicators.find((item) => item.id === id);
+    const hasCategories = !!indicator?.categories?.length;
+    const categoryRequired = indicator?.categoryConfig?.required === true;
 
     // For CATEGORICAL: check selectedCategories, for others: check value
     const hasValue =
-      indicator?.type === IndicatorType.CATEGORICAL
-        ? (entry.selectedCategories || []).length > 0
+      indicator?.type === IndicatorType.BOOLEAN ||
+      indicator?.type === IndicatorType.TEXT
+        ? entry.value !== ""
         : entry.value !== "";
 
-    if (!hasValue) return;
+    const hasCategory =
+      !hasCategories ||
+      (entry.selectedCategories || []).length > 0 ||
+      !categoryRequired;
+
+    if (!hasValue || !hasCategory) return;
 
     setEntries((prev) => ({
       ...prev,
@@ -258,18 +265,23 @@ export const DataEntry: React.FC = () => {
     // For CATEGORICAL: value is the category ID(s), for others: value is numeric/text
     const valuePayload =
       indicator?.type === IndicatorType.CATEGORICAL
-        ? (entry.selectedCategories || []).join(",")
+        ? Number(entry.value)
         : indicator?.type === IndicatorType.NUMBER ||
             indicator?.type === IndicatorType.PERCENTAGE ||
             indicator?.type === IndicatorType.CURRENCY
           ? Number(entry.value)
           : entry.value;
+    const categoryValuePayload =
+      hasCategories && (entry.selectedCategories || []).length > 0
+        ? (entry.selectedCategories || []).join(",")
+        : undefined;
 
     try {
       await api.createSubmission(id, {
         reportedAt: entry.date,
         value: valuePayload,
         evidence: finalEvidence,
+        categoryValue: categoryValuePayload,
       });
     } catch (err: any) {
       setEntries((prev) => ({
@@ -290,6 +302,10 @@ export const DataEntry: React.FC = () => {
           // Parse value same way the service does for consistency in UI
           const numVal = parseFloat(entry.value);
           const finalValue = !isNaN(numVal) ? numVal : entry.value;
+          const categoryValue =
+            (entry.selectedCategories || []).length > 0
+              ? entry.selectedCategories.join(",")
+              : undefined;
 
           const newEntry: IndicatorValue = {
             id: `temp-${Date.now()}`,
@@ -496,14 +512,43 @@ export const DataEntry: React.FC = () => {
                       />
                     </div>
 
-                    {/* Category Selection (for categorical indicators only) */}
-                    {indicator.type === IndicatorType.CATEGORICAL ? (
-                      <div className="md:col-span-3">
-                        <label className="block text-xs font-semibold text-slate-500 mb-1.5">
-                          Category <span className="text-red-500">*</span>
-                        </label>
-                        {indicator.categories &&
-                        indicator.categories.length > 0 ? (
+                    {/* Value input */}
+                    <div className="md:col-span-2">
+                      <label className="block text-xs font-semibold text-slate-500 mb-1.5">
+                        Value ({indicator.unit || "Count"})
+                      </label>
+
+                      <input
+                        type={getInputType(indicator.type)}
+                        placeholder="0.00"
+                        className="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm font-medium focus:ring-2 focus:ring-blue-500 outline-none bg-white text-slate-900"
+                        value={entry.value}
+                        onChange={(e) =>
+                          handleEntryChange(
+                            indicator.id,
+                            "value",
+                            e.target.value,
+                          )
+                        }
+                      />
+
+                      {entry.error && (
+                        <p className="text-xs text-red-600 mt-1">
+                          {entry.error}
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Category Selection */}
+                    {indicator.categories &&
+                      indicator.categories.length > 0 && (
+                        <div className="md:col-span-3">
+                          <label className="block text-xs font-semibold text-slate-500 mb-1.5">
+                            Category{" "}
+                            {indicator.categoryConfig?.required && (
+                              <span className="text-red-500">*</span>
+                            )}
+                          </label>
                           <div className="space-y-1.5 max-h-32 overflow-y-auto border border-slate-200 rounded-lg p-2 bg-slate-50">
                             {indicator.categories.map(
                               (cat: CategoryDefinition) => {
@@ -556,45 +601,8 @@ export const DataEntry: React.FC = () => {
                               },
                             )}
                           </div>
-                        ) : (
-                          <p className="text-xs text-slate-500 italic p-2 border border-slate-200 rounded-lg">
-                            No categories defined
-                          </p>
-                        )}
-                        {entry.error && (
-                          <p className="text-xs text-red-600 mt-1">
-                            {entry.error}
-                          </p>
-                        )}
-                      </div>
-                    ) : (
-                      // Value input for non-categorical indicators
-                      <div className="md:col-span-2">
-                        <label className="block text-xs font-semibold text-slate-500 mb-1.5">
-                          Value ({indicator.unit || "Count"})
-                        </label>
-
-                        <input
-                          type={getInputType(indicator.type)}
-                          placeholder="0.00"
-                          className="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm font-medium focus:ring-2 focus:ring-blue-500 outline-none bg-white text-slate-900"
-                          value={entry.value}
-                          onChange={(e) =>
-                            handleEntryChange(
-                              indicator.id,
-                              "value",
-                              e.target.value,
-                            )
-                          }
-                        />
-
-                        {entry.error && (
-                          <p className="text-xs text-red-600 mt-1">
-                            {entry.error}
-                          </p>
-                        )}
-                      </div>
-                    )}
+                        </div>
+                      )}
 
                     {/* Verification Evidence (Drag & Drop) */}
                     <div className="md:col-span-6">
@@ -698,6 +706,10 @@ export const DataEntry: React.FC = () => {
                         }`}
                         disabled={
                           !entry.value ||
+                          (indicator.categoryConfig?.required === true &&
+                            indicator.categories &&
+                            indicator.categories.length > 0 &&
+                            (entry.selectedCategories || []).length === 0) ||
                           entry.status === "saving" ||
                           entry.status === "saved"
                         }

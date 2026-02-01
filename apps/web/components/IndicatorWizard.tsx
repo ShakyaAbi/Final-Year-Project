@@ -279,6 +279,9 @@ export const IndicatorWizard: React.FC<IndicatorWizardProps> = ({
       case 2:
         return true; // Type always has default
       case 3:
+        if (formData.type === IndicatorType.CATEGORICAL) {
+          return true;
+        }
         return !!formData.target || formData.target === 0;
       case 4:
         return !!formData.frequency;
@@ -841,7 +844,10 @@ export const IndicatorWizard: React.FC<IndicatorWizardProps> = ({
             {/* Conditional Input for Target based on Type */}
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">
-                Target Value <span className="text-red-500">*</span>
+                Target Value{" "}
+                {formData.type !== IndicatorType.CATEGORICAL && (
+                  <span className="text-red-500">*</span>
+                )}
               </label>
 
               {formData.type === IndicatorType.BOOLEAN ? (
@@ -864,10 +870,14 @@ export const IndicatorWizard: React.FC<IndicatorWizardProps> = ({
               ) : (
                 <input
                   type="number"
-                  value={formData.target as number}
-                  onChange={(e) =>
-                    updateField("target", parseFloat(e.target.value))
-                  }
+                  value={formData.target ?? ""}
+                  onChange={(e) => {
+                    const raw = e.target.value;
+                    updateField(
+                      "target",
+                      raw === "" ? undefined : parseFloat(raw),
+                    );
+                  }}
                   className="w-full px-3 py-2 border border-slate-300 rounded-md text-lg font-semibold bg-white text-slate-900"
                 />
               )}

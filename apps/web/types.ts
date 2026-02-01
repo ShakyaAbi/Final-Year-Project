@@ -45,7 +45,8 @@ export interface Project {
 export interface IndicatorValue {
   id: string;
   date: string;
-  value: number | string; // For categorical: stores category ID(s), for others: numeric/text value
+  value: number | string;
+  categoryValue?: string; // Comma-separated category IDs when categorization is used
   isAnomaly: boolean;
   anomalyReason?: string;
   comment?: string;
