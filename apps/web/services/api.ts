@@ -145,12 +145,23 @@ const mapIndicatorValue = (v: any, type: IndicatorType): IndicatorValue => {
       : undefined);
   return {
     id: String(v.id),
+    indicatorId: v.indicatorId ? String(v.indicatorId) : undefined,
     date: v.reportedAt ? new Date(v.reportedAt).toISOString() : "",
     value: Number.isFinite(parsedValue) ? parsedValue : v.value,
     categoryValue: rawCategoryValue ?? undefined,
     isAnomaly,
     anomalyReason: isAnomaly ? (v.anomalyReason ?? undefined) : undefined,
+    anomalyScore: v.anomalyScore ?? undefined,
+    anomalyThreshold: v.anomalyThreshold ?? undefined,
+    anomalyMethod: v.anomalyMethod ?? undefined,
+    anomalyMeta: v.anomalyMeta ?? undefined,
     evidence: v.evidence ?? undefined,
+    createdByUserId: v.createdByUserId ? String(v.createdByUserId) : undefined,
+    createdAt: v.createdAt ? new Date(v.createdAt).toISOString() : undefined,
+    deletedAt: v.deletedAt ? new Date(v.deletedAt).toISOString() : undefined,
+    deletedByUserId: v.deletedByUserId ? String(v.deletedByUserId) : undefined,
+    updatedAt: v.updatedAt ? new Date(v.updatedAt).toISOString() : undefined,
+    updatedByUserId: v.updatedByUserId ? String(v.updatedByUserId) : undefined,
   };
 };
 
@@ -160,6 +171,11 @@ const mapIndicator = (
 ): Indicator => {
   const type = mapIndicatorType(indicator.dataType, indicator.unit);
   const isText = type === IndicatorType.TEXT;
+  const isCategorical = type === IndicatorType.CATEGORICAL;
+  const reportingFrequency =
+    indicator.validationConfig?.reportingFrequency ||
+    indicator.frequency ||
+    "WEEKLY";
   return {
     id: String(indicator.id),
     projectId: String(indicator.projectId),
@@ -169,8 +185,14 @@ const mapIndicator = (
     status: indicator.status ?? "Active",
     code: indicator.code ?? undefined,
     type,
-    target: indicator.targetValue ?? (isText ? "" : 0),
-    baseline: indicator.baselineValue ?? (isText ? "" : 0),
+    target: isCategorical
+      ? (indicator.targetCategory ?? "")
+      : indicator.targetValue ?? (isText ? "" : 0),
+    baseline: isCategorical
+      ? (indicator.baselineCategory ?? "")
+      : indicator.baselineValue ?? (isText ? "" : 0),
+    baselineCategory: indicator.baselineCategory ?? undefined,
+    targetCategory: indicator.targetCategory ?? undefined,
     minExpected: indicator.minValue ?? undefined,
     maxExpected: indicator.maxValue ?? undefined,
     anomalyConfig: indicator.anomalyConfig ?? undefined,
@@ -178,7 +200,12 @@ const mapIndicator = (
     decimals: indicator.decimals ?? undefined,
     categories: indicator.categories ?? undefined,
     categoryConfig: indicator.categoryConfig ?? undefined,
-    frequency: indicator.frequency ?? "Monthly",
+    frequency:
+      reportingFrequency === "DAILY"
+        ? "Daily"
+        : reportingFrequency === "WEEKLY"
+          ? "Weekly"
+          : "Monthly",
     currentVersion: indicator.currentVersion ?? 1,
     versions: Array.isArray(indicator.versions) ? indicator.versions : [],
     values,
@@ -193,6 +220,9 @@ const mapCurrentUser = (user: any): CurrentUser => ({
     ? new Date(user.createdAt).toISOString()
     : undefined,
 });
+
+const toReportingFrequency = (value?: Indicator["frequency"]) =>
+  value === "Daily" ? "DAILY" : "WEEKLY";
 
 const getProjectLogframe = async (id: string): Promise<LogframeNode[]> => {
   const tree = await request<any[]>(`/projects/${id}/logframe/tree`);
@@ -276,9 +306,13 @@ export const api = {
   },
   getIndicatorSubmissions: async (
     indicatorId: string,
+    options?: { includeDeleted?: boolean },
   ): Promise<IndicatorValue[]> => {
+    const params = new URLSearchParams();
+    if (options?.includeDeleted) params.set("includeDeleted", "true");
+    const suffix = params.toString() ? `?${params.toString()}` : "";
     const submissions = await request<any[]>(
-      `/indicators/${indicatorId}/submissions`,
+      `/indicators/${indicatorId}/submissions${suffix}`,
     );
     const indicator = await request<any>(`/indicators/${indicatorId}`);
     const type = mapIndicatorType(indicator.dataType, indicator.unit);
@@ -344,6 +378,7 @@ export const api = {
         minValue: payload.minExpected ?? null,
         maxValue: payload.maxExpected ?? null,
         anomalyConfig: payload.anomalyConfig ?? null,
+        reportingFrequency: toReportingFrequency(payload.frequency),
         categories: payload.categories ?? null,
         categoryConfig: payload.categoryConfig ?? null,
       },
@@ -395,7 +430,7 @@ export const api = {
         : null;
 
     const updated = await request<any>(`/indicators/${indicatorId}`, {
-      method: "PUT",
+      method: "PATCH",
       body: {
         logframeNodeId: payload.nodeId ? Number(payload.nodeId) : undefined,
         name: payload.name,
@@ -408,12 +443,18 @@ export const api = {
         minValue: payload.minExpected ?? null,
         maxValue: payload.maxExpected ?? null,
         anomalyConfig: payload.anomalyConfig ?? null,
+        reportingFrequency: toReportingFrequency(payload.frequency),
         categories: payload.categories ?? null,
         categoryConfig: payload.categoryConfig ?? null,
       },
     });
     return mapIndicator(updated);
   },
+  getReportingGaps: async (
+    indicatorId: string,
+    frequency: "DAILY" | "WEEKLY" | "MONTHLY",
+  ): Promise<any> =>
+    request(`/indicators/${indicatorId}/gaps?frequency=${frequency}`),
   createSubmission: async (
     indicatorId: string,
     payload: {
@@ -432,6 +473,30 @@ export const api = {
         categoryValue: payload.categoryValue ?? null,
       },
     }),
+  updateSubmission: async (
+    submissionId: string,
+    payload: {
+      reportedAt: string;
+      value: any;
+      evidence?: string;
+      categoryValue?: string;
+      disaggregationKey?: string;
+    },
+  ) =>
+    request(`/submissions/${submissionId}`, {
+      method: "PATCH",
+      body: {
+        reportedAt: payload.reportedAt,
+        value: payload.value,
+        evidence: payload.evidence ?? null,
+        categoryValue: payload.categoryValue ?? null,
+        disaggregationKey: payload.disaggregationKey ?? null,
+      },
+    }),
+  deleteSubmission: async (submissionId: string): Promise<void> =>
+    request(`/submissions/${submissionId}`, { method: "DELETE" }),
+  restoreSubmission: async (submissionId: string) =>
+    request(`/submissions/${submissionId}/restore`, { method: "POST" }),
   addLogframeNode: async (
     projectId: string,
     payload: {
@@ -491,7 +556,7 @@ export const api = {
 
     const token = getToken();
     const response = await fetch(
-      `${API_BASE_URL}/indicators/${indicatorId}/import/upload`,
+      `${API_BASE}/indicators/${indicatorId}/import/upload`,
       {
         method: "POST",
         headers: {
@@ -523,28 +588,24 @@ export const api = {
     filters?: Record<string, any>,
   ): Promise<Blob> => {
     const token = getToken();
-    const queryParams = new URLSearchParams(
-      filters
-        ? Object.entries(filters).reduce(
-            (acc, [key, value]) => {
-              if (value !== undefined && value !== null) {
-                acc[key] = String(value);
-              }
-              return acc;
-            },
-            {} as Record<string, string>,
-          )
-        : {},
-    );
+    const templateId =
+      filters && filters.templateId !== undefined
+        ? Number(filters.templateId)
+        : undefined;
+    const normalizedFilters = { ...(filters || {}) };
+    delete (normalizedFilters as any).templateId;
 
-    const response = await fetch(
-      `${API_BASE_URL}/indicators/${indicatorId}/export?${queryParams}`,
-      {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+    const response = await fetch(`${API_BASE}/indicators/${indicatorId}/export`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
       },
-    );
+      body: JSON.stringify({
+        templateId,
+        filters: normalizedFilters,
+      }),
+    });
 
     if (!response.ok) {
       const error = await response.json();

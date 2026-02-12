@@ -25,6 +25,42 @@ export const listSubmissions = asyncHandler(
   }
 );
 
+export const updateSubmission = asyncHandler(
+  async (req: Request, res: Response) => {
+    const submissionId = Number(req.params.id);
+    const submission = await submissionService.updateSubmission(
+      submissionId,
+      req.body,
+      req.user!.id,
+      req.user!.role,
+    );
+    res.json(submission);
+  },
+);
+
+export const deleteSubmission = asyncHandler(
+  async (req: Request, res: Response) => {
+    const submissionId = Number(req.params.id);
+    await submissionService.deleteSubmission(
+      submissionId,
+      req.user!.id,
+      req.user!.role,
+    );
+    res.status(204).send();
+  },
+);
+
+export const restoreSubmission = asyncHandler(
+  async (req: Request, res: Response) => {
+    const submissionId = Number(req.params.id);
+    const submission = await submissionService.restoreSubmission(
+      submissionId,
+      req.user!.id,
+    );
+    res.json(submission);
+  },
+);
+
 export const acknowledgeAnomaly = asyncHandler(
   async (req: Request, res: Response) => {
     const submissionId = Number(req.params.id);

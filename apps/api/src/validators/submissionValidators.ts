@@ -26,10 +26,26 @@ export const createSubmissionSchema = {
   }),
 };
 
+export const updateSubmissionSchema = {
+  params: z.object({
+    id: numericId,
+  }),
+  body: z.object({
+    reportedAt: dateString,
+    value: z.union([z.string(), z.number(), z.boolean()]),
+    categoryValue: z.string().optional().nullable(),
+    disaggregationKey: z.string().optional().nullable(),
+    evidence: z.string().optional().nullable(),
+  }),
+};
+
 export const listSubmissionsQuerySchema = {
   query: z.object({
     from: dateString.optional(),
     to: dateString.optional(),
+    includeDeleted: z
+      .union([z.literal("true"), z.literal("false")])
+      .optional(),
   }),
 };
 
@@ -52,4 +68,8 @@ export const updateAnomalyStatusSchema = {
     status: z.nativeEnum(AnomalyStatus),
     notes: z.string().optional(),
   }),
+};
+
+export const restoreSubmissionSchema = {
+  ...submissionIdParamsSchema,
 };

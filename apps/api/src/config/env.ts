@@ -18,6 +18,16 @@ export const config = {
   rateLimitWindowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS ?? "900000", 10),
   rateLimitMax: parseInt(process.env.RATE_LIMIT_MAX ?? "100", 10),
   authDisabled: (process.env.AUTH_DISABLED ?? "true") === "true",
+  mlServiceUrl: process.env.ML_SERVICE_URL ?? "",
+  mlServiceTimeoutMs: parseInt(
+    process.env.ML_SERVICE_TIMEOUT_MS ?? "5000",
+    10,
+  ),
+  mlServiceApiKey: process.env.ML_SERVICE_API_KEY ?? "",
+  anomalyBackfillBatchSize: parseInt(
+    process.env.ANOMALY_BACKFILL_BATCH_SIZE ?? "100",
+    10,
+  ),
 };
 
 export const adminSeed = {

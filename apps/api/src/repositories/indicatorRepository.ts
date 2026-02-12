@@ -16,6 +16,7 @@ export const createIndicator = (data: {
   anomalyConfig?: Record<string, any> | null;
   categories?: any[] | null;
   categoryConfig?: Record<string, any> | null;
+  validationConfig?: Record<string, any> | null;
 }) =>
   prisma.indicator.create({
     data: {
@@ -23,6 +24,7 @@ export const createIndicator = (data: {
       anomalyConfig: data.anomalyConfig as any,
       categories: data.categories as any,
       categoryConfig: data.categoryConfig as any,
+      validationConfig: data.validationConfig as any,
     },
   });
 
@@ -58,6 +60,7 @@ export const updateIndicator = (
     anomalyConfig: Record<string, any> | null;
     categories: any[] | null;
     categoryConfig: Record<string, any> | null;
+    validationConfig: Record<string, any> | null;
   }>,
 ) =>
   prisma.indicator.update({
@@ -73,6 +76,10 @@ export const updateIndicator = (
       categoryConfig:
         data.categoryConfig !== undefined
           ? (data.categoryConfig as any)
+          : undefined,
+      validationConfig:
+        data.validationConfig !== undefined
+          ? (data.validationConfig as any)
           : undefined,
     },
   });

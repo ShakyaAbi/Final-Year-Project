@@ -52,6 +52,7 @@ export const createIndicator = async (
     minValue?: number | null;
     maxValue?: number | null;
     anomalyConfig?: Record<string, any> | null;
+    reportingFrequency?: "DAILY" | "WEEKLY";
     categories?: any[] | null;
     categoryConfig?: Record<string, any> | null;
   },
@@ -90,6 +91,9 @@ export const createIndicator = async (
     minValue: data.minValue ?? null,
     maxValue: data.maxValue ?? null,
     anomalyConfig: data.anomalyConfig ?? null,
+    validationConfig: {
+      reportingFrequency: data.reportingFrequency ?? "WEEKLY",
+    },
     categories: validatedCategories as any,
     categoryConfig: validatedCategoryConfig as any,
   });
@@ -137,6 +141,7 @@ export const updateIndicator = async (
     minValue: number | null;
     maxValue: number | null;
     anomalyConfig: Record<string, any> | null;
+    reportingFrequency: "DAILY" | "WEEKLY";
     categories: any[] | null;
     categoryConfig: Record<string, any> | null;
   }>,
@@ -185,6 +190,13 @@ export const updateIndicator = async (
     minValue: data.minValue,
     maxValue: data.maxValue,
     anomalyConfig: data.anomalyConfig,
+    validationConfig:
+      data.reportingFrequency !== undefined
+        ? {
+            ...((indicator.validationConfig as any) || {}),
+            reportingFrequency: data.reportingFrequency,
+          }
+        : undefined,
     categories: validatedCategories,
     categoryConfig: validatedCategoryConfig,
   });

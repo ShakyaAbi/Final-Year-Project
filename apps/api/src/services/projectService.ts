@@ -90,16 +90,22 @@ export const getProjectStats = async (id: number) => {
   const daysElapsed =
     project.startDate ? diffDays(project.startDate, endCap) : 0;
 
-  const activitiesTotal = await prisma.logframeNode.count({
-    where: { projectId: project.id, type: NodeType.ACTIVITY }
+  const activityIndicators = await prisma.indicator.findMany({
+    where: {
+      projectId: project.id,
+      logframeNode: { type: NodeType.ACTIVITY }
+    },
+    select: {
+      id: true,
+      submissions: {
+        select: { id: true },
+        take: 1
+      }
+    }
   });
-
-  const activityNodes = await prisma.logframeNode.findMany({
-    where: { projectId: project.id, type: NodeType.ACTIVITY },
-    include: { indicators: { include: { submissions: { select: { id: true } } } } }
-  });
-  const activitiesCompleted = activityNodes.filter((node) =>
-    node.indicators.some((indicator) => indicator.submissions.length > 0)
+  const activitiesTotal = activityIndicators.length;
+  const activitiesCompleted = activityIndicators.filter(
+    (indicator) => indicator.submissions.length > 0
   ).length;
 
   return {

@@ -14,7 +14,8 @@
     "test:api": "npm --workspace apps/api run test"
   },
   "devDependencies": {
-    "@types/papaparse": "^5.5.2"
+    "@types/papaparse": "^5.5.2",
+    "prisma": "^7.4.0"
   },
   "dependencies": {
     "@react-three/fiber": "^9.5.0",

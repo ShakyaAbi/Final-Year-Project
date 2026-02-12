@@ -85,6 +85,8 @@ model User {
   createdAt               DateTime  @default(now())
   submissions             Submission[]
   anomalyReviews          Submission[] @relation("AnomalyReviews")
+  deletedSubmissions      Submission[] @relation("DeletedSubmissions")
+  updatedSubmissions      Submission[] @relation("UpdatedSubmissions")
   importJobs              ImportJob[]
   importTemplates         ImportTemplate[]
   exportTemplates         ExportTemplate[]
@@ -172,14 +174,27 @@ model Submission {
   isAnomaly        Boolean        @default(false)
   anomalyReason    String?
   anomalyStatus    AnomalyStatus?
+  anomalyScore     Float?
+  anomalyThreshold Float?
+  anomalyMethod    String?
+  anomalyMeta      Json?
   anomalyReviewedBy Int?
   anomalyReviewedAt DateTime?
   reviewer         User?          @relation("AnomalyReviews", fields: [anomalyReviewedBy], references: [id])
+  deletedAt        DateTime?
+  deletedByUserId  Int?
+  deletedByUser    User?          @relation("DeletedSubmissions", fields: [deletedByUserId], references: [id])
+  updatedAt        DateTime       @updatedAt
+  updatedByUserId  Int?
+  updatedByUser    User?          @relation("UpdatedSubmissions", fields: [updatedByUserId], references: [id])
 
   @@unique([indicatorId, reportedAt, disaggregationKey])
   @@index([indicatorId])
   @@index([anomalyReviewedBy])
   @@index([sourceImportJobId])
+  @@index([deletedAt])
+  @@index([deletedByUserId])
+  @@index([updatedByUserId])
 }
 
 model ImportTemplate {

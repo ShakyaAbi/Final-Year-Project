@@ -12,11 +12,15 @@ export const createSubmission = (data: {
   isAnomaly?: boolean;
   anomalyReason?: string | null;
   anomalyStatus?: AnomalyStatus | null;
+  anomalyScore?: number | null;
+  anomalyThreshold?: number | null;
+  anomalyMethod?: string | null;
+  anomalyMeta?: Record<string, any> | null;
 }) => prisma.submission.create({ data });
 
 export const listSubmissions = (
   indicatorId: number,
-  filters: { from?: Date | null; to?: Date | null },
+  filters: { from?: Date | null; to?: Date | null; includeDeleted?: boolean },
 ) =>
   prisma.submission.findMany({
     where: {
@@ -25,7 +29,8 @@ export const listSubmissions = (
         gte: filters.from ?? undefined,
         lte: filters.to ?? undefined,
       },
-    },
+      deletedAt: filters.includeDeleted ? undefined : null,
+    } as any,
     orderBy: { reportedAt: "desc" },
   });
 
@@ -37,7 +42,7 @@ export const getById = (id: number) =>
 
 export const getRecentSubmissions = (indicatorId: number, limit: number) =>
   prisma.submission.findMany({
-    where: { indicatorId },
+    where: { indicatorId, deletedAt: null } as any,
     orderBy: { reportedAt: "desc" },
     take: limit,
   });
@@ -49,5 +54,48 @@ export const updateSubmission = (
     anomalyReviewedBy: number;
     anomalyReviewedAt: Date;
     anomalyReason: string;
+    anomalyScore: number | null;
+    anomalyThreshold: number | null;
+    anomalyMethod: string | null;
+    anomalyMeta: Record<string, any> | null;
   }>,
 ) => prisma.submission.update({ where: { id }, data });
+
+export const updateSubmissionData = (
+  id: number,
+  data: {
+    reportedAt: Date;
+    value: string;
+    categoryValue?: string | null;
+    disaggregationKey?: string | null;
+    evidence?: string | null;
+    updatedByUserId: number;
+    isAnomaly?: boolean;
+    anomalyReason?: string | null;
+    anomalyStatus?: AnomalyStatus | null;
+    anomalyScore?: number | null;
+    anomalyThreshold?: number | null;
+    anomalyMethod?: string | null;
+    anomalyMeta?: Record<string, any> | null;
+  },
+) => prisma.submission.update({ where: { id }, data: data as any });
+
+export const softDeleteSubmission = (id: number, userId: number) =>
+  prisma.submission.update({
+    where: { id },
+    data: {
+      deletedAt: new Date(),
+      deletedByUserId: userId,
+      updatedByUserId: userId,
+    } as any,
+  });
+
+export const restoreSubmission = (id: number, userId: number) =>
+  prisma.submission.update({
+    where: { id },
+    data: {
+      deletedAt: null,
+      deletedByUserId: null,
+      updatedByUserId: userId,
+    } as any,
+  });

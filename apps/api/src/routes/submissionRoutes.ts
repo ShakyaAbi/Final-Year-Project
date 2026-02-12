@@ -1,5 +1,7 @@
 import { Router } from "express";
+import { Role } from "@prisma/client";
 import { authenticate } from "../middleware/auth";
+import { requireRoles } from "../middleware/rbac";
 import { validate } from "../middleware/validate";
 import {
   createSubmissionSchema,
@@ -7,10 +9,16 @@ import {
   listSubmissionsQuerySchema,
   acknowledgeAnomalySchema,
   updateAnomalyStatusSchema,
+  updateSubmissionSchema,
+  restoreSubmissionSchema,
+  submissionIdParamsSchema,
 } from "../validators/submissionValidators";
 import {
   createSubmission,
   listSubmissions,
+  updateSubmission,
+  deleteSubmission,
+  restoreSubmission,
   acknowledgeAnomaly,
   resolveAnomaly,
   markAnomalyFalsePositive,
@@ -34,6 +42,28 @@ router.get(
     ...listSubmissionsQuerySchema,
   }),
   listSubmissions
+);
+
+router.patch(
+  "/submissions/:id",
+  authenticate,
+  validate(updateSubmissionSchema),
+  updateSubmission
+);
+
+router.delete(
+  "/submissions/:id",
+  authenticate,
+  validate(submissionIdParamsSchema),
+  deleteSubmission
+);
+
+router.post(
+  "/submissions/:id/restore",
+  authenticate,
+  requireRoles(Role.ADMIN, Role.MANAGER),
+  validate(restoreSubmissionSchema),
+  restoreSubmission
 );
 
 router.post(

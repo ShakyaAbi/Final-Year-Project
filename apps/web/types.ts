@@ -44,17 +44,33 @@ export interface Project {
 
 export interface IndicatorValue {
   id: string;
+  indicatorId?: string;
   date: string;
   value: number | string;
   categoryValue?: string; // Comma-separated category IDs when categorization is used
   isAnomaly: boolean;
   anomalyReason?: string;
+  anomalyScore?: number;
+  anomalyThreshold?: number;
+  anomalyMethod?: string;
+  anomalyMeta?: Record<string, any>;
   comment?: string;
   evidence?: string; // Added for verification source/notes
+  createdByUserId?: string;
+  createdAt?: string;
+  deletedAt?: string;
+  deletedByUserId?: string;
+  updatedAt?: string;
+  updatedByUserId?: string;
 }
 
 export interface AnomalyConfig {
   enabled?: boolean;
+  mode?: "RULES" | "ML";
+  rules?: {
+    range?: boolean;
+    maxChangePercent?: number;
+  };
   outlier?: {
     method?: "MAD" | "IQR";
     threshold?: number;
@@ -65,6 +81,18 @@ export interface AnomalyConfig {
     method?: "SLOPE_SHIFT" | "MEAN_SHIFT";
     threshold?: number;
     windowSize?: number;
+  };
+  ml?: {
+    method?: "ISOLATION_FOREST";
+    contamination?: number;
+    windowSize?: number;
+    minPoints?: number;
+    seed?: number;
+  };
+  fallback?: {
+    useRangeChecks?: boolean;
+    useRulesWhenInsufficientData?: boolean;
+    useRulesOnServiceError?: boolean;
   };
 }
 
@@ -124,7 +152,7 @@ export interface Indicator {
   categories?: CategoryDefinition[]; // For Categorical
   categoryConfig?: CategoryConfig; // For Categorical
 
-  frequency: "Weekly" | "Monthly";
+  frequency: "Daily" | "Weekly" | "Monthly";
   currentVersion: number;
   versions: IndicatorVersion[];
   values: IndicatorValue[];

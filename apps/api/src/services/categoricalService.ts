@@ -695,6 +695,7 @@ const generateTimePeriods = (
   let currentDate = new Date(startDate);
 
   while (currentDate <= endDate) {
+    const periodStart = new Date(currentDate);
     let periodEnd: Date;
     let label: string;
 
@@ -742,7 +743,7 @@ const generateTimePeriods = (
 
     periods.push({
       label,
-      startDate: new Date(currentDate.getTime() - (groupBy === "day" ? 0 : 1)),
+      startDate: periodStart,
       endDate: periodEnd,
     });
   }

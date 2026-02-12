@@ -13,7 +13,6 @@ import {
   PieChart,
   Pie,
   Cell,
-  Legend,
 } from "recharts";
 import { Indicator, IndicatorType, CategoryDefinition } from "../types";
 import { AlertTriangle } from "lucide-react";
@@ -33,6 +32,22 @@ const formatDate = (value?: string) => {
     day: "2-digit",
     timeZone: "UTC",
   });
+};
+
+const parseNumericValue = (value: unknown): number | null => {
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : null;
+  }
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const normalized = trimmed.replace(/,/g, "");
+  const direct = Number(normalized);
+  if (Number.isFinite(direct)) return direct;
+  const match = normalized.match(/-?\d+(\.\d+)?/);
+  if (!match) return null;
+  const parsed = Number(match[0]);
+  return Number.isFinite(parsed) ? parsed : null;
 };
 
 const CustomTooltip = ({ active, payload }: any) => {
@@ -131,7 +146,9 @@ const generateForecast = (historicalData: any[], periods = 4) => {
   if (historicalData.length < 2) return [];
 
   // Filter valid numbers
-  const validData = historicalData.filter((d) => !isNaN(Number(d.value)));
+  const validData = historicalData.filter((d) =>
+    Number.isFinite(parseNumericValue(d.value)),
+  );
   if (validData.length < 2) return [];
 
   const n = validData.length;
@@ -141,7 +158,7 @@ const generateForecast = (historicalData: any[], periods = 4) => {
     sumXX = 0;
 
   validData.forEach((point, i) => {
-    const val = Number(point.value);
+    const val = parseNumericValue(point.value) ?? 0;
     sumX += i;
     sumY += val;
     sumXY += i * val;
@@ -158,8 +175,8 @@ const generateForecast = (historicalData: any[], periods = 4) => {
   const lastActual = historicalData[historicalData.length - 1];
   forecast.push({
     ...lastActual,
-    value: Number(lastActual.value),
-    forecast: Number(lastActual.value), // Connect lines
+    value: parseNumericValue(lastActual.value),
+    forecast: parseNumericValue(lastActual.value), // Connect lines
     isForecast: false,
   });
 
@@ -224,6 +241,51 @@ export const IndicatorCharts: React.FC<IndicatorChartsProps> = ({
     indicator.type === IndicatorType.CURRENCY;
 
   const isCategorical = indicator.type === IndicatorType.CATEGORICAL;
+  const categoryIndexMap = new Map<string, number>();
+  (indicator.categories || []).forEach((cat, idx) => {
+    const position = idx + 1;
+    categoryIndexMap.set(cat.id, position);
+    categoryIndexMap.set(String(cat.id).toLowerCase(), position);
+    categoryIndexMap.set(String(cat.label).toLowerCase(), position);
+  });
+  const parseCategoryIds = (value?: string) =>
+    String(value || "")
+      .split(",")
+      .map((id) => id.trim())
+      .filter(Boolean);
+  const getCategoryLabel = (id: string) =>
+    indicator.categories?.find((cat) => cat.id === id)?.label || id;
+  const formatCategoryValue = (value?: string) => {
+    const ids = parseCategoryIds(value);
+    if (ids.length === 0) return "N/A";
+    return ids.map(getCategoryLabel).join(", ");
+  };
+  const getChartValue = (entry: {
+    value: number | string;
+    categoryValue?: string;
+  }): number | null => {
+    const numeric = parseNumericValue(entry.value);
+    if (numeric !== null) return numeric;
+    if (!isCategorical) return null;
+    const ids = parseCategoryIds(
+      entry.categoryValue || (typeof entry.value === "string" ? entry.value : ""),
+    );
+    const firstId = ids[0];
+    if (!firstId) return null;
+    const byId = categoryIndexMap.get(firstId);
+    if (byId !== undefined) return byId;
+    const byLower = categoryIndexMap.get(String(firstId).toLowerCase());
+    if (byLower !== undefined) return byLower;
+    const parsed = Number(firstId);
+    if (
+      Number.isFinite(parsed) &&
+      parsed >= 1 &&
+      parsed <= Math.max(1, (indicator.categories || []).length)
+    ) {
+      return parsed;
+    }
+    return null;
+  };
 
   // Fetch category distribution for categorical indicators
   useEffect(() => {
@@ -286,38 +348,119 @@ export const IndicatorCharts: React.FC<IndicatorChartsProps> = ({
       );
     }
 
+    const totalCount = categoryData.reduce((sum, item) => sum + item.value, 0);
+
     return (
       <div className="bg-white p-6 rounded-lg border border-slate-200 shadow-sm">
-        <h3 className="text-lg font-semibold text-slate-900 mb-4">
-          Category Distribution
-        </h3>
-        <ResponsiveContainer width="100%" height={350}>
-          <PieChart>
-            <Pie
-              data={categoryData}
-              cx="50%"
-              cy="50%"
-              labelLine={false}
-              label={(entry) => `${entry.name}: ${entry.value}`}
-              outerRadius={120}
-              fill="#8884d8"
-              dataKey="value"
-            >
-              {categoryData.map((entry, index) => (
-                <Cell key={`cell-${index}`} fill={entry.color} />
-              ))}
-            </Pie>
-            <Tooltip
-              contentStyle={{
-                backgroundColor: "white",
-                border: "1px solid #e2e8f0",
-                borderRadius: "8px",
-                padding: "8px 12px",
-              }}
-            />
-            <Legend />
-          </PieChart>
-        </ResponsiveContainer>
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+          <div>
+            <h3 className="text-lg font-semibold text-slate-900">
+              Category Distribution
+            </h3>
+            <p className="text-xs text-slate-500">
+              {totalCount} total submission{totalCount === 1 ? "" : "s"}
+            </p>
+          </div>
+          <div className="flex items-center gap-2 text-xs text-slate-600">
+            <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2 py-1 font-semibold">
+              Donut view
+            </span>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-[360px_1fr] gap-6 items-center">
+          <div className="relative">
+            <ResponsiveContainer width="100%" height={320}>
+              <PieChart>
+                <Pie
+                  data={categoryData}
+                  cx="50%"
+                  cy="50%"
+                  innerRadius={75}
+                  outerRadius={125}
+                  paddingAngle={3}
+                  stroke="#ffffff"
+                  strokeWidth={2}
+                  dataKey="value"
+                >
+                  {categoryData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={entry.color} />
+                  ))}
+                </Pie>
+                <Tooltip
+                  formatter={(value: number, name: string) => {
+                    const pct = totalCount
+                      ? Math.round((value / totalCount) * 100)
+                      : 0;
+                    return [`${value} (${pct}%)`, name];
+                  }}
+                  contentStyle={{
+                    backgroundColor: "white",
+                    border: "1px solid #e2e8f0",
+                    borderRadius: "10px",
+                    padding: "10px 12px",
+                    boxShadow: "0 12px 24px rgba(15, 23, 42, 0.08)",
+                  }}
+                />
+                <text
+                  x="50%"
+                  y="50%"
+                  textAnchor="middle"
+                  dominantBaseline="middle"
+                >
+                  <tspan
+                    className="fill-slate-500"
+                    fontSize="12"
+                    fontWeight="600"
+                  >
+                    TOTAL
+                  </tspan>
+                  <tspan
+                    x="50%"
+                    dy="18"
+                    className="fill-slate-900"
+                    fontSize="22"
+                    fontWeight="700"
+                  >
+                    {totalCount}
+                  </tspan>
+                </text>
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
+
+          <div className="grid gap-3">
+            {categoryData.map((item) => {
+              const pct = totalCount
+                ? Math.round((item.value / totalCount) * 100)
+                : 0;
+              return (
+                <div
+                  key={item.name}
+                  className="flex items-center justify-between gap-3 rounded-lg border border-slate-100 bg-slate-50/60 px-3 py-2"
+                >
+                  <div className="flex items-center gap-3">
+                    <span
+                      className="h-3 w-3 rounded-full"
+                      style={{ backgroundColor: item.color }}
+                    />
+                    <div>
+                      <div className="text-sm font-semibold text-slate-800">
+                        {item.name}
+                      </div>
+                      <div className="text-xs text-slate-500">
+                        {pct}% of total
+                      </div>
+                    </div>
+                  </div>
+                  <div className="text-sm font-semibold text-slate-700">
+                    {item.value}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
       </div>
     );
   };
@@ -326,14 +469,20 @@ export const IndicatorCharts: React.FC<IndicatorChartsProps> = ({
     value: number,
     existing?: string,
     isAnomaly?: boolean,
+    score?: number,
+    threshold?: number,
   ) => {
     if (!isAnomaly) return "";
-    if (existing && existing.trim()) return existing;
+    const suffix =
+      score !== undefined && threshold !== undefined
+        ? ` (score: ${score.toFixed(3)}, threshold: ${threshold.toFixed(3)})`
+        : "";
+    if (existing && existing.trim()) return `${existing}${suffix}`;
     if (indicator.type === IndicatorType.PERCENTAGE) {
       const lower = indicator.minExpected ?? 0;
       const upper = indicator.maxExpected ?? 100;
       if (value < lower || value > upper) {
-        return `Percent must be between ${lower} and ${upper}`;
+        return `Percent must be between ${lower} and ${upper}${suffix}`;
       }
     }
     if (
@@ -344,16 +493,16 @@ export const IndicatorCharts: React.FC<IndicatorChartsProps> = ({
         indicator.minExpected !== undefined &&
         value < indicator.minExpected
       ) {
-        return `Value below expected minimum (${indicator.minExpected})`;
+        return `Value below expected minimum (${indicator.minExpected})${suffix}`;
       }
       if (
         indicator.maxExpected !== undefined &&
         value > indicator.maxExpected
       ) {
-        return `Value exceeds expected maximum (${indicator.maxExpected})`;
+        return `Value exceeds expected maximum (${indicator.maxExpected})${suffix}`;
       }
     }
-    return "Anomaly detected";
+    return `Anomaly detected${suffix}`;
   };
 
   const renderNumericChart = () => {
@@ -370,26 +519,43 @@ export const IndicatorCharts: React.FC<IndicatorChartsProps> = ({
     const sortedValues = [...indicator.values]
       .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
       .map((v) => {
-        const numericValue = Number(v.value);
+        const numericValue = getChartValue(v);
         return {
           ...v,
           value: numericValue,
           anomalyReason: inferAnomalyReason(
-            numericValue,
+            numericValue ?? Number.NaN,
             v.anomalyReason,
             v.isAnomaly,
+            v.anomalyScore,
+            v.anomalyThreshold,
           ),
         };
       }); // Ensure numeric values
 
-    const latestValue = sortedValues[sortedValues.length - 1]?.value || 0;
+    const latestValue = sortedValues[sortedValues.length - 1]?.value ?? 0;
+    const latestSubmission = sortedValues[sortedValues.length - 1];
+    const latestCategoryIds = parseCategoryIds(latestSubmission?.categoryValue);
+    const targetCategoryIds = parseCategoryIds(indicator.targetCategory);
+    const hasCategoricalTarget = targetCategoryIds.length > 0;
+    const categoricalMatchedCount = targetCategoryIds.filter((id) =>
+      latestCategoryIds.includes(id),
+    ).length;
 
-    const currentValNum = Number(latestValue);
+    const currentValNum = parseNumericValue(latestValue);
     const targetNum = Number(indicator.target);
-    const progress =
-      targetNum && !isNaN(currentValNum) && !isNaN(targetNum)
+    const hasNumericTarget = Number.isFinite(targetNum) && targetNum > 0;
+    const numericProgress =
+      hasNumericTarget && currentValNum !== null
         ? Math.min(Math.max((currentValNum / targetNum) * 100, 0), 100)
         : 0;
+    const categoricalProgress = hasCategoricalTarget
+      ? Math.min(
+          Math.max((categoricalMatchedCount / targetCategoryIds.length) * 100, 0),
+          100,
+        )
+      : 0;
+    const progress = isCategorical ? categoricalProgress : numericProgress;
 
     const combinedData = [
       ...sortedValues.map((v) => ({ ...v, forecast: null })),
@@ -411,21 +577,33 @@ export const IndicatorCharts: React.FC<IndicatorChartsProps> = ({
     }
 
     // Isolate anomalies for Scatter plot to ensure specific rendering
-    const anomalyData = combinedData.filter((d) => d.isAnomaly);
+    const anomalyData = combinedData.filter(
+      (d) => d.isAnomaly && Number.isFinite(parseNumericValue(d.value)),
+    );
 
     // Calculate Y Axis Domain padding to make the chart look better
     const allValues = combinedData
-      .filter((d) => d.value !== null)
+      .filter((d) => d.value !== null && Number.isFinite(Number(d.value)))
       .map((d) => Number(d.value));
     if (allValues.length === 0) allValues.push(0);
 
-    const maxDataVal = Math.max(...allValues);
-    const minDataVal = Math.min(...allValues);
+    const nonAnomalyValues = combinedData
+      .filter(
+        (d) =>
+          !d.isAnomaly && d.value !== null && Number.isFinite(Number(d.value)),
+      )
+      .map((d) => Number(d.value));
+
+    const domainValues =
+      nonAnomalyValues.length > 1 ? nonAnomalyValues : allValues;
+
+    const maxDataVal = Math.max(...domainValues);
+    const minDataVal = Math.min(...domainValues);
 
     // Include target and baseline in domain calculation
     const domainMax = Math.max(
       maxDataVal,
-      Number(indicator.target),
+      hasNumericTarget ? targetNum : 0,
       Number(indicator.baseline) || 0,
     );
     const domainMin = Math.min(minDataVal, Number(indicator.baseline) || 0);
@@ -442,17 +620,32 @@ export const IndicatorCharts: React.FC<IndicatorChartsProps> = ({
           <div className="bg-white p-6 rounded-lg border border-slate-200 shadow-sm">
             <p className="text-sm text-slate-500 font-medium">Current Value</p>
             <div className="flex items-end space-x-2 mt-1">
-              <span className="text-3xl font-bold text-slate-900">
-                {latestValue}
+              <span
+                className={`font-bold text-slate-900 ${
+                  isCategorical ? "text-lg leading-snug" : "text-3xl"
+                }`}
+              >
+                {isCategorical
+                  ? latestSubmission?.categoryValue
+                    ? formatCategoryValue(latestSubmission.categoryValue)
+                    : "No data"
+                  : latestValue}
               </span>
               <span className="text-sm text-slate-400 mb-1">
-                / {indicator.target}
+                /{" "}
+                {isCategorical
+                  ? hasCategoricalTarget
+                    ? formatCategoryValue(indicator.targetCategory)
+                    : "No target category"
+                  : hasNumericTarget
+                    ? indicator.target
+                    : "No target"}
               </span>
             </div>
           </div>
           <div className="bg-white p-6 rounded-lg border border-slate-200 shadow-sm md:col-span-2">
             <p className="text-sm text-slate-500 font-medium mb-4">
-              Progress to Target
+              {isCategorical ? "Category Match to Target" : "Progress to Target"}
             </p>
             <div className="relative h-4 bg-slate-100 rounded-full overflow-hidden">
               <div
@@ -463,8 +656,22 @@ export const IndicatorCharts: React.FC<IndicatorChartsProps> = ({
               ></div>
             </div>
             <div className="flex justify-between mt-2 text-xs text-slate-400 font-medium">
-              <span>Baseline: {indicator.baseline}</span>
-              <span>Target: {indicator.target}</span>
+              <span>
+                Baseline:{" "}
+                {isCategorical
+                  ? formatCategoryValue(indicator.baselineCategory)
+                  : indicator.baseline}
+              </span>
+              <span>
+                Target:{" "}
+                {isCategorical
+                  ? hasCategoricalTarget
+                    ? formatCategoryValue(indicator.targetCategory)
+                    : "No target set"
+                  : hasNumericTarget
+                    ? indicator.target
+                    : "No target set"}
+              </span>
             </div>
           </div>
         </div>
@@ -523,6 +730,7 @@ export const IndicatorCharts: React.FC<IndicatorChartsProps> = ({
               />
               <YAxis
                 domain={[yAxisMin, yAxisMax]}
+                allowDataOverflow
                 tick={{ fontSize: 11, fill: "#64748b" }}
                 tickLine={false}
                 axisLine={{ stroke: "#e2e8f0" }}
@@ -537,17 +745,19 @@ export const IndicatorCharts: React.FC<IndicatorChartsProps> = ({
                 }}
               />
 
-              <ReferenceLine
-                y={Number(indicator.target)}
-                label={{
-                  value: "Target",
-                  position: "insideTopRight",
-                  fill: "#10b981",
-                  fontSize: 12,
-                }}
-                stroke="#10b981"
-                strokeDasharray="3 3"
-              />
+              {hasNumericTarget && (
+                <ReferenceLine
+                  y={targetNum}
+                  label={{
+                    value: "Target",
+                    position: "insideTopRight",
+                    fill: "#10b981",
+                    fontSize: 12,
+                  }}
+                  stroke="#10b981"
+                  strokeDasharray="3 3"
+                />
+              )}
               <ReferenceLine
                 y={Number(indicator.baseline)}
                 label={{
@@ -570,6 +780,7 @@ export const IndicatorCharts: React.FC<IndicatorChartsProps> = ({
                 fill="url(#colorValue)"
                 name="Actual Value"
                 connectNulls={false}
+                dot={{ r: 3, fill: "#4d66ff", stroke: "#4d66ff" }}
               />
 
               {/* Forecast Line */}

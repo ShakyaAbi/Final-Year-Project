@@ -33,6 +33,19 @@ cd backend
 npm test
 ```
 
+## ML Anomaly Detection
+If you enable ML anomaly detection on indicators, configure the API to call the
+ML service:
+
+- `ML_SERVICE_URL` (e.g. `http://localhost:8000`)
+- `ML_SERVICE_TIMEOUT_MS` (default `5000`)
+- `ML_SERVICE_API_KEY` (optional)
+
+Run the backfill job to rescore recent submissions:
+```bash
+npm run anomaly:backfill
+```
+
 ## Migrations and Prisma
 - Run migrations: `npm run prisma:migrate`
 - Generate client: `npm run prisma:generate`

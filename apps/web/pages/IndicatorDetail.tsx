@@ -8,6 +8,7 @@ import { IndicatorCharts } from "../components/IndicatorCharts";
 import { ImportWizard } from "../components/ImportWizard";
 import { ExportDialog } from "../components/ExportDialog";
 import { CategoryTimeSeriesChart } from "../components/CategoryTimeSeriesChart";
+import { DisaggregationComparison } from "../components/DisaggregationComparison";
 import {
   ArrowLeft,
   AlertTriangle,
@@ -21,6 +22,11 @@ import {
   ArrowUpDown,
   CheckCircle,
   Download,
+  Pencil,
+  Trash2,
+  RotateCcw,
+  CalendarClock,
+  BellRing,
 } from "lucide-react";
 
 export const IndicatorDetail: React.FC = () => {
@@ -49,27 +55,81 @@ export const IndicatorDetail: React.FC = () => {
   // Import/Export State
   const [showImportWizard, setShowImportWizard] = useState(false);
   const [showExportDialog, setShowExportDialog] = useState(false);
+  const [reportingFrequency, setReportingFrequency] = useState<
+    "DAILY" | "WEEKLY"
+  >("WEEKLY");
+  const [reportingGaps, setReportingGaps] = useState<any[]>([]);
+  const [showDeleted, setShowDeleted] = useState(false);
+  const [currentUser, setCurrentUser] = useState<{
+    id: string;
+    role: string;
+  } | null>(null);
+  const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set());
+  const [editingRows, setEditingRows] = useState<
+    Record<
+      string,
+      {
+        reportedAt: string;
+        value: string;
+        categoryValue: string;
+        evidence: string;
+      }
+    >
+  >({});
+
+  const reloadIndicator = async (includeDeleted = showDeleted) => {
+    if (!id) return;
+    try {
+      const [data, submissions] = await Promise.all([
+        api.getIndicator(id),
+        api.getIndicatorSubmissions(id, { includeDeleted }),
+      ]);
+      setIndicator({ ...data, values: submissions });
+    } catch (loadError) {
+      console.error("Failed to load indicator", loadError);
+      setIndicator(undefined);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    if (id) {
-      Promise.all([api.getIndicator(id), api.getIndicatorSubmissions(id)])
-        .then(([data, submissions]) => {
-          setIndicator({ ...data, values: submissions });
-          setLoading(false);
-        })
-        .catch((error) => {
-          console.error("Failed to load indicator", error);
-          setIndicator(undefined);
-          setLoading(false);
-        });
-    }
+    if (!id) return;
+    setLoading(true);
+    Promise.all([reloadIndicator(false), api.me().catch(() => null)]).then(
+      ([_, user]) => {
+        if (user) setCurrentUser({ id: user.id, role: user.role });
+      },
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
+
+  useEffect(() => {
+    if (!id) return;
+    reloadIndicator(showDeleted);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showDeleted]);
 
   useEffect(() => {
     if (searchParams.get("csvSetup") === "1") {
       setShowImportWizard(true);
     }
   }, [searchParams]);
+
+  useEffect(() => {
+    if (!indicator) return;
+    setReportingFrequency(
+      indicator.frequency === "Daily" ? "DAILY" : "WEEKLY",
+    );
+  }, [indicator?.id, indicator?.frequency]);
+
+  useEffect(() => {
+    if (!indicator) return;
+    api
+      .getReportingGaps(indicator.id, reportingFrequency)
+      .then((result) => setReportingGaps(result.gaps || []))
+      .catch(() => setReportingGaps([]));
+  }, [indicator?.id, reportingFrequency]);
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -145,16 +205,7 @@ export const IndicatorDetail: React.FC = () => {
         evidence: finalEvidence,
         categoryValue: categoryValuePayload,
       });
-
-      const submissions = await api.getIndicatorSubmissions(indicator.id);
-      setIndicator((prev) =>
-        prev
-          ? {
-              ...prev,
-              values: submissions,
-            }
-          : undefined,
-      );
+      await reloadIndicator(showDeleted);
     } catch (err: any) {
       didError = true;
       setError(err?.message || "Failed to submit value.");
@@ -178,6 +229,122 @@ export const IndicatorDetail: React.FC = () => {
     }
   };
 
+  const canModifyRow = (row: Indicator["values"][number]) => {
+    if (!currentUser) return true;
+    if (currentUser.role === "ADMIN" || currentUser.role === "MANAGER") {
+      return true;
+    }
+    if (currentUser.role !== "DATA_ENTRY") return false;
+    if (!row.createdByUserId || row.createdByUserId !== currentUser.id) {
+      return false;
+    }
+    if (!row.createdAt) return false;
+    const ageMs = Date.now() - new Date(row.createdAt).getTime();
+    return ageMs <= 7 * 24 * 60 * 60 * 1000;
+  };
+
+  const startRowEdit = (row: Indicator["values"][number]) => {
+    setEditingRows((prev) => ({
+      ...prev,
+      [row.id]: {
+        reportedAt: row.date ? row.date.slice(0, 10) : "",
+        value: String(row.value ?? ""),
+        categoryValue: row.categoryValue ?? "",
+        evidence: row.evidence ?? "",
+      },
+    }));
+  };
+
+  const cancelRowEdit = (rowId: string) => {
+    setEditingRows((prev) => {
+      const next = { ...prev };
+      delete next[rowId];
+      return next;
+    });
+  };
+
+  const saveRowEdit = async (rowId: string) => {
+    const row = editingRows[rowId];
+    if (!row || !indicator) return;
+    try {
+      const valuePayload =
+        indicator.type === IndicatorType.NUMBER ||
+        indicator.type === IndicatorType.PERCENTAGE ||
+        indicator.type === IndicatorType.CURRENCY ||
+        indicator.type === IndicatorType.CATEGORICAL
+          ? Number(row.value)
+          : row.value;
+      await api.updateSubmission(rowId, {
+        reportedAt: row.reportedAt,
+        value: valuePayload,
+        categoryValue: row.categoryValue || undefined,
+        evidence: row.evidence || undefined,
+      });
+      cancelRowEdit(rowId);
+      await reloadIndicator(showDeleted);
+    } catch (err: any) {
+      setError(err?.message || "Failed to update submission.");
+    }
+  };
+
+  const deleteRow = async (rowId: string) => {
+    if (!window.confirm("Soft-delete this submission?")) return;
+    try {
+      await api.deleteSubmission(rowId);
+      setSelectedRows((prev) => {
+        const next = new Set(prev);
+        next.delete(rowId);
+        return next;
+      });
+      await reloadIndicator(showDeleted);
+    } catch (err: any) {
+      setError(err?.message || "Failed to delete submission.");
+    }
+  };
+
+  const restoreRow = async (rowId: string) => {
+    try {
+      await api.restoreSubmission(rowId);
+      await reloadIndicator(showDeleted);
+    } catch (err: any) {
+      setError(err?.message || "Failed to restore submission.");
+    }
+  };
+
+  const toggleRowSelected = (rowId: string, checked: boolean) => {
+    setSelectedRows((prev) => {
+      const next = new Set(prev);
+      if (checked) next.add(rowId);
+      else next.delete(rowId);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = (checked: boolean, rows: Indicator["values"]) => {
+    if (!checked) {
+      setSelectedRows(new Set());
+      return;
+    }
+    setSelectedRows(new Set(rows.map((r) => r.id)));
+  };
+
+  const handleBatchDelete = async () => {
+    const ids = Array.from(selectedRows);
+    if (ids.length === 0) return;
+    if (!window.confirm(`Soft-delete ${ids.length} submission(s)?`)) return;
+    await Promise.all(ids.map((id) => api.deleteSubmission(id).catch(() => null)));
+    setSelectedRows(new Set());
+    await reloadIndicator(showDeleted);
+  };
+
+  const handleBatchRestore = async () => {
+    const ids = Array.from(selectedRows);
+    if (ids.length === 0) return;
+    await Promise.all(ids.map((id) => api.restoreSubmission(id).catch(() => null)));
+    setSelectedRows(new Set());
+    await reloadIndicator(showDeleted);
+  };
+
   if (loading)
     return (
       <Layout>
@@ -192,6 +359,7 @@ export const IndicatorDetail: React.FC = () => {
     );
 
   const anomalies = indicator.values.filter((v) => v.isAnomaly);
+  const missedEntryCount = reportingGaps.length;
 
   const formatDate = (value: string) => {
     const parsed = new Date(value);
@@ -235,18 +403,24 @@ export const IndicatorDetail: React.FC = () => {
     value: number | string,
     existing?: string,
     isAnomaly?: boolean,
+    score?: number,
+    threshold?: number,
   ) => {
     if (!isAnomaly) return "";
-    if (existing && existing.trim()) return existing;
+    const suffix =
+      score !== undefined && threshold !== undefined
+        ? ` (score: ${score.toFixed(3)}, threshold: ${threshold.toFixed(3)})`
+        : "";
+    if (existing && existing.trim()) return `${existing}${suffix}`;
     const numericValue = Number(value);
-    if (!Number.isFinite(numericValue)) return "Anomaly detected";
+    if (!Number.isFinite(numericValue)) return `Anomaly detected${suffix}`;
     if (indicator.type === IndicatorType.PERCENTAGE) {
       const lower = indicator.minExpected ?? 0;
       const upper = indicator.maxExpected ?? 100;
       if (numericValue < lower)
-        return `Percent must be between ${lower} and ${upper}`;
+        return `Percent must be between ${lower} and ${upper}${suffix}`;
       if (numericValue > upper)
-        return `Percent must be between ${lower} and ${upper}`;
+        return `Percent must be between ${lower} and ${upper}${suffix}`;
     }
     if (
       indicator.type === IndicatorType.NUMBER ||
@@ -256,16 +430,16 @@ export const IndicatorDetail: React.FC = () => {
         indicator.minExpected !== undefined &&
         numericValue < indicator.minExpected
       ) {
-        return `Value below expected minimum (${indicator.minExpected})`;
+        return `Value below expected minimum (${indicator.minExpected})${suffix}`;
       }
       if (
         indicator.maxExpected !== undefined &&
         numericValue > indicator.maxExpected
       ) {
-        return `Value exceeds expected maximum (${indicator.maxExpected})`;
+        return `Value exceeds expected maximum (${indicator.maxExpected})${suffix}`;
       }
     }
-    return "Anomaly detected";
+    return `Anomaly detected${suffix}`;
   };
 
   // Sort values for table
@@ -337,6 +511,21 @@ export const IndicatorDetail: React.FC = () => {
               />
             )}
 
+          {indicator.type === IndicatorType.CATEGORICAL &&
+            indicator.categories &&
+            indicator.categories.length > 0 &&
+            indicator.categoryConfig?.disaggregationDimensions &&
+            indicator.categoryConfig.disaggregationDimensions.length > 0 && (
+              <DisaggregationComparison
+                indicatorId={indicator.id}
+                categories={indicator.categories}
+                dimensionLabel={
+                  indicator.categoryConfig.disaggregationDimensions[0].label ||
+                  "Entity"
+                }
+              />
+            )}
+
           {/* Anomaly Summary Block */}
           {anomalies.length > 0 && (
             <div className="bg-red-50 border border-red-100 rounded-lg p-6">
@@ -377,6 +566,8 @@ export const IndicatorDetail: React.FC = () => {
                           a.value,
                           a.anomalyReason,
                           a.isAnomaly,
+                          a.anomalyScore,
+                          a.anomalyThreshold,
                         )}
                       </div>
                     </div>
@@ -384,6 +575,58 @@ export const IndicatorDetail: React.FC = () => {
               </div>
             </div>
           )}
+
+          <div className="bg-white rounded-lg border border-slate-200 shadow-sm p-5">
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
+              <h3 className="text-base font-semibold text-slate-900 flex items-center gap-2">
+                <CalendarClock className="w-4 h-4 text-slate-500" />
+                Reporting Health
+              </h3>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-slate-500">Frequency</span>
+                <select
+                  value={reportingFrequency}
+                  onChange={(e) =>
+                    setReportingFrequency(e.target.value as "DAILY" | "WEEKLY")
+                  }
+                  className="text-xs border border-slate-300 rounded px-2 py-1 bg-white"
+                >
+                  <option value="DAILY">Daily</option>
+                  <option value="WEEKLY">Weekly</option>
+                </select>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="rounded-md border border-amber-200 bg-amber-50 p-3">
+                <div className="text-xs text-amber-700 mb-1">Missed Entries</div>
+                <div className="text-xl font-bold text-amber-900">
+                  {missedEntryCount}
+                </div>
+              </div>
+              <div className="rounded-md border border-red-200 bg-red-50 p-3">
+                <div className="text-xs text-red-700 mb-1">Anomaly Flagged</div>
+                <div className="text-xl font-bold text-red-900">
+                  {anomalies.length}
+                </div>
+              </div>
+            </div>
+            {reportingGaps.length > 0 && (
+              <div className="mt-4 space-y-2">
+                {reportingGaps.slice(0, 3).map((gap, idx) => (
+                  <div
+                    key={`${gap.from}-${idx}`}
+                    className="text-xs text-slate-700 bg-slate-50 border border-slate-200 rounded p-2 flex items-center gap-2"
+                  >
+                    <BellRing className="w-3.5 h-3.5 text-amber-600" />
+                    <span>
+                      Gap from {formatDate(gap.from)} to {formatDate(gap.to)} (
+                      {gap.daysMissing} days missed)
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
 
           {/* Data History Table */}
           <div className="space-y-4">
@@ -393,6 +636,30 @@ export const IndicatorDetail: React.FC = () => {
                 Data History
               </h3>
               <div className="flex gap-2">
+                <label className="inline-flex items-center gap-2 px-3 py-1.5 text-xs rounded border border-slate-200 bg-white text-slate-600">
+                  <input
+                    type="checkbox"
+                    checked={showDeleted}
+                    onChange={(e) => setShowDeleted(e.target.checked)}
+                  />
+                  Show Deleted
+                </label>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleBatchDelete}
+                  disabled={selectedRows.size === 0}
+                >
+                  <Trash2 className="w-4 h-4 mr-2" /> Delete Selected
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleBatchRestore}
+                  disabled={selectedRows.size === 0}
+                >
+                  <RotateCcw className="w-4 h-4 mr-2" /> Restore Selected
+                </Button>
                 <Button
                   variant="outline"
                   size="sm"
@@ -415,6 +682,18 @@ export const IndicatorDetail: React.FC = () => {
                 <table className="w-full text-sm text-left">
                   <thead className="bg-slate-50 text-slate-500 font-semibold border-b border-slate-200">
                     <tr>
+                      <th className="px-4 py-3">
+                        <input
+                          type="checkbox"
+                          checked={
+                            tableValues.length > 0 &&
+                            tableValues.every((row) => selectedRows.has(row.id))
+                          }
+                          onChange={(e) =>
+                            toggleSelectAll(e.target.checked, tableValues)
+                          }
+                        />
+                      </th>
                       <th
                         className="px-6 py-3 cursor-pointer hover:bg-slate-100 transition-colors"
                         onClick={() => handleSort("date")}
@@ -440,35 +719,86 @@ export const IndicatorDetail: React.FC = () => {
                       <th className="px-6 py-3">Status</th>
                       <th className="px-6 py-3">Anomaly Reason</th>
                       <th className="px-6 py-3">Verification</th>
+                      <th className="px-6 py-3 sticky right-0 bg-slate-50 z-10">
+                        Actions
+                      </th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {tableValues.length === 0 ? (
                       <tr>
                         <td
-                          colSpan={5}
+                          colSpan={7}
                           className="px-6 py-8 text-center text-slate-400 italic"
                         >
                           No data entries recorded yet.
                         </td>
                       </tr>
                     ) : (
-                      tableValues.map((row) => (
+                      tableValues.map((row) => {
+                        const edit = editingRows[row.id];
+                        const editable = canModifyRow(row);
+                        return (
                         <tr
                           key={row.id}
-                          className={`hover:bg-slate-50 transition-colors ${row.isAnomaly ? "bg-red-50/30" : ""}`}
+                          className={`hover:bg-slate-50 transition-colors ${row.isAnomaly ? "bg-red-50/30" : ""} ${row.deletedAt ? "opacity-60" : ""}`}
                         >
+                          <td className="px-4 py-4">
+                            <input
+                              type="checkbox"
+                              checked={selectedRows.has(row.id)}
+                              onChange={(e) =>
+                                toggleRowSelected(row.id, e.target.checked)
+                              }
+                            />
+                          </td>
                           <td className="px-6 py-4 font-medium text-slate-900 whitespace-nowrap">
-                            {formatDate(row.date)}
+                            {edit ? (
+                              <input
+                                type="date"
+                                value={edit.reportedAt}
+                                onChange={(e) =>
+                                  setEditingRows((prev) => ({
+                                    ...prev,
+                                    [row.id]: {
+                                      ...prev[row.id],
+                                      reportedAt: e.target.value,
+                                    },
+                                  }))
+                                }
+                                className="px-2 py-1 border border-slate-300 rounded"
+                              />
+                            ) : (
+                              formatDate(row.date)
+                            )}
                           </td>
                           <td className="px-6 py-4 font-mono text-slate-700">
-                            {formatCategoricalDisplay(
-                              row.value,
-                              row.categoryValue ?? undefined,
+                            {edit ? (
+                              <input
+                                type="text"
+                                value={edit.value}
+                                onChange={(e) =>
+                                  setEditingRows((prev) => ({
+                                    ...prev,
+                                    [row.id]: {
+                                      ...prev[row.id],
+                                      value: e.target.value,
+                                    },
+                                  }))
+                                }
+                                className="px-2 py-1 border border-slate-300 rounded w-28"
+                              />
+                            ) : (
+                              <>
+                                {formatCategoricalDisplay(
+                                  row.value,
+                                  row.categoryValue ?? undefined,
+                                )}
+                                <span className="text-xs text-slate-400 ml-1">
+                                  {indicator.unit}
+                                </span>
+                              </>
                             )}
-                            <span className="text-xs text-slate-400 ml-1">
-                              {indicator.unit}
-                            </span>
                           </td>
                           <td className="px-6 py-4">
                             {row.isAnomaly ? (
@@ -478,6 +808,8 @@ export const IndicatorDetail: React.FC = () => {
                                   row.value,
                                   row.anomalyReason,
                                   row.isAnomaly,
+                                  row.anomalyScore,
+                                  row.anomalyThreshold,
                                 )}
                               >
                                 <AlertTriangle className="w-4 h-4" />
@@ -502,12 +834,16 @@ export const IndicatorDetail: React.FC = () => {
                                   row.value,
                                   row.anomalyReason,
                                   row.isAnomaly,
+                                  row.anomalyScore,
+                                  row.anomalyThreshold,
                                 )}
                               >
                                 {inferAnomalyReason(
                                   row.value,
                                   row.anomalyReason,
                                   row.isAnomaly,
+                                  row.anomalyScore,
+                                  row.anomalyThreshold,
                                 )}
                               </span>
                             ) : (
@@ -515,7 +851,38 @@ export const IndicatorDetail: React.FC = () => {
                             )}
                           </td>
                           <td className="px-6 py-4">
-                            {row.evidence ? (
+                            {edit ? (
+                              <div className="space-y-2">
+                                <input
+                                  type="text"
+                                  value={edit.evidence}
+                                  onChange={(e) =>
+                                    setEditingRows((prev) => ({
+                                      ...prev,
+                                      [row.id]: {
+                                        ...prev[row.id],
+                                        evidence: e.target.value,
+                                      },
+                                    }))
+                                  }
+                                  className="px-2 py-1 border border-slate-300 rounded w-48"
+                                />
+                                <div className="flex items-center gap-2 md:hidden">
+                                  <button
+                                    className="text-xs px-2 py-1 border rounded text-green-700 border-green-200 bg-green-50"
+                                    onClick={() => saveRowEdit(row.id)}
+                                  >
+                                    Save
+                                  </button>
+                                  <button
+                                    className="text-xs px-2 py-1 border rounded text-slate-700 border-slate-200"
+                                    onClick={() => cancelRowEdit(row.id)}
+                                  >
+                                    Cancel
+                                  </button>
+                                </div>
+                              </div>
+                            ) : row.evidence ? (
                               row.evidence.startsWith("[Attached]") ? (
                                 <div className="flex items-center gap-2 text-blue-600 bg-blue-50 px-2 py-1 rounded border border-blue-100 w-fit">
                                   <FileText className="w-3 h-3" />
@@ -535,8 +902,67 @@ export const IndicatorDetail: React.FC = () => {
                               <span className="text-xs text-slate-300">-</span>
                             )}
                           </td>
+                          <td className="px-6 py-4 sticky right-0 bg-white z-10 shadow-[-8px_0_8px_-8px_rgba(15,23,42,0.15)]">
+                            <div className="flex items-center gap-2">
+                              {edit ? (
+                                <>
+                                  <button
+                                    className="text-xs px-2 py-1 border rounded text-green-700 border-green-200 bg-green-50"
+                                    onClick={() => saveRowEdit(row.id)}
+                                  >
+                                    Save
+                                  </button>
+                                  <button
+                                    className="text-xs px-2 py-1 border rounded text-slate-700 border-slate-200"
+                                    onClick={() => cancelRowEdit(row.id)}
+                                  >
+                                    Cancel
+                                  </button>
+                                </>
+                              ) : (
+                                <>
+                                  {!row.deletedAt && (
+                                    <button
+                                      className="text-xs px-2 py-1 border rounded text-blue-700 border-blue-200 disabled:opacity-40"
+                                      disabled={!editable}
+                                      onClick={() => startRowEdit(row)}
+                                      title={
+                                        editable
+                                          ? "Edit"
+                                          : "You cannot edit this submission"
+                                      }
+                                    >
+                                      <Pencil className="w-3 h-3" />
+                                    </button>
+                                  )}
+                                  {!row.deletedAt ? (
+                                    <button
+                                      className="text-xs px-2 py-1 border rounded text-red-700 border-red-200 disabled:opacity-40"
+                                      disabled={!editable}
+                                      onClick={() => deleteRow(row.id)}
+                                      title={
+                                        editable
+                                          ? "Delete"
+                                          : "You cannot delete this submission"
+                                      }
+                                    >
+                                      <Trash2 className="w-3 h-3" />
+                                    </button>
+                                  ) : (
+                                    <button
+                                      className="text-xs px-2 py-1 border rounded text-amber-700 border-amber-200"
+                                      onClick={() => restoreRow(row.id)}
+                                      title="Restore"
+                                    >
+                                      <RotateCcw className="w-3 h-3" />
+                                    </button>
+                                  )}
+                                </>
+                              )}
+                            </div>
+                          </td>
                         </tr>
-                      ))
+                      )})
                     )}
                   </tbody>
                 </table>
@@ -786,15 +1212,7 @@ export const IndicatorDetail: React.FC = () => {
         isOpen={showImportWizard}
         onClose={() => setShowImportWizard(false)}
         onSuccess={() => {
-          // Reload indicator data
-          Promise.all([
-            api.getIndicator(indicator.id),
-            api.getIndicatorSubmissions(indicator.id),
-          ])
-            .then(([data, submissions]) => {
-              setIndicator({ ...data, values: submissions });
-            })
-            .catch(console.error);
+          reloadIndicator(showDeleted).catch(console.error);
         }}
       />
 

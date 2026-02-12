@@ -1,7 +1,12 @@
-import { IndicatorDataType, AnomalyStatus } from "@prisma/client";
+import { IndicatorDataType, AnomalyStatus, Role } from "@prisma/client";
 import * as indicatorRepo from "../repositories/indicatorRepository";
 import * as submissionRepo from "../repositories/submissionRepository";
-import { BadRequestError, NotFoundError } from "../utils/errors";
+import { BadRequestError, ForbiddenError, NotFoundError } from "../utils/errors";
+import { scoreSubmission, ScoreResult } from "./mlService";
+import {
+  AnomalyConfig,
+  normalizeAnomalyConfig,
+} from "./anomalyConfig";
 import {
   validateCategoricalValue,
   formatCategoricalValue,
@@ -10,27 +15,6 @@ import {
   CategoryConfig,
 } from "./categoricalService";
 
-type AnomalyConfig = {
-  enabled?: boolean;
-  outlier?: {
-    method?: "MAD" | "IQR";
-    threshold?: number;
-    windowSize?: number;
-    minPoints?: number;
-  };
-  trend?: {
-    method?: "SLOPE_SHIFT" | "MEAN_SHIFT";
-    threshold?: number;
-    windowSize?: number;
-  };
-};
-
-const defaultAnomalyConfig: Required<Pick<AnomalyConfig, "enabled">> &
-  AnomalyConfig = {
-  enabled: false,
-  outlier: { method: "MAD", threshold: 3.5, windowSize: 8, minPoints: 6 },
-  trend: { method: "SLOPE_SHIFT", threshold: 2, windowSize: 6 },
-};
 
 const parseDate = (value?: string | null) => {
   if (!value) return null;
@@ -54,12 +38,6 @@ const normalizeValue = (
       const num = Number(value);
       if (!Number.isFinite(num))
         throw new BadRequestError("INVALID_VALUE", "Value must be numeric");
-      if (min !== null && min !== undefined && num < min) {
-        throw new BadRequestError("VALUE_TOO_LOW", `Value must be >= ${min}`);
-      }
-      if (max !== null && max !== undefined && num > max) {
-        throw new BadRequestError("VALUE_TOO_HIGH", `Value must be <= ${max}`);
-      }
       return num.toString();
     }
     case "PERCENT": {
@@ -96,12 +74,6 @@ const normalizeValue = (
       const num = Number(value);
       if (!Number.isFinite(num)) {
         throw new BadRequestError("INVALID_VALUE", "Value must be numeric");
-      }
-      if (min !== null && min !== undefined && num < min) {
-        throw new BadRequestError("VALUE_TOO_LOW", `Value must be >= ${min}`);
-      }
-      if (max !== null && max !== undefined && num > max) {
-        throw new BadRequestError("VALUE_TOO_HIGH", `Value must be <= ${max}`);
       }
       return num.toString();
     }
@@ -196,7 +168,7 @@ const assessSeriesAnomalies = (
   min?: number | null,
   max?: number | null,
 ) => {
-  const config = { ...defaultAnomalyConfig, ...(anomalyConfig ?? {}) };
+  const config = normalizeAnomalyConfig(anomalyConfig ?? null);
   if (!config.enabled) {
     return submissions.map((submission) =>
       assessRangeAnomaly(dataType, submission.value, min, max),
@@ -309,7 +281,7 @@ const assessSeriesAnomalies = (
   return results;
 };
 
-const detectAnomalyForNewValue = (
+const detectRulesAnomalyForNewValue = (
   newValue: string,
   dataType: IndicatorDataType,
   recentSubmissions: { value: string; reportedAt: Date }[],
@@ -318,35 +290,109 @@ const detectAnomalyForNewValue = (
     maxValue: number | null;
     anomalyConfig: any;
   },
+  config: AnomalyConfig,
 ): { isAnomaly: boolean; anomalyReason?: string } => {
-  const config = {
-    ...defaultAnomalyConfig,
-    ...(indicator.anomalyConfig ?? {}),
-  };
-
   if (!config.enabled) {
-    return assessRangeAnomaly(
+    return { isAnomaly: false };
+  }
+
+  const reasons: string[] = [];
+  const rules = config.rules ?? {};
+
+  if (rules.range !== false) {
+    const rangeResult = assessRangeAnomaly(
       dataType,
       newValue,
       indicator.minValue,
       indicator.maxValue,
     );
+    if (rangeResult.isAnomaly && rangeResult.anomalyReason) {
+      reasons.push(rangeResult.anomalyReason);
+    }
   }
 
-  const allValues = [...recentSubmissions.map((s) => s.value), newValue];
-  const assessments = assessSeriesAnomalies(
-    dataType,
-    allValues.map((value) => ({ value })),
-    config,
-    indicator.minValue,
-    indicator.maxValue,
+  const maxChangePercent = rules.maxChangePercent ?? 50;
+  const numericValue = Number(newValue);
+  if (Number.isFinite(numericValue) && maxChangePercent > 0) {
+    const previous = [...recentSubmissions]
+      .sort((a, b) => b.reportedAt.getTime() - a.reportedAt.getTime())
+      .map((s) => Number(s.value))
+      .find((v) => Number.isFinite(v));
+    if (previous !== undefined) {
+      if (previous === 0) {
+        if (numericValue !== 0) {
+          reasons.push("Large change from 0");
+        }
+      } else {
+        const percentChange =
+          (Math.abs(numericValue - previous) / Math.abs(previous)) * 100;
+        if (percentChange >= maxChangePercent) {
+          reasons.push(`Change > ${maxChangePercent}% from previous value`);
+        }
+      }
+    }
+  }
+
+  if (reasons.length > 0) {
+    return { isAnomaly: true, anomalyReason: reasons.join(" | ") };
+  }
+  return { isAnomaly: false };
+};
+
+const isNumericDataType = (dataType: IndicatorDataType) =>
+  dataType === "NUMBER" ||
+  dataType === "PERCENT" ||
+  dataType === "CATEGORICAL";
+
+const EDIT_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+
+const ensureCanModifySubmission = (
+  submission: {
+    createdAt: Date;
+    createdByUserId: number;
+  },
+  userId: number,
+  role: Role,
+) => {
+  if (role === "ADMIN" || role === "MANAGER") return;
+  if (role !== "DATA_ENTRY") {
+    throw new ForbiddenError("You are not allowed to modify this submission");
+  }
+  if (submission.createdByUserId !== userId) {
+    throw new ForbiddenError("You can only modify your own submissions");
+  }
+  const ageMs = Date.now() - submission.createdAt.getTime();
+  if (ageMs > EDIT_WINDOW_MS) {
+    throw new ForbiddenError("Submission can only be modified within 7 days");
+  }
+};
+
+const toSubmissionConflictError = () =>
+  new BadRequestError(
+    "SUBMISSION_CONFLICT",
+    "Another submission exists for this date/disaggregation",
   );
 
-  const lastAssessment = assessments[assessments.length - 1];
-  return {
-    isAnomaly: lastAssessment.isAnomaly,
-    anomalyReason: lastAssessment.anomalyReason,
-  };
+const scoreWithMl = async (
+  indicatorId: number,
+  dataType: IndicatorDataType,
+  values: number[],
+  newValue: number,
+  config: AnomalyConfig,
+): Promise<ScoreResult> => {
+  return scoreSubmission({
+    indicatorId,
+    dataType,
+    values,
+    newValue,
+    config: {
+      method: config.ml?.method ?? "ISOLATION_FOREST",
+      contamination: config.ml?.contamination ?? 0.05,
+      windowSize: config.ml?.windowSize ?? 50,
+      minPoints: config.ml?.minPoints ?? 20,
+      seed: config.ml?.seed ?? 42,
+    },
+  });
 };
 
 export const createSubmission = async (
@@ -413,27 +459,103 @@ export const createSubmission = async (
   );
 
   // Get recent submissions for anomaly detection context
-  const config = {
-    ...defaultAnomalyConfig,
-    ...((indicator.anomalyConfig as any) ?? {}),
-  };
-  const windowSize = Math.max(
+  const config = normalizeAnomalyConfig(
+    (indicator.anomalyConfig as any) ?? null,
+  );
+  const ruleWindowSize = Math.max(
     config.outlier?.windowSize ?? 8,
     (config.trend?.windowSize ?? 6) * 2,
   );
+  const mlWindowSize = config.ml?.windowSize ?? 50;
+  const windowSize = Math.max(ruleWindowSize, mlWindowSize);
 
   const recentSubmissions = await submissionRepo.getRecentSubmissions(
     indicatorId,
     windowSize,
   );
-
-  // Detect anomaly for this new value
-  const anomalyResult = detectAnomalyForNewValue(
-    normalizedValue,
-    indicator.dataType,
-    recentSubmissions,
-    indicator,
+  const chronological = [...recentSubmissions].sort(
+    (a, b) => a.reportedAt.getTime() - b.reportedAt.getTime(),
   );
+
+  let anomalyResult: {
+    isAnomaly: boolean;
+    anomalyReason?: string;
+    anomalyScore?: number | null;
+    anomalyThreshold?: number | null;
+    anomalyMethod?: string | null;
+    anomalyMeta?: Record<string, any> | null;
+  } = { isAnomaly: false };
+
+  const shouldUseMl =
+    config.enabled &&
+    config.mode === "ML" &&
+    isNumericDataType(indicator.dataType);
+
+  if (shouldUseMl) {
+    const numericValues = chronological
+      .map((s) => Number(s.value))
+      .filter(Number.isFinite);
+    const newNumericValue = Number(normalizedValue);
+    const minPoints = config.ml?.minPoints ?? 20;
+
+    if (numericValues.length >= minPoints && Number.isFinite(newNumericValue)) {
+      try {
+        const result = await scoreWithMl(
+          indicatorId,
+          indicator.dataType,
+          numericValues,
+          newNumericValue,
+          config,
+        );
+        anomalyResult = {
+          isAnomaly: result.isAnomaly,
+          anomalyReason: result.reason,
+          anomalyScore: result.score,
+          anomalyThreshold: result.threshold,
+          anomalyMethod: result.method,
+          anomalyMeta: result.meta,
+        };
+      } catch (error) {
+        if (config.fallback?.useRulesOnServiceError !== false) {
+          const ruleResult = detectRulesAnomalyForNewValue(
+            normalizedValue,
+            indicator.dataType,
+            chronological,
+            indicator,
+            config,
+          );
+          anomalyResult = {
+            isAnomaly: ruleResult.isAnomaly,
+            anomalyReason: ruleResult.anomalyReason,
+          };
+        }
+      }
+    } else if (config.fallback?.useRulesWhenInsufficientData !== false) {
+      const ruleResult = detectRulesAnomalyForNewValue(
+        normalizedValue,
+        indicator.dataType,
+        chronological,
+        indicator,
+        config,
+      );
+      anomalyResult = {
+        isAnomaly: ruleResult.isAnomaly,
+        anomalyReason: ruleResult.anomalyReason ?? "Insufficient data",
+      };
+    }
+  } else {
+    const ruleResult = detectRulesAnomalyForNewValue(
+      normalizedValue,
+      indicator.dataType,
+      chronological,
+      indicator,
+      config,
+    );
+    anomalyResult = {
+      isAnomaly: ruleResult.isAnomaly,
+      anomalyReason: ruleResult.anomalyReason,
+    };
+  }
 
   return submissionRepo.createSubmission({
     indicatorId,
@@ -446,12 +568,16 @@ export const createSubmission = async (
     isAnomaly: anomalyResult.isAnomaly,
     anomalyReason: anomalyResult.anomalyReason ?? null,
     anomalyStatus: anomalyResult.isAnomaly ? AnomalyStatus.DETECTED : null,
+    anomalyScore: anomalyResult.anomalyScore ?? null,
+    anomalyThreshold: anomalyResult.anomalyThreshold ?? null,
+    anomalyMethod: anomalyResult.anomalyMethod ?? null,
+    anomalyMeta: anomalyResult.anomalyMeta ?? null,
   });
 };
 
 export const listSubmissions = async (
   indicatorId: number,
-  query: { from?: string; to?: string },
+  query: { from?: string; to?: string; includeDeleted?: string },
 ) => {
   const indicator = await indicatorRepo.getById(indicatorId);
   if (!indicator)
@@ -463,6 +589,7 @@ export const listSubmissions = async (
   const submissions = await submissionRepo.listSubmissions(indicatorId, {
     from,
     to,
+    includeDeleted: query.includeDeleted === "true",
   });
 
   // Return submissions with persisted anomaly data
@@ -478,9 +605,244 @@ export const listSubmissions = async (
     isAnomaly: submission.isAnomaly,
     anomalyReason: submission.anomalyReason,
     anomalyStatus: submission.anomalyStatus,
+    anomalyScore: submission.anomalyScore,
+    anomalyThreshold: submission.anomalyThreshold,
+    anomalyMethod: submission.anomalyMethod,
+    anomalyMeta: submission.anomalyMeta as any,
     anomalyReviewedBy: submission.anomalyReviewedBy,
     anomalyReviewedAt: submission.anomalyReviewedAt,
+    deletedAt: (submission as any).deletedAt,
+    deletedByUserId: (submission as any).deletedByUserId,
+    updatedAt: (submission as any).updatedAt,
+    updatedByUserId: (submission as any).updatedByUserId,
   }));
+};
+
+export const updateSubmission = async (
+  submissionId: number,
+  data: {
+    reportedAt: string;
+    value: any;
+    categoryValue?: string | null;
+    disaggregationKey?: string | null;
+    evidence?: string | null;
+  },
+  userId: number,
+  role: Role,
+) => {
+  const submission = await submissionRepo.getById(submissionId);
+  if (!submission) {
+    throw new NotFoundError("SUBMISSION_NOT_FOUND", "Submission not found");
+  }
+  if ((submission as any).deletedAt) {
+    throw new BadRequestError(
+      "SUBMISSION_DELETED",
+      "Deleted submissions must be restored before editing",
+    );
+  }
+  ensureCanModifySubmission(submission, userId, role);
+
+  const indicator = await indicatorRepo.getById(submission.indicatorId);
+  if (!indicator) {
+    throw new NotFoundError("INDICATOR_NOT_FOUND", "Indicator not found");
+  }
+
+  const reportedAt = parseDate(data.reportedAt);
+
+  const categories = indicator.categories as any as CategoryDefinition[] | null;
+  const categoryConfig =
+    indicator.categoryConfig as any as CategoryConfig | null;
+
+  if (indicator.dataType === "CATEGORICAL") {
+    validateDisaggregationKey(data.disaggregationKey, categoryConfig);
+  }
+
+  let normalizedCategoryValue: string | null = null;
+  if (categories && categories.length > 0) {
+    const config = categoryConfig || { required: false };
+    const rawCategoryValue =
+      data.categoryValue ?? (indicator.dataType === "CATEGORICAL" ? "" : null);
+    const shouldValidate =
+      indicator.dataType === "CATEGORICAL" ||
+      config.required === true ||
+      (rawCategoryValue !== null && rawCategoryValue !== undefined);
+
+    if (shouldValidate) {
+      const selectedIds = validateCategoricalValue(
+        String(rawCategoryValue ?? ""),
+        categories,
+        config,
+      );
+      normalizedCategoryValue =
+        selectedIds.length > 0 ? formatCategoricalValue(selectedIds) : null;
+    }
+  } else if (indicator.dataType === "CATEGORICAL") {
+    throw new BadRequestError(
+      "NO_CATEGORIES",
+      "Indicator has no categories defined",
+    );
+  }
+
+  const normalizedValue = normalizeValue(
+    indicator.dataType,
+    data.value,
+    indicator.minValue,
+    indicator.maxValue,
+    categories,
+    categoryConfig,
+  );
+
+  const config = normalizeAnomalyConfig(
+    (indicator.anomalyConfig as any) ?? null,
+  );
+  const ruleWindowSize = Math.max(
+    config.outlier?.windowSize ?? 8,
+    (config.trend?.windowSize ?? 6) * 2,
+  );
+  const mlWindowSize = config.ml?.windowSize ?? 50;
+  const windowSize = Math.max(ruleWindowSize, mlWindowSize);
+
+  const recentSubmissions = await submissionRepo.getRecentSubmissions(
+    indicator.id,
+    windowSize + 1,
+  );
+
+  const chronological = [...recentSubmissions]
+    .filter((s) => s.id !== submission.id)
+    .sort((a, b) => a.reportedAt.getTime() - b.reportedAt.getTime());
+
+  let anomalyResult: {
+    isAnomaly: boolean;
+    anomalyReason?: string;
+    anomalyScore?: number | null;
+    anomalyThreshold?: number | null;
+    anomalyMethod?: string | null;
+    anomalyMeta?: Record<string, any> | null;
+  } = { isAnomaly: false };
+
+  const shouldUseMl =
+    config.enabled &&
+    config.mode === "ML" &&
+    isNumericDataType(indicator.dataType);
+
+  if (shouldUseMl) {
+    const numericValues = chronological
+      .map((s) => Number(s.value))
+      .filter(Number.isFinite);
+    const newNumericValue = Number(normalizedValue);
+    const minPoints = config.ml?.minPoints ?? 20;
+
+    if (numericValues.length >= minPoints && Number.isFinite(newNumericValue)) {
+      try {
+        const result = await scoreWithMl(
+          indicator.id,
+          indicator.dataType,
+          numericValues,
+          newNumericValue,
+          config,
+        );
+        anomalyResult = {
+          isAnomaly: result.isAnomaly,
+          anomalyReason: result.reason,
+          anomalyScore: result.score,
+          anomalyThreshold: result.threshold,
+          anomalyMethod: result.method,
+          anomalyMeta: result.meta,
+        };
+      } catch (_error) {
+        if (config.fallback?.useRulesOnServiceError !== false) {
+          const ruleResult = detectRulesAnomalyForNewValue(
+            normalizedValue,
+            indicator.dataType,
+            chronological,
+            indicator,
+            config,
+          );
+          anomalyResult = {
+            isAnomaly: ruleResult.isAnomaly,
+            anomalyReason: ruleResult.anomalyReason,
+          };
+        }
+      }
+    } else if (config.fallback?.useRulesWhenInsufficientData !== false) {
+      const ruleResult = detectRulesAnomalyForNewValue(
+        normalizedValue,
+        indicator.dataType,
+        chronological,
+        indicator,
+        config,
+      );
+      anomalyResult = {
+        isAnomaly: ruleResult.isAnomaly,
+        anomalyReason: ruleResult.anomalyReason ?? "Insufficient data",
+      };
+    }
+  } else {
+    const ruleResult = detectRulesAnomalyForNewValue(
+      normalizedValue,
+      indicator.dataType,
+      chronological,
+      indicator,
+      config,
+    );
+    anomalyResult = {
+      isAnomaly: ruleResult.isAnomaly,
+      anomalyReason: ruleResult.anomalyReason,
+    };
+  }
+
+  try {
+    return await submissionRepo.updateSubmissionData(submission.id, {
+      reportedAt: reportedAt!,
+      value: normalizedValue,
+      categoryValue: normalizedCategoryValue,
+      disaggregationKey: data.disaggregationKey ?? null,
+      evidence: data.evidence ?? null,
+      updatedByUserId: userId,
+      isAnomaly: anomalyResult.isAnomaly,
+      anomalyReason: anomalyResult.anomalyReason ?? null,
+      anomalyStatus: anomalyResult.isAnomaly ? AnomalyStatus.DETECTED : null,
+      anomalyScore: anomalyResult.anomalyScore ?? null,
+      anomalyThreshold: anomalyResult.anomalyThreshold ?? null,
+      anomalyMethod: anomalyResult.anomalyMethod ?? null,
+      anomalyMeta: anomalyResult.anomalyMeta ?? null,
+    });
+  } catch (error: any) {
+    if (error?.code === "P2002") {
+      throw toSubmissionConflictError();
+    }
+    throw error;
+  }
+};
+
+export const deleteSubmission = async (
+  submissionId: number,
+  userId: number,
+  role: Role,
+) => {
+  const submission = await submissionRepo.getById(submissionId);
+  if (!submission) {
+    throw new NotFoundError("SUBMISSION_NOT_FOUND", "Submission not found");
+  }
+  if ((submission as any).deletedAt) return;
+  ensureCanModifySubmission(submission, userId, role);
+  await submissionRepo.softDeleteSubmission(submission.id, userId);
+};
+
+export const restoreSubmission = async (submissionId: number, userId: number) => {
+  const submission = await submissionRepo.getById(submissionId);
+  if (!submission) {
+    throw new NotFoundError("SUBMISSION_NOT_FOUND", "Submission not found");
+  }
+  if (!(submission as any).deletedAt) return submission;
+  try {
+    return await submissionRepo.restoreSubmission(submission.id, userId);
+  } catch (error: any) {
+    if (error?.code === "P2002") {
+      throw toSubmissionConflictError();
+    }
+    throw error;
+  }
 };
 
 export const acknowledgeAnomaly = async (

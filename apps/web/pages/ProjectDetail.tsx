@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Layout } from "../components/Layout";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import {
@@ -32,15 +32,27 @@ import {
   Activity,
   Info,
   ClipboardCheck,
+  Pencil,
 } from "lucide-react";
 import { Card } from "../components/ui/Card";
 
 export const ProjectDetail: React.FC = () => {
+  type OutcomeProgressItem = {
+    indicator: Indicator;
+    latestValue: number | string | null;
+    latestDate?: string;
+    targetNumeric?: number;
+    currentNumeric?: number;
+  };
+
   const { id } = useParams<{ id: string }>();
   const [project, setProject] = useState<Project | undefined>(undefined);
   const [indicators, setIndicators] = useState<Indicator[]>([]);
   const [stats, setStats] = useState<ProjectStats | null>(null);
   const [activities, setActivities] = useState<ActivityLog[]>([]);
+  const [outcomeProgress, setOutcomeProgress] = useState<OutcomeProgressItem[]>(
+    [],
+  );
   const [activeTab, setActiveTab] = useState<
     "overview" | "logframe" | "indicators"
   >("overview");
@@ -80,6 +92,12 @@ export const ProjectDetail: React.FC = () => {
 
   // Filter State
   const [searchQuery, setSearchQuery] = useState("");
+  const [progressSearch, setProgressSearch] = useState("");
+  const [progressLevelFilter, setProgressLevelFilter] = useState<
+    "ALL" | NodeType
+  >("ALL");
+  const [progressPage, setProgressPage] = useState(1);
+  const progressPageSize = 5;
 
   const refreshData = () => {
     if (id) {
@@ -112,6 +130,53 @@ export const ProjectDetail: React.FC = () => {
   useEffect(() => {
     refreshData();
   }, [id, isWizardOpen]); // Also refresh when wizard closes (assuming success)
+
+  useEffect(() => {
+    const loadOutcomeProgress = async () => {
+      if (indicators.length === 0) {
+        setOutcomeProgress([]);
+        return;
+      }
+
+      const rows = await Promise.allSettled(
+        indicators.map(async (indicator) => {
+          const submissions = await api.getIndicatorSubmissions(indicator.id);
+          const latest = submissions[0];
+          const latestValue =
+            latest?.value !== undefined && latest?.value !== null
+              ? latest.value
+              : null;
+          const currentNumeric = Number(latestValue);
+          const targetNumeric = Number(indicator.target);
+          return {
+            indicator,
+            latestValue,
+            latestDate: latest?.date,
+            currentNumeric: Number.isFinite(currentNumeric)
+              ? currentNumeric
+              : undefined,
+            targetNumeric: Number.isFinite(targetNumeric) ? targetNumeric : undefined,
+          } as OutcomeProgressItem;
+        }),
+      );
+
+      const progressRows = rows
+        .filter((r): r is PromiseFulfilledResult<OutcomeProgressItem> => r.status === "fulfilled")
+        .map((r) => r.value)
+        .sort((a, b) => {
+          const aTime = a.latestDate ? new Date(a.latestDate).getTime() : 0;
+          const bTime = b.latestDate ? new Date(b.latestDate).getTime() : 0;
+          return bTime - aTime;
+        });
+
+      setOutcomeProgress(progressRows);
+    };
+
+    loadOutcomeProgress().catch((error) => {
+      console.error("Failed to load outcome indicator progress", error);
+      setOutcomeProgress([]);
+    });
+  }, [indicators]);
 
   const toDateInputValue = (value?: string) => {
     if (!value) return "";
@@ -277,6 +342,14 @@ export const ProjectDetail: React.FC = () => {
     }).format(amount);
   };
 
+  const getPercent = (value: number, total: number) => {
+    if (!Number.isFinite(value) || !Number.isFinite(total) || total <= 0) {
+      return 0;
+    }
+    const percent = (value / total) * 100;
+    return Math.max(0, Math.min(100, percent));
+  };
+
   const formatDate = (value?: string) => {
     if (!value) return "—";
     const parsed = new Date(value);
@@ -286,6 +359,71 @@ export const ProjectDetail: React.FC = () => {
       month: "short",
       day: "2-digit",
     });
+  };
+
+  const nodeTypeById = useMemo(() => {
+    const map = new Map<string, NodeType>();
+    const walk = (nodes: LogframeNode[]) => {
+      nodes.forEach((node) => {
+        map.set(node.id, node.type);
+        if (node.children && node.children.length > 0) {
+          walk(node.children);
+        }
+      });
+    };
+    if (project?.logframe) walk(project.logframe);
+    return map;
+  }, [project?.logframe]);
+
+  const progressRows = useMemo(() => {
+    const query = progressSearch.trim().toLowerCase();
+    const rows = outcomeProgress.filter((row) => {
+      const level = nodeTypeById.get(row.indicator.nodeId);
+      const levelMatch =
+        progressLevelFilter === "ALL" || level === progressLevelFilter;
+      const queryMatch =
+        query.length === 0 ||
+        row.indicator.name.toLowerCase().includes(query) ||
+        (row.indicator.description || "").toLowerCase().includes(query);
+      return levelMatch && queryMatch;
+    });
+    return rows;
+  }, [outcomeProgress, progressSearch, progressLevelFilter, nodeTypeById]);
+
+  const totalProgressPages = Math.max(
+    1,
+    Math.ceil(progressRows.length / progressPageSize),
+  );
+  const paginatedProgressRows = progressRows.slice(
+    (progressPage - 1) * progressPageSize,
+    progressPage * progressPageSize,
+  );
+
+  useEffect(() => {
+    if (progressPage > totalProgressPages) {
+      setProgressPage(totalProgressPages);
+    }
+  }, [progressPage, totalProgressPages]);
+
+  const levelBadgeClass = (level?: NodeType) => {
+    switch (level) {
+      case NodeType.GOAL:
+        return "bg-violet-50 text-violet-700 border-violet-200";
+      case NodeType.OUTCOME:
+        return "bg-blue-50 text-blue-700 border-blue-200";
+      case NodeType.OUTPUT:
+        return "bg-cyan-50 text-cyan-700 border-cyan-200";
+      case NodeType.ACTIVITY:
+        return "bg-amber-50 text-amber-700 border-amber-200";
+      default:
+        return "bg-slate-50 text-slate-600 border-slate-200";
+    }
+  };
+
+  const progressColorClass = (percent: number) => {
+    if (percent >= 80) return "bg-emerald-500";
+    if (percent >= 50) return "bg-blue-500";
+    return "bg-amber-500";
   };
 
   if (loading)
@@ -585,7 +723,7 @@ export const ProjectDetail: React.FC = () => {
                   <div
                     className="bg-green-500 h-full"
                     style={{
-                      width: `${(stats.budgetSpent / stats.budgetTotal) * 100}%`,
+                      width: `${getPercent(stats.budgetSpent, stats.budgetTotal)}%`,
                     }}
                   ></div>
                 </div>
@@ -604,13 +742,13 @@ export const ProjectDetail: React.FC = () => {
                   </div>
                 </div>
                 <p className="text-2xl font-bold text-slate-900">
-                  {Math.round((stats.daysElapsed / stats.daysTotal) * 100)}%
+                  {Math.round(getPercent(stats.daysElapsed, stats.daysTotal))}%
                 </p>
                 <div className="mt-2 w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
                   <div
                     className="bg-blue-500 h-full"
                     style={{
-                      width: `${(stats.daysElapsed / stats.daysTotal) * 100}%`,
+                      width: `${getPercent(stats.daysElapsed, stats.daysTotal)}%`,
                     }}
                   ></div>
                 </div>
@@ -635,7 +773,7 @@ export const ProjectDetail: React.FC = () => {
                   <div
                     className="bg-purple-500 h-full"
                     style={{
-                      width: `${(stats.beneficiariesReached / stats.beneficiariesTarget) * 100}%`,
+                      width: `${getPercent(stats.beneficiariesReached, stats.beneficiariesTarget)}%`,
                     }}
                   ></div>
                 </div>
@@ -660,7 +798,7 @@ export const ProjectDetail: React.FC = () => {
                   <div
                     className="bg-amber-500 h-full"
                     style={{
-                      width: `${(stats.activitiesCompleted / stats.activitiesTotal) * 100}%`,
+                      width: `${getPercent(stats.activitiesCompleted, stats.activitiesTotal)}%`,
                     }}
                   ></div>
                 </div>
@@ -673,6 +811,204 @@ export const ProjectDetail: React.FC = () => {
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               {/* Main Column */}
               <div className="lg:col-span-2 space-y-6">
+                <Card title="All Indicator Progress">
+                  <div className="space-y-4">
+                    <div className="flex flex-col md:flex-row md:items-center gap-3">
+                      <div className="relative flex-1">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
+                        <input
+                          value={progressSearch}
+                          onChange={(e) => {
+                            setProgressSearch(e.target.value);
+                            setProgressPage(1);
+                          }}
+                          placeholder="Search indicators..."
+                          className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-slate-200 bg-white text-sm text-slate-900"
+                        />
+                      </div>
+                      <select
+                        value={progressLevelFilter}
+                        onChange={(e) => {
+                          setProgressLevelFilter(
+                            e.target.value as "ALL" | NodeType,
+                          );
+                          setProgressPage(1);
+                        }}
+                        className="px-3 py-2.5 rounded-xl border border-slate-200 bg-white text-sm text-slate-700"
+                      >
+                        <option value="ALL">Level: All</option>
+                        <option value={NodeType.GOAL}>Goal</option>
+                        <option value={NodeType.OUTCOME}>Outcome</option>
+                        <option value={NodeType.OUTPUT}>Output</option>
+                        <option value={NodeType.ACTIVITY}>Activity</option>
+                      </select>
+                    </div>
+
+                    {progressRows.length === 0 ? (
+                      <p className="text-sm text-slate-500">
+                        No indicators match the current filters.
+                      </p>
+                    ) : (
+                      <>
+                        <div className="overflow-x-auto border border-slate-200 rounded-xl">
+                          <table className="w-full min-w-[900px]">
+                            <thead className="bg-slate-50 border-b border-slate-200">
+                              <tr className="text-xs uppercase tracking-wider text-slate-500">
+                                <th className="text-left px-4 py-3 font-semibold">
+                                  Indicator Name
+                                </th>
+                                <th className="text-left px-4 py-3 font-semibold">
+                                  Level
+                                </th>
+                                <th className="text-right px-4 py-3 font-semibold">
+                                  Baseline
+                                </th>
+                                <th className="text-right px-4 py-3 font-semibold">
+                                  Target
+                                </th>
+                                <th className="text-left px-4 py-3 font-semibold">
+                                  Current Progress
+                                </th>
+                                <th className="text-center px-4 py-3 font-semibold">
+                                  Actions
+                                </th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                              {paginatedProgressRows.map((row) => {
+                                const percent = getPercent(
+                                  row.currentNumeric ?? 0,
+                                  row.targetNumeric ?? 0,
+                                );
+                                const level = nodeTypeById.get(
+                                  row.indicator.nodeId,
+                                );
+                                return (
+                                  <tr
+                                    key={row.indicator.id}
+                                    className="hover:bg-slate-50/70"
+                                  >
+                                    <td className="px-4 py-3">
+                                      <div className="font-medium text-slate-900">
+                                        {row.indicator.name}
+                                      </div>
+                                      <div className="text-xs text-slate-500 mt-0.5">
+                                        {(project.sectors &&
+                                        project.sectors.length > 0
+                                          ? project.sectors[0]
+                                          : "General") +
+                                          " • " +
+                                          project.name}
+                                      </div>
+                                    </td>
+                                    <td className="px-4 py-3">
+                                      <span
+                                        className={`inline-flex text-xs font-semibold px-2 py-1 rounded-md border ${levelBadgeClass(level)}`}
+                                      >
+                                        {level || "N/A"}
+                                      </span>
+                                    </td>
+                                    <td className="px-4 py-3 text-right text-sm text-slate-700">
+                                      {row.indicator.baseline !== undefined &&
+                                      row.indicator.baseline !== null
+                                        ? String(row.indicator.baseline)
+                                        : "N/A"}
+                                    </td>
+                                    <td className="px-4 py-3 text-right text-sm text-slate-700">
+                                      {row.targetNumeric !== undefined
+                                        ? String(row.indicator.target)
+                                        : "N/A"}
+                                    </td>
+                                    <td className="px-4 py-3">
+                                      <div className="flex items-center gap-3">
+                                        <div className="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden">
+                                          <div
+                                            className={`h-full ${progressColorClass(percent)}`}
+                                            style={{ width: `${percent}%` }}
+                                          />
+                                        </div>
+                                        <span className="text-sm font-semibold text-slate-700 w-12 text-right">
+                                          {row.targetNumeric !== undefined
+                                            ? `${Math.round(percent)}%`
+                                            : "N/A"}
+                                        </span>
+                                      </div>
+                                      <div className="text-xs text-slate-500 mt-1 flex justify-between">
+                                        <span>
+                                          Latest:{" "}
+                                          {row.latestValue !== null
+                                            ? String(row.latestValue)
+                                            : "N/A"}
+                                        </span>
+                                        <span>{formatDate(row.latestDate)}</span>
+                                      </div>
+                                    </td>
+                                    <td className="px-4 py-3 text-center">
+                                      <Link
+                                        to={`/indicators/${row.indicator.id}`}
+                                        className="inline-flex items-center justify-center w-8 h-8 rounded-md border border-slate-200 text-slate-600 hover:text-blue-600 hover:border-blue-200 hover:bg-blue-50"
+                                        title="Open indicator"
+                                      >
+                                        <Pencil className="w-4 h-4" />
+                                      </Link>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="text-slate-500">
+                            Showing{" "}
+                            <span className="font-semibold text-slate-700">
+                              {(progressPage - 1) * progressPageSize + 1}
+                            </span>{" "}
+                            to{" "}
+                            <span className="font-semibold text-slate-700">
+                              {Math.min(
+                                progressPage * progressPageSize,
+                                progressRows.length,
+                              )}
+                            </span>{" "}
+                            of{" "}
+                            <span className="font-semibold text-slate-700">
+                              {progressRows.length}
+                            </span>{" "}
+                            indicators
+                          </span>
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() =>
+                                setProgressPage((p) => Math.max(1, p - 1))
+                              }
+                              disabled={progressPage === 1}
+                              className="px-3 py-1.5 rounded-md border border-slate-200 text-slate-600 disabled:opacity-50"
+                            >
+                              Previous
+                            </button>
+                            <span className="px-3 py-1.5 rounded-md bg-blue-50 border border-blue-200 text-blue-700 font-semibold">
+                              {progressPage}
+                            </span>
+                            <button
+                              onClick={() =>
+                                setProgressPage((p) =>
+                                  Math.min(totalProgressPages, p + 1),
+                                )
+                              }
+                              disabled={progressPage === totalProgressPages}
+                              className="px-3 py-1.5 rounded-md border border-slate-200 text-slate-600 disabled:opacity-50"
+                            >
+                              Next
+                            </button>
+                          </div>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </Card>
+
                 <Card title="Executive Summary">
                   <div className="text-slate-600 leading-relaxed space-y-4">
                     <p>{project.description}</p>

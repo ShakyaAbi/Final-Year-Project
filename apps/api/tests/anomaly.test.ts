@@ -11,7 +11,6 @@ describe("Anomaly Detection System", () => {
   let indicatorId: number;
 
   beforeAll(async () => {
-    // Create test user
     const user = await prisma.user.create({
       data: {
         email: "anomaly-test@test.com",
@@ -22,13 +21,11 @@ describe("Anomaly Detection System", () => {
     });
     userId = user.id;
 
-    // Login
     const loginRes = await request(app)
       .post("/api/auth/login")
       .send({ email: "anomaly-test@test.com", password: "password123" });
     authToken = loginRes.body.token;
 
-    // Create project
     const project = await prisma.project.create({
       data: {
         name: "Anomaly Test Project",
@@ -37,7 +34,6 @@ describe("Anomaly Detection System", () => {
     });
     projectId = project.id;
 
-    // Create logframe node
     const node = await prisma.logframeNode.create({
       data: {
         projectId,
@@ -58,40 +54,25 @@ describe("Anomaly Detection System", () => {
     await prisma.$disconnect();
   });
 
-  describe("MAD Outlier Detection", () => {
+  describe("Rule-based Range Detection", () => {
     beforeEach(async () => {
       const indicator = await prisma.indicator.create({
         data: {
           projectId,
           logframeNodeId: nodeId,
-          name: "MAD Test Indicator",
+          name: "Range Test Indicator",
           unit: "units",
           dataType: IndicatorDataType.NUMBER,
+          minValue: 10,
+          maxValue: 100,
           anomalyConfig: {
             enabled: true,
-            outlier: {
-              method: "MAD",
-              threshold: 3.5,
-              windowSize: 8,
-              minPoints: 6,
-            },
+            mode: "RULES",
+            rules: { range: true, maxChangePercent: 0 },
           },
         },
       });
       indicatorId = indicator.id;
-
-      // Create normal baseline values
-      const normalValues = [10, 12, 11, 13, 12, 10, 11, 12];
-      for (let i = 0; i < normalValues.length; i++) {
-        await request(app)
-          .post(`/api/indicators/${indicatorId}/submissions`)
-          .set("Authorization", `Bearer ${authToken}`)
-          .send({
-            reportedAt: new Date(2025, 0, i + 1).toISOString(),
-            value: normalValues[i],
-            evidence: `Normal value ${i + 1}`,
-          });
-      }
     });
 
     afterEach(async () => {
@@ -99,70 +80,61 @@ describe("Anomaly Detection System", () => {
       await prisma.indicator.delete({ where: { id: indicatorId } });
     });
 
-    test("should detect outlier with MAD method", async () => {
+    test("should flag values below minimum as anomaly", async () => {
       const res = await request(app)
         .post(`/api/indicators/${indicatorId}/submissions`)
         .set("Authorization", `Bearer ${authToken}`)
         .send({
-          reportedAt: new Date(2025, 0, 9).toISOString(),
-          value: 50, // Clear outlier
-          evidence: "Outlier value",
+          reportedAt: new Date(2025, 0, 1).toISOString(),
+          value: 5,
         });
 
       expect(res.status).toBe(201);
       expect(res.body.isAnomaly).toBe(true);
-      expect(res.body.anomalyReason).toContain("Outlier");
+      expect(res.body.anomalyReason).toContain("minimum");
       expect(res.body.anomalyStatus).toBe(AnomalyStatus.DETECTED);
     });
 
-    test("should not flag normal values as anomalies", async () => {
+    test("should flag values above maximum as anomaly", async () => {
       const res = await request(app)
         .post(`/api/indicators/${indicatorId}/submissions`)
         .set("Authorization", `Bearer ${authToken}`)
         .send({
-          reportedAt: new Date(2025, 0, 9).toISOString(),
-          value: 11, // Normal value
-          evidence: "Normal value",
+          reportedAt: new Date(2025, 0, 2).toISOString(),
+          value: 150,
         });
 
       expect(res.status).toBe(201);
-      expect(res.body.isAnomaly).toBe(false);
-      expect(res.body.anomalyReason).toBeNull();
+      expect(res.body.isAnomaly).toBe(true);
+      expect(res.body.anomalyReason).toContain("maximum");
     });
   });
 
-  describe("IQR Outlier Detection", () => {
+  describe("Rule-based Change Detection", () => {
     beforeEach(async () => {
       const indicator = await prisma.indicator.create({
         data: {
           projectId,
           logframeNodeId: nodeId,
-          name: "IQR Test Indicator",
+          name: "Change Test Indicator",
           unit: "units",
           dataType: IndicatorDataType.NUMBER,
           anomalyConfig: {
             enabled: true,
-            outlier: {
-              method: "IQR",
-              threshold: 1.5,
-              windowSize: 8,
-              minPoints: 6,
-            },
+            mode: "RULES",
+            rules: { range: false, maxChangePercent: 50 },
           },
         },
       });
       indicatorId = indicator.id;
 
-      const normalValues = [100, 105, 102, 108, 103, 107, 104, 106];
-      for (let i = 0; i < normalValues.length; i++) {
-        await request(app)
-          .post(`/api/indicators/${indicatorId}/submissions`)
-          .set("Authorization", `Bearer ${authToken}`)
-          .send({
-            reportedAt: new Date(2025, 0, i + 1).toISOString(),
-            value: normalValues[i],
-          });
-      }
+      await request(app)
+        .post(`/api/indicators/${indicatorId}/submissions`)
+        .set("Authorization", `Bearer ${authToken}`)
+        .send({
+          reportedAt: new Date(2025, 0, 1).toISOString(),
+          value: 100,
+        });
     });
 
     afterEach(async () => {
@@ -170,69 +142,31 @@ describe("Anomaly Detection System", () => {
       await prisma.indicator.delete({ where: { id: indicatorId } });
     });
 
-    test("should detect outlier with IQR method", async () => {
+    test("should flag large percent change as anomaly", async () => {
       const res = await request(app)
         .post(`/api/indicators/${indicatorId}/submissions`)
         .set("Authorization", `Bearer ${authToken}`)
         .send({
-          reportedAt: new Date(2025, 0, 9).toISOString(),
+          reportedAt: new Date(2025, 0, 2).toISOString(),
           value: 200,
         });
 
       expect(res.status).toBe(201);
       expect(res.body.isAnomaly).toBe(true);
-      expect(res.body.anomalyReason).toContain("IQR");
-    });
-  });
-
-  describe("Trend Shift Detection", () => {
-    beforeEach(async () => {
-      const indicator = await prisma.indicator.create({
-        data: {
-          projectId,
-          logframeNodeId: nodeId,
-          name: "Trend Test Indicator",
-          unit: "units",
-          dataType: IndicatorDataType.NUMBER,
-          anomalyConfig: {
-            enabled: true,
-            trend: {
-              method: "SLOPE_SHIFT",
-              threshold: 2,
-              windowSize: 6,
-            },
-          },
-        },
-      });
-      indicatorId = indicator.id;
-
-      // Create stable trend
-      const stableValues = [10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21];
-      for (let i = 0; i < stableValues.length; i++) {
-        await request(app)
-          .post(`/api/indicators/${indicatorId}/submissions`)
-          .set("Authorization", `Bearer ${authToken}`)
-          .send({
-            reportedAt: new Date(2025, 0, i + 1).toISOString(),
-            value: stableValues[i],
-          });
-      }
+      expect(res.body.anomalyReason).toContain("Change > 50%");
     });
 
-    afterEach(async () => {
-      await prisma.submission.deleteMany({ where: { indicatorId } });
-      await prisma.indicator.delete({ where: { id: indicatorId } });
-    });
+    test("should not flag small change", async () => {
+      const res = await request(app)
+        .post(`/api/indicators/${indicatorId}/submissions`)
+        .set("Authorization", `Bearer ${authToken}`)
+        .send({
+          reportedAt: new Date(2025, 0, 3).toISOString(),
+          value: 120,
+        });
 
-    test("should detect sudden trend shift", async () => {
-      // This would require sufficient data points to trigger trend detection
-      // Due to window size requirements, this is a placeholder test
-      const submissions = await request(app)
-        .get(`/api/indicators/${indicatorId}/submissions`)
-        .set("Authorization", `Bearer ${authToken}`);
-
-      expect(submissions.status).toBe(200);
-      expect(Array.isArray(submissions.body)).toBe(true);
+      expect(res.status).toBe(201);
+      expect(res.body.isAnomaly).toBe(false);
     });
   });
 
@@ -247,13 +181,10 @@ describe("Anomaly Detection System", () => {
           name: "Management Test Indicator",
           unit: "units",
           dataType: IndicatorDataType.NUMBER,
-          minValue: 0,
-          maxValue: 100,
         },
       });
       indicatorId = indicator.id;
 
-      // Create an anomaly by exceeding max value
       const submission = await prisma.submission.create({
         data: {
           indicatorId,
@@ -359,71 +290,13 @@ describe("Anomaly Detection System", () => {
         .set("Authorization", `Bearer ${authToken}`)
         .send({
           reportedAt: new Date().toISOString(),
-          value: 999999, // Extreme value
+          value: 999999,
         });
 
       expect(res.status).toBe(201);
       expect(res.body.isAnomaly).toBe(false);
 
-      await prisma.submission.deleteMany({
-        where: { indicatorId: indicator.id },
-      });
-      await prisma.indicator.delete({ where: { id: indicator.id } });
-    });
-  });
-
-  describe("Range-based Anomaly Detection", () => {
-    test("should detect value below minimum", async () => {
-      const indicator = await prisma.indicator.create({
-        data: {
-          projectId,
-          logframeNodeId: nodeId,
-          name: "Range Test Indicator",
-          unit: "units",
-          dataType: IndicatorDataType.NUMBER,
-          minValue: 10,
-          maxValue: 100,
-        },
-      });
-
-      const res = await request(app)
-        .post(`/api/indicators/${indicator.id}/submissions`)
-        .set("Authorization", `Bearer ${authToken}`)
-        .send({
-          reportedAt: new Date().toISOString(),
-          value: 5, // Below minimum
-        });
-
-      expect(res.status).toBe(400);
-      expect(res.body.error.code).toBe("VALUE_TOO_LOW");
-
-      await prisma.indicator.delete({ where: { id: indicator.id } });
-    });
-
-    test("should detect value above maximum", async () => {
-      const indicator = await prisma.indicator.create({
-        data: {
-          projectId,
-          logframeNodeId: nodeId,
-          name: "Range Test Indicator 2",
-          unit: "units",
-          dataType: IndicatorDataType.NUMBER,
-          minValue: 10,
-          maxValue: 100,
-        },
-      });
-
-      const res = await request(app)
-        .post(`/api/indicators/${indicator.id}/submissions`)
-        .set("Authorization", `Bearer ${authToken}`)
-        .send({
-          reportedAt: new Date().toISOString(),
-          value: 150, // Above maximum
-        });
-
-      expect(res.status).toBe(400);
-      expect(res.body.error.code).toBe("VALUE_TOO_HIGH");
-
+      await prisma.submission.deleteMany({ where: { indicatorId: indicator.id } });
       await prisma.indicator.delete({ where: { id: indicator.id } });
     });
   });

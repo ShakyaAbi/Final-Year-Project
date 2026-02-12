@@ -179,8 +179,22 @@ export const IndicatorWizard: React.FC<IndicatorWizardProps> = ({
   // Form State
   const defaultAnomalyConfig: AnomalyConfig = {
     enabled: false,
+    mode: "RULES",
+    rules: { range: true, maxChangePercent: 50 },
     outlier: { method: "MAD", threshold: 3.5, windowSize: 8, minPoints: 6 },
     trend: { method: "SLOPE_SHIFT", threshold: 2, windowSize: 6 },
+    ml: {
+      method: "ISOLATION_FOREST",
+      contamination: 0.05,
+      windowSize: 50,
+      minPoints: 20,
+      seed: 42,
+    },
+    fallback: {
+      useRangeChecks: true,
+      useRulesWhenInsufficientData: true,
+      useRulesOnServiceError: true,
+    },
   };
 
   const [formData, setFormData] = useState<Partial<Indicator>>(
@@ -215,8 +229,11 @@ export const IndicatorWizard: React.FC<IndicatorWizardProps> = ({
         anomalyConfig: {
           ...current,
           ...patch,
+          rules: { ...current.rules, ...patch.rules },
           outlier: { ...current.outlier, ...patch.outlier },
           trend: { ...current.trend, ...patch.trend },
+          ml: { ...current.ml, ...patch.ml },
+          fallback: { ...current.fallback, ...patch.fallback },
         },
       };
     });
@@ -416,7 +433,8 @@ export const IndicatorWizard: React.FC<IndicatorWizardProps> = ({
 
             {(formData.type === IndicatorType.NUMBER ||
               formData.type === IndicatorType.PERCENTAGE ||
-              formData.type === IndicatorType.CURRENCY) && (
+              formData.type === IndicatorType.CURRENCY ||
+              formData.type === IndicatorType.CATEGORICAL) && (
               <div className="grid grid-cols-2 gap-4 mt-4 bg-slate-50 p-4 rounded-lg">
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1">
@@ -630,6 +648,13 @@ export const IndicatorWizard: React.FC<IndicatorWizardProps> = ({
                       Configure dimensions for disaggregated data collection
                       (e.g., by District, Gender, Age Group)
                     </p>
+                    <div className="mb-3 p-3 rounded-md border border-blue-100 bg-blue-50 text-xs text-blue-800">
+                      Disaggregation means splitting one indicator into separate
+                      reporting groups. Example: if dimension is{" "}
+                      <span className="font-semibold">District</span>, each
+                      submission is tagged to one district, and the system can
+                      compare values between districts.
+                    </div>
 
                     {formData.categoryConfig?.disaggregationDimensions?.map(
                       (dim, dimIdx) => (
@@ -919,7 +944,8 @@ export const IndicatorWizard: React.FC<IndicatorWizardProps> = ({
             {/* Min/Max only for numbers */}
             {(formData.type === IndicatorType.NUMBER ||
               formData.type === IndicatorType.PERCENTAGE ||
-              formData.type === IndicatorType.CURRENCY) && (
+              formData.type === IndicatorType.CURRENCY ||
+              formData.type === IndicatorType.CATEGORICAL) && (
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1">
@@ -960,7 +986,7 @@ export const IndicatorWizard: React.FC<IndicatorWizardProps> = ({
                       Anomaly Settings
                     </h4>
                     <p className="text-xs text-slate-500">
-                      Soft warnings for outliers and trend changes.
+                      Simple checks for range and sudden changes.
                     </p>
                   </div>
                   <label className="flex items-center gap-2 text-xs font-medium text-slate-700">
@@ -981,156 +1007,150 @@ export const IndicatorWizard: React.FC<IndicatorWizardProps> = ({
                     <div className="grid grid-cols-2 gap-4">
                       <div>
                         <label className="block text-xs font-medium text-slate-600 mb-1">
-                          Outlier Method
+                          Detection Mode
                         </label>
                         <select
-                          value={
-                            formData.anomalyConfig?.outlier?.method ?? "MAD"
-                          }
+                          value={formData.anomalyConfig?.mode ?? "RULES"}
                           onChange={(e) =>
                             updateAnomalyConfig({
-                              outlier: {
-                                method: e.target.value as "MAD" | "IQR",
-                              },
+                              mode: e.target.value as "RULES" | "ML",
                             })
                           }
                           className="w-full px-3 py-2 border border-slate-300 rounded-md bg-white text-slate-900 text-sm"
                         >
-                          <option value="MAD">MAD (Robust Z-score)</option>
-                          <option value="IQR">IQR (Boxplot)</option>
+                          <option value="RULES">Rules (Range + % Change)</option>
+                          <option value="ML">ML (Isolation Forest)</option>
                         </select>
-                      </div>
-                      <div>
-                        <label className="block text-xs font-medium text-slate-600 mb-1">
-                          Outlier Threshold
-                        </label>
-                        <input
-                          type="number"
-                          step="0.1"
-                          value={
-                            formData.anomalyConfig?.outlier?.threshold ?? 3.5
-                          }
-                          onChange={(e) =>
-                            updateAnomalyConfig({
-                              outlier: {
-                                threshold: parseFloat(e.target.value),
-                              },
-                            })
-                          }
-                          className="w-full px-3 py-2 border border-slate-300 rounded-md bg-white text-slate-900 text-sm"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-xs font-medium text-slate-600 mb-1">
-                          Outlier Window (weeks)
-                        </label>
-                        <input
-                          type="number"
-                          min={2}
-                          value={
-                            formData.anomalyConfig?.outlier?.windowSize ?? 8
-                          }
-                          onChange={(e) =>
-                            updateAnomalyConfig({
-                              outlier: {
-                                windowSize: parseInt(e.target.value, 10),
-                              },
-                            })
-                          }
-                          className="w-full px-3 py-2 border border-slate-300 rounded-md bg-white text-slate-900 text-sm"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-medium text-slate-600 mb-1">
-                          Min Points
-                        </label>
-                        <input
-                          type="number"
-                          min={2}
-                          value={
-                            formData.anomalyConfig?.outlier?.minPoints ?? 6
-                          }
-                          onChange={(e) =>
-                            updateAnomalyConfig({
-                              outlier: {
-                                minPoints: parseInt(e.target.value, 10),
-                              },
-                            })
-                          }
-                          className="w-full px-3 py-2 border border-slate-300 rounded-md bg-white text-slate-900 text-sm"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-xs font-medium text-slate-600 mb-1">
-                          Trend Method
-                        </label>
-                        <select
-                          value={
-                            formData.anomalyConfig?.trend?.method ??
-                            "SLOPE_SHIFT"
-                          }
-                          onChange={(e) =>
-                            updateAnomalyConfig({
-                              trend: {
-                                method: e.target.value as
-                                  | "SLOPE_SHIFT"
-                                  | "MEAN_SHIFT",
-                              },
-                            })
-                          }
-                          className="w-full px-3 py-2 border border-slate-300 rounded-md bg-white text-slate-900 text-sm"
-                        >
-                          <option value="SLOPE_SHIFT">Slope Shift</option>
-                          <option value="MEAN_SHIFT">Mean Shift</option>
-                        </select>
-                      </div>
-                      <div>
-                        <label className="block text-xs font-medium text-slate-600 mb-1">
-                          Trend Threshold
-                        </label>
-                        <input
-                          type="number"
-                          step="0.1"
-                          value={formData.anomalyConfig?.trend?.threshold ?? 2}
-                          onChange={(e) =>
-                            updateAnomalyConfig({
-                              trend: { threshold: parseFloat(e.target.value) },
-                            })
-                          }
-                          className="w-full px-3 py-2 border border-slate-300 rounded-md bg-white text-slate-900 text-sm"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-xs font-medium text-slate-600 mb-1">
-                          Trend Window (weeks)
-                        </label>
-                        <input
-                          type="number"
-                          min={3}
-                          value={formData.anomalyConfig?.trend?.windowSize ?? 6}
-                          onChange={(e) =>
-                            updateAnomalyConfig({
-                              trend: {
-                                windowSize: parseInt(e.target.value, 10),
-                              },
-                            })
-                          }
-                          className="w-full px-3 py-2 border border-slate-300 rounded-md bg-white text-slate-900 text-sm"
-                        />
                       </div>
                       <div className="flex items-end text-xs text-slate-500">
-                        Used for trend detection (weekly default).
+                        Choose rule-based checks or ML scoring per indicator.
                       </div>
                     </div>
+
+                    {(formData.anomalyConfig?.mode ?? "RULES") === "ML" ? (
+                      <div className="space-y-4">
+                        <div className="grid grid-cols-2 gap-4">
+                          <div>
+                            <label className="block text-xs font-medium text-slate-600 mb-1">
+                              Contamination
+                            </label>
+                            <input
+                              type="number"
+                              step="0.01"
+                              min={0.01}
+                              max={0.5}
+                              value={
+                                formData.anomalyConfig?.ml?.contamination ?? 0.05
+                              }
+                              onChange={(e) =>
+                                updateAnomalyConfig({
+                                  ml: {
+                                    contamination: parseFloat(e.target.value),
+                                  },
+                                })
+                              }
+                              className="w-full px-3 py-2 border border-slate-300 rounded-md bg-white text-slate-900 text-sm"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-slate-600 mb-1">
+                              Window Size
+                            </label>
+                            <input
+                              type="number"
+                              min={10}
+                              value={formData.anomalyConfig?.ml?.windowSize ?? 50}
+                              onChange={(e) =>
+                                updateAnomalyConfig({
+                                  ml: {
+                                    windowSize: parseInt(e.target.value, 10),
+                                  },
+                                })
+                              }
+                              className="w-full px-3 py-2 border border-slate-300 rounded-md bg-white text-slate-900 text-sm"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4">
+                          <div>
+                            <label className="block text-xs font-medium text-slate-600 mb-1">
+                              Min Points
+                            </label>
+                            <input
+                              type="number"
+                              min={10}
+                              value={formData.anomalyConfig?.ml?.minPoints ?? 20}
+                              onChange={(e) =>
+                                updateAnomalyConfig({
+                                  ml: {
+                                    minPoints: parseInt(e.target.value, 10),
+                                  },
+                                })
+                              }
+                              className="w-full px-3 py-2 border border-slate-300 rounded-md bg-white text-slate-900 text-sm"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-slate-600 mb-1">
+                              Random Seed
+                            </label>
+                            <input
+                              type="number"
+                              value={formData.anomalyConfig?.ml?.seed ?? 42}
+                              onChange={(e) =>
+                                updateAnomalyConfig({
+                                  ml: {
+                                    seed: parseInt(e.target.value, 10),
+                                  },
+                                })
+                              }
+                              className="w-full px-3 py-2 border border-slate-300 rounded-md bg-white text-slate-900 text-sm"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                    <div className="space-y-3">
+                      <label className="flex items-center gap-2 text-xs text-slate-700">
+                        <input
+                          type="checkbox"
+                          checked={formData.anomalyConfig?.rules?.range ?? true}
+                          onChange={(e) =>
+                            updateAnomalyConfig({
+                              rules: { range: e.target.checked },
+                            })
+                          }
+                          className="rounded border-slate-300 text-blue-600"
+                        />
+                        Flag values outside Min/Max Expected range
+                      </label>
+
+                      <div>
+                        <label className="block text-xs font-medium text-slate-600 mb-1">
+                          Max % Change from Previous Value
+                        </label>
+                        <input
+                          type="number"
+                          min={1}
+                          value={
+                            formData.anomalyConfig?.rules?.maxChangePercent ?? 50
+                          }
+                          onChange={(e) =>
+                            updateAnomalyConfig({
+                              rules: {
+                                maxChangePercent: parseFloat(e.target.value),
+                              },
+                            })
+                          }
+                          className="w-full px-3 py-2 border border-slate-300 rounded-md bg-white text-slate-900 text-sm"
+                        />
+                        <p className="text-[11px] text-slate-500 mt-1">
+                          Flags big jumps vs the last reported value.
+                        </p>
+                      </div>
+                    </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -1149,19 +1169,38 @@ export const IndicatorWizard: React.FC<IndicatorWizardProps> = ({
               <label className="block text-sm font-medium text-slate-700 mb-1">
                 Reporting Frequency
               </label>
-              <div className="flex items-center p-3 border border-blue-500 bg-blue-50 rounded-md">
-                <Calendar className="w-5 h-5 text-blue-600 mr-3" />
-                <div>
-                  <span className="font-bold text-blue-900 block">Weekly</span>
-                  <span className="text-xs text-blue-700">
-                    Data entry expected every week
-                  </span>
-                </div>
-                <div className="ml-auto">
-                  <span className="text-xs bg-blue-200 text-blue-800 px-2 py-1 rounded">
-                    Fixed
-                  </span>
-                </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {[
+                  {
+                    value: "Daily",
+                    subtitle: "Data entry expected every day",
+                  },
+                  {
+                    value: "Weekly",
+                    subtitle: "Data entry expected every week",
+                  },
+                ].map((item) => (
+                  <button
+                    type="button"
+                    key={item.value}
+                    onClick={() => updateField("frequency", item.value)}
+                    className={`flex items-center p-3 border rounded-md text-left transition-colors ${
+                      formData.frequency === item.value
+                        ? "border-blue-500 bg-blue-50"
+                        : "border-slate-300 bg-white hover:border-blue-300"
+                    }`}
+                  >
+                    <Calendar className="w-5 h-5 text-blue-600 mr-3" />
+                    <div>
+                      <span className="font-bold text-slate-900 block">
+                        {item.value}
+                      </span>
+                      <span className="text-xs text-slate-600">
+                        {item.subtitle}
+                      </span>
+                    </div>
+                  </button>
+                ))}
               </div>
             </div>
 

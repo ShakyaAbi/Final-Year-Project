@@ -12,22 +12,49 @@ export const IndicatorCard: React.FC<IndicatorCardProps> = ({
   indicator,
   onEdit,
 }) => {
-  // Get latest value
+  const parseCategoryIds = (value?: string) =>
+    String(value || "")
+      .split(",")
+      .map((id) => id.trim())
+      .filter(Boolean);
+
+  // Get latest submission
   const sortedValues = [...indicator.values].sort(
     (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
   );
-  const latestValue =
-    sortedValues.length > 0
-      ? sortedValues[sortedValues.length - 1].value
-      : indicator.baseline;
+  const latestSubmission =
+    sortedValues.length > 0 ? sortedValues[sortedValues.length - 1] : undefined;
+  const latestValue = latestSubmission?.value ?? indicator.baseline;
+  const latestCategoryIds = parseCategoryIds(latestSubmission?.categoryValue);
+  const targetCategoryIds = parseCategoryIds(indicator.targetCategory);
 
   // Calculate progress
   const currentValNum = Number(latestValue);
   const targetNum = Number(indicator.target);
-  const progress =
-    targetNum && !isNaN(currentValNum) && !isNaN(targetNum)
-      ? Math.min(Math.max((currentValNum / targetNum) * 100, 0), 100)
-      : 0;
+  const hasNumericProgress =
+    indicator.type !== IndicatorType.CATEGORICAL &&
+    Number.isFinite(targetNum) &&
+    targetNum > 0 &&
+    !isNaN(currentValNum) &&
+    !isNaN(targetNum);
+  const numericProgress = hasNumericProgress
+    ? Math.min(Math.max((currentValNum / targetNum) * 100, 0), 100)
+    : 0;
+  const hasCategoricalTarget =
+    indicator.type === IndicatorType.CATEGORICAL && targetCategoryIds.length > 0;
+  const categoricalMatchedCount = targetCategoryIds.filter((id) =>
+    latestCategoryIds.includes(id),
+  ).length;
+  const categoricalProgress = hasCategoricalTarget
+    ? Math.min(
+        Math.max((categoricalMatchedCount / targetCategoryIds.length) * 100, 0),
+        100,
+      )
+    : 0;
+  const progress = hasNumericProgress ? numericProgress : categoricalProgress;
+  const hasProgress =
+    hasNumericProgress ||
+    (indicator.type === IndicatorType.CATEGORICAL && hasCategoricalTarget);
 
   // Status color
   const getStatusColor = (status?: string) => {
@@ -48,6 +75,36 @@ export const IndicatorCard: React.FC<IndicatorCardProps> = ({
     if (indicator.type === IndicatorType.CURRENCY) return `$${val}`;
     return val;
   };
+
+  const formatCategoryValue = (value?: string) => {
+    if (!value || !indicator.categories) return "";
+    const labels = value
+      .split(",")
+      .map((id) => id.trim())
+      .map(
+        (id) => indicator.categories?.find((cat) => cat.id === id)?.label || id,
+      )
+      .filter(Boolean);
+    return labels.join(", ");
+  };
+
+  const targetDisplay =
+    indicator.type === IndicatorType.CATEGORICAL
+      ? indicator.targetCategory
+        ? formatCategoryValue(indicator.targetCategory)
+        : indicator.target === undefined ||
+            indicator.target === null ||
+            indicator.target === ""
+          ? "No target set"
+          : formatValue(indicator.target)
+      : formatValue(indicator.target);
+
+  const currentDisplay =
+    indicator.type === IndicatorType.CATEGORICAL
+      ? latestSubmission?.categoryValue
+        ? formatCategoryValue(latestSubmission.categoryValue)
+        : "No submission yet"
+      : formatValue(latestValue);
 
   return (
     <div className="bg-white rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-shadow p-6 flex flex-col h-full">
@@ -75,7 +132,7 @@ export const IndicatorCard: React.FC<IndicatorCardProps> = ({
             Target
           </span>
           <p className="text-2xl font-bold text-slate-900 mt-1">
-            {formatValue(indicator.target)}
+            {targetDisplay}
           </p>
         </div>
         <div>
@@ -83,7 +140,7 @@ export const IndicatorCard: React.FC<IndicatorCardProps> = ({
             Current
           </span>
           <p className="text-2xl font-bold text-slate-900 mt-1">
-            {formatValue(latestValue)}
+            {currentDisplay}
           </p>
         </div>
       </div>
@@ -92,13 +149,19 @@ export const IndicatorCard: React.FC<IndicatorCardProps> = ({
         <div className="flex justify-between text-xs mb-2">
           <span className="font-medium text-slate-500">Progress</span>
           <span className="font-bold text-slate-900">
-            {Math.round(progress)}%
+            {hasProgress
+              ? `${Math.round(progress)}%`
+              : indicator.type === IndicatorType.CATEGORICAL
+                ? "No target"
+                : "N/A"}
           </span>
         </div>
         <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
           <div
-            className="h-full bg-blue-600 rounded-full transition-all duration-1000"
-            style={{ width: `${progress}%` }}
+            className={`h-full rounded-full transition-all duration-1000 ${
+              hasProgress ? "bg-blue-600" : "bg-slate-300"
+            }`}
+            style={{ width: `${hasProgress ? progress : 0}%` }}
           />
         </div>
       </div>

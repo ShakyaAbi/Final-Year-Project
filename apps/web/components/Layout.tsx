@@ -34,6 +34,39 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
   const location = useLocation();
   const navigate = useNavigate();
 
+  const routeLabelMap: Record<string, string> = {
+    projects: "Projects",
+    "data-entry": "Data Entry",
+    indicators: "Indicators",
+    settings: "Settings",
+  };
+
+  const breadcrumbItems = React.useMemo(() => {
+    const segments = location.pathname.split("/").filter(Boolean);
+    if (segments.length === 0) {
+      return [{ label: "Home", path: "/" }];
+    }
+
+    return segments.map((segment, index) => {
+      const path = `/${segments.slice(0, index + 1).join("/")}`;
+      const isNumeric = /^\d+$/.test(segment);
+      const previousSegment = segments[index - 1];
+
+      let label = routeLabelMap[segment] || segment.replace(/-/g, " ");
+
+      if (isNumeric && previousSegment === "projects") label = "Project";
+      if (isNumeric && previousSegment === "indicators") label = "Indicator";
+      if (!routeLabelMap[segment] && !isNumeric) {
+        label = label
+          .split(" ")
+          .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+          .join(" ");
+      }
+
+      return { label, path };
+    });
+  }, [location.pathname]);
+
   useEffect(() => {
     setNotifications([]);
     setUnreadCount(0);
@@ -84,7 +117,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
       {/* Sidebar - Floating Glass Panel */}
       <aside
         className={`
-        fixed inset-y-0 left-0 z-50 
+        fixed inset-y-0 left-0 z-50
         bg-slate-900/90 backdrop-blur-xl border-r border-white/10 lg:border-0 lg:bg-slate-900/40 lg:backdrop-blur-md lg:rounded-2xl lg:shadow-xl
         transition-all duration-200 ease-out flex flex-col lg:h-full
         ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}
@@ -203,14 +236,14 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
           <button
             className={`flex items-center ${
               isCollapsed ? "justify-center" : "gap-3"
-            } w-full p-3 rounded-xl hover:bg-white/10 transition-all group text-left`}
+            } w-full p-3 rounded-xl border border-white/10 bg-slate-900/50 hover:bg-slate-800/70 transition-colors group text-left`}
           >
-            <div className="h-10 w-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 text-white flex items-center justify-center font-bold text-sm shadow-inner border border-white/20 flex-shrink-0">
+            <div className="h-10 w-10 rounded-full bg-slate-100 text-slate-900 flex items-center justify-center font-semibold text-sm border border-slate-300/70 flex-shrink-0">
               JD
             </div>
             {!isCollapsed && (
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold text-white truncate">
+                <p className="text-sm font-semibold text-slate-100 truncate">
                   John Doe
                 </p>
                 <p className="text-xs text-slate-400 truncate group-hover:text-slate-300">
@@ -247,13 +280,29 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
               <Menu className="w-6 h-6" />
             </button>
 
-            {/* Breadcrumb */}
             <div className="hidden md:flex items-center text-sm text-slate-500">
-              <span className="font-medium text-slate-900">Organization</span>
-              <ChevronRight className="w-4 h-4 mx-2 text-slate-300" />
-              <span className="hover:text-blue-600 transition-colors cursor-pointer">
-                Global Programs
-              </span>
+              {breadcrumbItems.map((item, index) => {
+                const isLast = index === breadcrumbItems.length - 1;
+                return (
+                  <React.Fragment key={item.path}>
+                    {isLast ? (
+                      <span className="font-medium text-slate-900">
+                        {item.label}
+                      </span>
+                    ) : (
+                      <Link
+                        to={item.path}
+                        className="hover:text-blue-600 transition-colors"
+                      >
+                        {item.label}
+                      </Link>
+                    )}
+                    {!isLast && (
+                      <ChevronRight className="w-4 h-4 mx-2 text-slate-300" />
+                    )}
+                  </React.Fragment>
+                );
+              })}
             </div>
           </div>
 

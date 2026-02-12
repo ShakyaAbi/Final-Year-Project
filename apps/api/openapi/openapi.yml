@@ -54,6 +54,12 @@ components:
       type: object
       properties:
         enabled: { type: boolean, default: false }
+        mode: { type: string, enum: [RULES, ML], default: RULES }
+        rules:
+          type: object
+          properties:
+            range: { type: boolean, default: true }
+            maxChangePercent: { type: number, default: 50 }
         outlier:
           type: object
           properties:
@@ -72,6 +78,21 @@ components:
               }
             threshold: { type: number, default: 2 }
             windowSize: { type: integer, default: 6, minimum: 3, maximum: 50 }
+        ml:
+          type: object
+          properties:
+            method:
+              { type: string, enum: [ISOLATION_FOREST], default: ISOLATION_FOREST }
+            contamination: { type: number, default: 0.05 }
+            windowSize: { type: integer, default: 50, minimum: 10, maximum: 500 }
+            minPoints: { type: integer, default: 20, minimum: 10, maximum: 500 }
+            seed: { type: integer, nullable: true }
+        fallback:
+          type: object
+          properties:
+            useRangeChecks: { type: boolean, default: true }
+            useRulesWhenInsufficientData: { type: boolean, default: true }
+            useRulesOnServiceError: { type: boolean, default: true }
     CategoryDefinition:
       type: object
       properties:
@@ -169,8 +190,16 @@ components:
             enum: [DETECTED, ACKNOWLEDGED, RESOLVED, FALSE_POSITIVE],
             nullable: true,
           }
+        anomalyScore: { type: number, nullable: true }
+        anomalyThreshold: { type: number, nullable: true }
+        anomalyMethod: { type: string, nullable: true }
+        anomalyMeta: { type: object, nullable: true }
         anomalyReviewedBy: { type: integer, nullable: true }
         anomalyReviewedAt: { type: string, format: date-time, nullable: true }
+        deletedAt: { type: string, format: date-time, nullable: true }
+        deletedByUserId: { type: integer, nullable: true }
+        updatedAt: { type: string, format: date-time, nullable: true }
+        updatedByUserId: { type: integer, nullable: true }
     ReportingGap:
       type: object
       properties:
@@ -528,6 +557,9 @@ paths:
         - in: query
           name: to
           schema: { type: string, format: date }
+        - in: query
+          name: includeDeleted
+          schema: { type: boolean }
       responses:
         "200":
           description: Submissions
@@ -536,6 +568,69 @@ paths:
               schema:
                 type: array
                 items: { $ref: "#/components/schemas/Submission" }
+  /submissions/{id}:
+    patch:
+      security: [{ bearerAuth: [] }]
+      summary: Update a submission
+      parameters:
+        - in: path
+          name: id
+          schema: { type: integer }
+          required: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reportedAt, value]
+              properties:
+                reportedAt: { type: string, format: date }
+                value:
+                  oneOf: [{ type: string }, { type: number }, { type: boolean }]
+                categoryValue: { type: string, nullable: true }
+                disaggregationKey: { type: string, nullable: true }
+                evidence: { type: string, nullable: true }
+      responses:
+        "200":
+          description: Updated submission
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Submission" }
+        "403":
+          description: Forbidden
+        "409":
+          description: Submission conflict
+    delete:
+      security: [{ bearerAuth: [] }]
+      summary: Soft-delete a submission
+      parameters:
+        - in: path
+          name: id
+          schema: { type: integer }
+          required: true
+      responses:
+        "204":
+          description: Submission soft-deleted
+        "403":
+          description: Forbidden
+  /submissions/{id}/restore:
+    post:
+      security: [{ bearerAuth: [] }]
+      summary: Restore a soft-deleted submission
+      parameters:
+        - in: path
+          name: id
+          schema: { type: integer }
+          required: true
+      responses:
+        "200":
+          description: Restored submission
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Submission" }
+        "409":
+          description: Submission conflict
   /submissions/{id}/anomaly/acknowledge:
     post:
       security: [{ bearerAuth: [] }]

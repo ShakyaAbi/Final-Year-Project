@@ -26,6 +26,29 @@ export const DataEntry: React.FC = () => {
   const [projects, setProjects] = useState<Project[]>([]);
   const [indicators, setIndicators] = useState<Indicator[]>([]);
   const [loading, setLoading] = useState(true);
+  const [submissionsByIndicator, setSubmissionsByIndicator] = useState<
+    Record<string, IndicatorValue[]>
+  >({});
+  const [showDeleted, setShowDeleted] = useState(false);
+  const [selectedSubmissionIds, setSelectedSubmissionIds] = useState<Set<string>>(
+    new Set(),
+  );
+  const [editingSubmissionRows, setEditingSubmissionRows] = useState<
+    Record<
+      string,
+      {
+        indicatorId: string;
+        reportedAt: string;
+        value: string;
+        categoryValue: string;
+        evidence: string;
+      }
+    >
+  >({});
+  const [currentUser, setCurrentUser] = useState<{
+    id: string;
+    role: string;
+  } | null>(null);
 
   const [searchParams] = useSearchParams();
 
@@ -67,7 +90,30 @@ export const DataEntry: React.FC = () => {
         console.error("Failed to load projects", error);
         setProjects([]);
       });
+    api
+      .me()
+      .then((user) => setCurrentUser({ id: user.id, role: user.role }))
+      .catch(() => setCurrentUser(null));
   }, []);
+
+  const refreshSubmissions = async (
+    indicatorIds: string[],
+    includeDeleted = showDeleted,
+  ) => {
+    if (indicatorIds.length === 0) {
+      setSubmissionsByIndicator({});
+      return;
+    }
+    const pairs = await Promise.all(
+      indicatorIds.map(async (indicatorId) => {
+        const values = await api.getIndicatorSubmissions(indicatorId, {
+          includeDeleted,
+        });
+        return [indicatorId, values] as const;
+      }),
+    );
+    setSubmissionsByIndicator(Object.fromEntries(pairs));
+  };
 
   const loadIndicators = async (projectId?: string) => {
     setLoading(true);
@@ -97,10 +143,12 @@ export const DataEntry: React.FC = () => {
         };
       });
       setEntries(initialEntries);
+      await refreshSubmissions(indData.map((ind) => ind.id));
     } catch (error) {
       console.error("Failed to load indicators", error);
       setIndicators([]);
       setEntries({});
+      setSubmissionsByIndicator({});
     } finally {
       setLoading(false);
     }
@@ -111,6 +159,15 @@ export const DataEntry: React.FC = () => {
       loadIndicators(selectedProject || undefined);
     }
   }, [projects, selectedProject]);
+
+  useEffect(() => {
+    refreshSubmissions(indicators.map((ind) => ind.id), showDeleted).catch(
+      (error) => {
+        console.error("Failed to refresh submissions", error);
+      },
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showDeleted]);
 
   const filteredIndicators = indicators.filter((ind) => {
     const matchesProject = selectedProject
@@ -323,6 +380,9 @@ export const DataEntry: React.FC = () => {
         return ind;
       }),
     );
+    refreshSubmissions([id], showDeleted).catch((error) => {
+      console.error("Failed to refresh submissions", error);
+    });
 
     // Simulate success delay for UX
     setTimeout(() => {
@@ -360,6 +420,117 @@ export const DataEntry: React.FC = () => {
       type === IndicatorType.CATEGORICAL
       ? "number"
       : "text";
+  };
+
+  const canModifySubmission = (row: IndicatorValue) => {
+    if (!currentUser) return true;
+    if (currentUser.role === "ADMIN" || currentUser.role === "MANAGER") {
+      return true;
+    }
+    if (currentUser.role !== "DATA_ENTRY") return false;
+    if (!row.createdByUserId || row.createdByUserId !== currentUser.id) {
+      return false;
+    }
+    if (!row.createdAt) return false;
+    const ageMs = Date.now() - new Date(row.createdAt).getTime();
+    return ageMs <= 7 * 24 * 60 * 60 * 1000;
+  };
+
+  const beginEditSubmission = (indicatorId: string, row: IndicatorValue) => {
+    setEditingSubmissionRows((prev) => ({
+      ...prev,
+      [row.id]: {
+        indicatorId,
+        reportedAt: row.date.slice(0, 10),
+        value: String(row.value ?? ""),
+        categoryValue: row.categoryValue ?? "",
+        evidence: row.evidence ?? "",
+      },
+    }));
+  };
+
+  const cancelEditSubmission = (submissionId: string) => {
+    setEditingSubmissionRows((prev) => {
+      const next = { ...prev };
+      delete next[submissionId];
+      return next;
+    });
+  };
+
+  const saveEditedSubmission = async (submissionId: string) => {
+    const edit = editingSubmissionRows[submissionId];
+    if (!edit) return;
+    const indicator = indicators.find((ind) => ind.id === edit.indicatorId);
+    if (!indicator) return;
+    try {
+      const valuePayload =
+        indicator.type === IndicatorType.NUMBER ||
+        indicator.type === IndicatorType.PERCENTAGE ||
+        indicator.type === IndicatorType.CURRENCY ||
+        indicator.type === IndicatorType.CATEGORICAL
+          ? Number(edit.value)
+          : edit.value;
+      await api.updateSubmission(submissionId, {
+        reportedAt: edit.reportedAt,
+        value: valuePayload,
+        categoryValue: edit.categoryValue || undefined,
+        evidence: edit.evidence || undefined,
+      });
+      cancelEditSubmission(submissionId);
+      await refreshSubmissions([edit.indicatorId], showDeleted);
+    } catch (error) {
+      console.error("Failed to update submission", error);
+    }
+  };
+
+  const softDeleteSubmission = async (indicatorId: string, submissionId: string) => {
+    if (!window.confirm("Soft-delete this submission?")) return;
+    try {
+      await api.deleteSubmission(submissionId);
+      await refreshSubmissions([indicatorId], showDeleted);
+      setSelectedSubmissionIds((prev) => {
+        const next = new Set(prev);
+        next.delete(submissionId);
+        return next;
+      });
+    } catch (error) {
+      console.error("Failed to delete submission", error);
+    }
+  };
+
+  const restoreSubmission = async (indicatorId: string, submissionId: string) => {
+    try {
+      await api.restoreSubmission(submissionId);
+      await refreshSubmissions([indicatorId], showDeleted);
+    } catch (error) {
+      console.error("Failed to restore submission", error);
+    }
+  };
+
+  const toggleSelectedSubmission = (submissionId: string, checked: boolean) => {
+    setSelectedSubmissionIds((prev) => {
+      const next = new Set(prev);
+      if (checked) next.add(submissionId);
+      else next.delete(submissionId);
+      return next;
+    });
+  };
+
+  const batchDelete = async () => {
+    const ids = Array.from(selectedSubmissionIds);
+    if (ids.length === 0) return;
+    if (!window.confirm(`Soft-delete ${ids.length} submission(s)?`)) return;
+    await Promise.all(ids.map((id) => api.deleteSubmission(id).catch(() => null)));
+    setSelectedSubmissionIds(new Set());
+    await refreshSubmissions(indicators.map((ind) => ind.id), showDeleted);
+  };
+
+  const batchRestore = async () => {
+    const ids = Array.from(selectedSubmissionIds);
+    if (ids.length === 0) return;
+    await Promise.all(ids.map((id) => api.restoreSubmission(id).catch(() => null)));
+    setSelectedSubmissionIds(new Set());
+    await refreshSubmissions(indicators.map((ind) => ind.id), showDeleted);
   };
 
   return (
@@ -400,6 +571,30 @@ export const DataEntry: React.FC = () => {
               </option>
             ))}
           </select>
+          <label className="inline-flex items-center gap-2 text-xs text-slate-600 bg-white border border-slate-300 rounded-md px-3 py-2">
+            <input
+              type="checkbox"
+              checked={showDeleted}
+              onChange={(e) => setShowDeleted(e.target.checked)}
+            />
+            Show Deleted
+          </label>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={batchDelete}
+            disabled={selectedSubmissionIds.size === 0}
+          >
+            Delete Selected
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={batchRestore}
+            disabled={selectedSubmissionIds.size === 0}
+          >
+            Restore Selected
+          </Button>
         </div>
       </div>
 
@@ -739,6 +934,157 @@ export const DataEntry: React.FC = () => {
                       </span>
                     </div>
                   )}
+
+                  <div className="mt-4 border-t border-slate-100 pt-4">
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">
+                      Recent Submissions
+                    </h4>
+                    <div className="space-y-2">
+                      {(submissionsByIndicator[indicator.id] || [])
+                        .slice(0, 5)
+                        .map((row) => {
+                          const edit = editingSubmissionRows[row.id];
+                          const editable = canModifySubmission(row);
+                          return (
+                            <div
+                              key={row.id}
+                              className={`grid grid-cols-12 gap-2 items-center text-xs p-2 rounded border ${
+                                row.deletedAt
+                                  ? "bg-amber-50 border-amber-200"
+                                  : "bg-slate-50 border-slate-200"
+                              }`}
+                            >
+                              <div className="col-span-1">
+                                <input
+                                  type="checkbox"
+                                  checked={selectedSubmissionIds.has(row.id)}
+                                  onChange={(e) =>
+                                    toggleSelectedSubmission(
+                                      row.id,
+                                      e.target.checked,
+                                    )
+                                  }
+                                />
+                              </div>
+                              <div className="col-span-2 text-slate-600">
+                                {edit ? (
+                                  <input
+                                    type="date"
+                                    value={edit.reportedAt}
+                                    onChange={(e) =>
+                                      setEditingSubmissionRows((prev) => ({
+                                        ...prev,
+                                        [row.id]: {
+                                          ...prev[row.id],
+                                          reportedAt: e.target.value,
+                                        },
+                                      }))
+                                    }
+                                    className="w-full px-1 py-1 border border-slate-300 rounded bg-white"
+                                  />
+                                ) : (
+                                  new Date(row.date).toLocaleDateString("en-US")
+                                )}
+                              </div>
+                              <div className="col-span-2 text-slate-900 font-semibold">
+                                {edit ? (
+                                  <input
+                                    type="text"
+                                    value={edit.value}
+                                    onChange={(e) =>
+                                      setEditingSubmissionRows((prev) => ({
+                                        ...prev,
+                                        [row.id]: {
+                                          ...prev[row.id],
+                                          value: e.target.value,
+                                        },
+                                      }))
+                                    }
+                                    className="w-full px-1 py-1 border border-slate-300 rounded bg-white"
+                                  />
+                                ) : (
+                                  String(row.value)
+                                )}
+                              </div>
+                              <div className="col-span-3 text-slate-500 truncate">
+                                {edit ? (
+                                  <input
+                                    type="text"
+                                    value={edit.evidence}
+                                    onChange={(e) =>
+                                      setEditingSubmissionRows((prev) => ({
+                                        ...prev,
+                                        [row.id]: {
+                                          ...prev[row.id],
+                                          evidence: e.target.value,
+                                        },
+                                      }))
+                                    }
+                                    className="w-full px-1 py-1 border border-slate-300 rounded bg-white"
+                                  />
+                                ) : (
+                                  row.evidence || "-"
+                                )}
+                              </div>
+                              <div className="col-span-4 flex justify-end gap-1">
+                                {edit ? (
+                                  <>
+                                    <button
+                                      className="px-2 py-1 rounded border border-green-300 text-green-700 bg-green-50"
+                                      onClick={() => saveEditedSubmission(row.id)}
+                                    >
+                                      Save
+                                    </button>
+                                    <button
+                                      className="px-2 py-1 rounded border border-slate-300 text-slate-700 bg-white"
+                                      onClick={() => cancelEditSubmission(row.id)}
+                                    >
+                                      Cancel
+                                    </button>
+                                  </>
+                                ) : row.deletedAt ? (
+                                  <button
+                                    className="px-2 py-1 rounded border border-amber-300 text-amber-700 bg-white"
+                                    onClick={() =>
+                                      restoreSubmission(indicator.id, row.id)
+                                    }
+                                  >
+                                    Restore
+                                  </button>
+                                ) : (
+                                  <>
+                                    <button
+                                      className="px-2 py-1 rounded border border-blue-300 text-blue-700 bg-white disabled:opacity-40"
+                                      disabled={!editable}
+                                      onClick={() =>
+                                        beginEditSubmission(indicator.id, row)
+                                      }
+                                    >
+                                      Edit
+                                    </button>
+                                    <button
+                                      className="px-2 py-1 rounded border border-red-300 text-red-700 bg-white disabled:opacity-40"
+                                      disabled={!editable}
+                                      onClick={() =>
+                                        softDeleteSubmission(indicator.id, row.id)
+                                      }
+                                    >
+                                      Delete
+                                    </button>
+                                  </>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      {(submissionsByIndicator[indicator.id] || []).length ===
+                        0 && (
+                        <p className="text-xs text-slate-400 italic">
+                          No submissions yet.
+                        </p>
+                      )}
+                    </div>
+                  </div>
                 </div>
               </div>
             );

@@ -5,17 +5,17 @@ import { Card } from "./ui/Card";
 import { CategoryDefinition } from "../types";
 
 interface CategoryDistribution {
-  [categoryId: string]: {
-    count: number;
-    percentage: number;
-  };
+  categoryId: string;
+  label: string;
+  count: number;
+  percentage: number;
 }
 
 interface TimeSeriesPoint {
   period: string;
   startDate: string;
   endDate: string;
-  categoryDistribution: CategoryDistribution;
+  categoryDistribution: CategoryDistribution[];
   totalSubmissions: number;
 }
 
@@ -90,7 +90,7 @@ export const CategoryTimeSeriesChart: React.FC<
   }
 
   // Calculate max value for scaling
-  const maxSubmissions = Math.max(...data.map((d) => d.totalSubmissions));
+  const maxSubmissions = Math.max(...data.map((d) => d.totalSubmissions), 0);
 
   // Get category colors
   const categoryColors: { [key: string]: string } = {};
@@ -147,7 +147,9 @@ export const CategoryTimeSeriesChart: React.FC<
                   {totalCount > 0 ? (
                     <div className="flex h-full">
                       {categories.map((cat) => {
-                        const dist = point.categoryDistribution[cat.id];
+                        const dist = point.categoryDistribution.find(
+                          (item) => item.categoryId === cat.id,
+                        );
                         const percentage = dist?.percentage || 0;
                         const count = dist?.count || 0;
 
@@ -188,7 +190,9 @@ export const CategoryTimeSeriesChart: React.FC<
                 {/* Percentage breakdown */}
                 <div className="flex gap-4 text-xs text-slate-600 pl-1">
                   {categories.map((cat) => {
-                    const dist = point.categoryDistribution[cat.id];
+                    const dist = point.categoryDistribution.find(
+                      (item) => item.categoryId === cat.id,
+                    );
                     if (!dist || dist.count === 0) return null;
 
                     return (

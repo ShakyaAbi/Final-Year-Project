@@ -9,6 +9,13 @@ const numericId = z
 const anomalyConfigSchema = z
   .object({
     enabled: z.boolean().default(false),
+    mode: z.enum(["RULES", "ML"]).default("RULES"),
+    rules: z
+      .object({
+        range: z.boolean().default(true),
+        maxChangePercent: z.number().positive().default(50),
+      })
+      .optional(),
     outlier: z
       .object({
         method: z.enum(["MAD", "IQR"]).default("MAD"),
@@ -22,6 +29,22 @@ const anomalyConfigSchema = z
         method: z.enum(["SLOPE_SHIFT", "MEAN_SHIFT"]).default("SLOPE_SHIFT"),
         threshold: z.number().positive().default(2),
         windowSize: z.number().int().min(3).max(50).default(6),
+      })
+      .optional(),
+    ml: z
+      .object({
+        method: z.literal("ISOLATION_FOREST").default("ISOLATION_FOREST"),
+        contamination: z.number().min(0.001).max(0.5).default(0.05),
+        windowSize: z.number().int().min(10).max(500).default(50),
+        minPoints: z.number().int().min(10).max(500).default(20),
+        seed: z.number().int().optional(),
+      })
+      .optional(),
+    fallback: z
+      .object({
+        useRangeChecks: z.boolean().default(true),
+        useRulesWhenInsufficientData: z.boolean().default(true),
+        useRulesOnServiceError: z.boolean().default(true),
       })
       .optional(),
   })
@@ -44,6 +67,10 @@ const categoryConfigSchema = z
   })
   .optional()
   .nullable();
+
+const reportingFrequencySchema = z
+  .enum(["DAILY", "WEEKLY"])
+  .optional();
 
 export const projectIndicatorParamsSchema = {
   params: z.object({
@@ -70,6 +97,7 @@ export const createIndicatorSchema = {
     minValue: z.number().optional().nullable(),
     maxValue: z.number().optional().nullable(),
     anomalyConfig: anomalyConfigSchema,
+    reportingFrequency: reportingFrequencySchema,
     categories: z.array(categoryDefinitionSchema).optional().nullable(),
     categoryConfig: categoryConfigSchema,
   }),
@@ -90,6 +118,7 @@ export const updateIndicatorSchema = {
     minValue: z.number().optional().nullable(),
     maxValue: z.number().optional().nullable(),
     anomalyConfig: anomalyConfigSchema,
+    reportingFrequency: reportingFrequencySchema,
     categories: z.array(categoryDefinitionSchema).optional().nullable(),
     categoryConfig: categoryConfigSchema,
   }),
