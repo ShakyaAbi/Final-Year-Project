@@ -3,6 +3,7 @@ import { Modal } from "./ui/Modal";
 import { Button } from "./ui/Button";
 import { api } from "../services/api";
 import { TemplateManager } from "./TemplateManager";
+import { Indicator, IndicatorType } from "../types";
 
 interface ImportWizardProps {
   indicatorId: string;
@@ -11,7 +12,7 @@ interface ImportWizardProps {
   onSuccess: () => void;
 }
 
-type Step = "upload" | "validate" | "confirm" | "processing" | "complete";
+type Step = "upload" | "validate" | "processing" | "complete";
 
 interface ValidationSummary {
   totalRows: number;
@@ -24,7 +25,8 @@ interface Template {
   id: number;
   name: string;
   description?: string;
-  columnMappings: Record<string, string>;
+  columnMapping?: any;
+  columnMappings?: any;
   isDefault: boolean;
 }
 
@@ -47,24 +49,64 @@ export const ImportWizard: React.FC<ImportWizardProps> = ({
     null,
   );
   const [showTemplateManager, setShowTemplateManager] = useState(false);
+  const [isDownloadingTemplate, setIsDownloadingTemplate] = useState(false);
+  const [indicator, setIndicator] = useState<Indicator | null>(null);
+
+  const getTemplateColumns = (template: Template | null): string[] => {
+    if (!template) return [];
+    const mapping = template.columnMapping || template.columnMappings || {};
+    if (Array.isArray(mapping.columns)) {
+      return mapping.columns
+        .map((col: any) => col?.csvHeader)
+        .filter((col: string) => !!col);
+    }
+    if (typeof mapping === "object" && mapping !== null) {
+      return Object.values(mapping).filter(Boolean) as string[];
+    }
+    return [];
+  };
+
+  const previewHasCategory = preview.some((row) =>
+    String(row?.data?.categoryValue || "").trim(),
+  );
+  const previewHasDisaggregation = preview.some((row) =>
+    String(row?.data?.disaggregationKey || "").trim(),
+  );
+  const previewHasEvidence = preview.some((row) =>
+    String(row?.data?.evidence || "").trim(),
+  );
+
+  const disaggregationDimensions =
+    indicator?.categoryConfig?.disaggregationDimensions || [];
+  const primaryDisaggregation =
+    disaggregationDimensions.find((d) => d.required) ||
+    disaggregationDimensions[0];
 
   useEffect(() => {
     if (isOpen) {
       loadTemplates();
+      loadIndicator();
     }
   }, [isOpen, indicatorId]);
 
   const loadTemplates = async () => {
     try {
-      const data = await api.getImportTemplates(indicatorId);
+      const data: Template[] = await api.getImportTemplates(indicatorId);
       setTemplates(data);
-      // Auto-select default template
-      const defaultTemplate = data.find((t: Template) => t.isDefault);
-      if (defaultTemplate) {
-        setSelectedTemplate(defaultTemplate);
-      }
+      const defaultTemplate = data.find((t) => t.isDefault) || data[0] || null;
+      setSelectedTemplate(defaultTemplate);
     } catch (err) {
       console.error("Failed to load templates:", err);
+    }
+  };
+
+  const loadIndicator = async () => {
+    try {
+      const data = await api.getIndicator(indicatorId);
+      setIndicator(data);
+    } catch (err) {
+      console.error("Failed to load indicator for import:", err);
+      setIndicator(null);
     }
   };
 
@@ -102,23 +144,10 @@ export const ImportWizard: React.FC<ImportWizardProps> = ({
   };
 
   const handleDownloadTemplate = async () => {
+    setIsDownloadingTemplate(true);
+    setError(null);
     try {
-      // Call backend to generate sample CSV
-      const response = await fetch(
-        `http://localhost:4000/api/v1/indicators/${indicatorId}/import-template-sample`,
-        {
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem("merlin_token")}`,
-          },
-        },
-      );
-
-      if (!response.ok) {
-        throw new Error("Failed to download template");
-      }
-
-      // Download the CSV file
-      const blob = await response.blob();
+      const blob = await api.downloadImportTemplateSample(indicatorId);
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
@@ -130,6 +159,8 @@ export const ImportWizard: React.FC<ImportWizardProps> = ({
     } catch (err) {
       console.error("Failed to download template:", err);
       setError("Failed to download template. Please try again.");
+    } finally {
+      setIsDownloadingTemplate(false);
     }
   };
 
@@ -201,7 +232,7 @@ export const ImportWizard: React.FC<ImportWizardProps> = ({
       <Modal
         isOpen={isOpen}
         onClose={handleCancel}
-        title="Import Data from CSV"
+        title="Import CSV Entries"
       >
         <div className="space-y-5">
           {/* Step indicator */}
@@ -218,7 +249,7 @@ export const ImportWizard: React.FC<ImportWizardProps> = ({
             <div className="w-8 border-t border-gray-300"></div>
             <div
               className={`flex-1 text-center text-sm ${
-                step === "validate" || step === "confirm"
+                step === "validate"
                   ? "font-semibold text-blue-600"
                   : "text-gray-500"
               }`}
@@ -268,12 +299,23 @@ export const ImportWizard: React.FC<ImportWizardProps> = ({
                       Import Template
                     </label>
                   </div>
-                  <button
-                    onClick={() => setShowTemplateManager(true)}
-                    className="text-sm text-blue-600 hover:text-blue-800 font-medium hover:underline"
-                  >
-                    Manage Templates
-                  </button>
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={handleDownloadTemplate}
+                      className="text-sm text-blue-600 hover:text-blue-800 font-medium hover:underline"
+                      disabled={isDownloadingTemplate}
+                    >
+                      {isDownloadingTemplate
+                        ? "Downloading..."
+                        : "Download CSV Template"}
+                    </button>
+                    <button
+                      onClick={() => setShowTemplateManager(true)}
+                      className="text-sm text-blue-600 hover:text-blue-800 font-medium hover:underline"
+                    >
+                      Manage Templates
+                    </button>
+                  </div>
                 </div>
                 <select
                   value={selectedTemplate?.id || ""}
@@ -285,7 +327,7 @@ export const ImportWizard: React.FC<ImportWizardProps> = ({
                   }}
                   className="w-full px-4 py-2.5 border border-blue-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white shadow-sm"
                 >
-                  <option value="">No template (auto-detect columns)</option>
+                  <option value="">Use default mapping</option>
                   {templates.map((template) => (
                     <option key={template.id} value={template.id}>
                       {template.name} {template.isDefault ? "✓ Default" : ""}
@@ -305,53 +347,49 @@ export const ImportWizard: React.FC<ImportWizardProps> = ({
                     <div className="bg-white/80 rounded-md p-3 border border-blue-200">
                       <div className="flex flex-wrap gap-2">
                         <span className="text-xs text-blue-700 font-medium mb-2 w-full">
-                          📋 Required CSV Columns:
+                          Required CSV columns:
                         </span>
-                        {(() => {
-                          const mapping = selectedTemplate.columnMappings || {};
-                          const columns =
-                            typeof mapping.columns !== "undefined"
-                              ? (mapping.columns || []).map(
-                                  (col: any) => col.csvHeader,
-                                )
-                              : Object.values(mapping);
-                          return columns.map((col: any, idx: number) => (
-                            <span
-                              key={idx}
-                              className="px-2.5 py-1 text-xs bg-white text-blue-800 rounded-md border border-blue-300 font-mono shadow-sm"
-                            >
-                              {col}
-                            </span>
-                          ));
-                        })()}
+                        {getTemplateColumns(selectedTemplate).map((col, idx) => (
+                          <span
+                            key={idx}
+                            className="px-2.5 py-1 text-xs bg-white text-blue-800 rounded-md border border-blue-300 font-mono shadow-sm"
+                          >
+                            {col}
+                          </span>
+                        ))}
                       </div>
                       <p className="text-xs text-gray-600 mt-3 italic">
-                        💡 Tip: Download the template below to see the exact
-                        format with sample data
+                        Download the CSV template to get sample rows in the
+                        expected format.
                       </p>
                     </div>
-                    <button
-                      onClick={handleDownloadTemplate}
-                      className="inline-flex items-center gap-2 px-4 py-2 text-sm text-blue-700 bg-white hover:bg-blue-50 border border-blue-300 rounded-md font-medium transition-colors shadow-sm"
-                    >
-                      <svg
-                        className="w-4 h-4"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-                        />
-                      </svg>
-                      Download Template CSV
-                    </button>
                   </div>
                 )}
               </div>
+
+              {indicator && (
+                <div className="bg-slate-50 border border-slate-200 rounded-lg p-4">
+                  <p className="text-sm font-semibold text-slate-900 mb-2">
+                    Import Target
+                  </p>
+                  <div className="flex flex-wrap gap-2 text-xs">
+                    <span className="px-2 py-1 rounded-full bg-blue-100 text-blue-800 border border-blue-200">
+                      Type: {indicator.type}
+                    </span>
+                    {indicator.type === IndicatorType.CATEGORICAL && (
+                      <span className="px-2 py-1 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
+                        Category mapping required
+                      </span>
+                    )}
+                    {primaryDisaggregation && (
+                      <span className="px-2 py-1 rounded-full bg-amber-100 text-amber-800 border border-amber-200">
+                        Disaggregation: {primaryDisaggregation.label}
+                        {primaryDisaggregation.required ? " (Required)" : ""}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )}
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-3">
@@ -382,8 +420,21 @@ export const ImportWizard: React.FC<ImportWizardProps> = ({
                 </p>
                 <ul className="list-disc list-inside space-y-1.5 text-gray-600">
                   <li>First row must contain column headers</li>
-                  <li>Required columns: Date, Value</li>
+                  <li>Use the downloaded template for exact required columns</li>
                   <li>Date format: YYYY-MM-DD (e.g., 2024-01-15)</li>
+                  {indicator?.type === IndicatorType.CATEGORICAL && (
+                    <li>
+                      For categorical indicators, include valid category values
+                      from the template.
+                    </li>
+                  )}
+                  {primaryDisaggregation && (
+                    <li>
+                      {primaryDisaggregation.label} must match a configured
+                      disaggregation value
+                      {primaryDisaggregation.required ? " (required)." : "."}
+                    </li>
+                  )}
                   <li>Maximum file size: 10MB</li>
                 </ul>
               </div>
@@ -429,7 +480,19 @@ export const ImportWizard: React.FC<ImportWizardProps> = ({
                           <th className="px-3 py-2 text-left">Row</th>
                           <th className="px-3 py-2 text-left">Date</th>
                           <th className="px-3 py-2 text-left">Value</th>
+                          {previewHasCategory && (
+                            <th className="px-3 py-2 text-left">Category</th>
+                          )}
+                          {previewHasDisaggregation && (
+                            <th className="px-3 py-2 text-left">
+                              Disaggregation
+                            </th>
+                          )}
+                          {previewHasEvidence && (
+                            <th className="px-3 py-2 text-left">Evidence</th>
+                          )}
                           <th className="px-3 py-2 text-left">Status</th>
+                          <th className="px-3 py-2 text-left">Issues</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -447,11 +510,55 @@ export const ImportWizard: React.FC<ImportWizardProps> = ({
                             <td className="px-3 py-2 border-t">
                               {row.data?.value || "-"}
                             </td>
+                            {previewHasCategory && (
+                              <td className="px-3 py-2 border-t">
+                                {row.data?.categoryValue || "-"}
+                              </td>
+                            )}
+                            {previewHasDisaggregation && (
+                              <td className="px-3 py-2 border-t">
+                                {row.data?.disaggregationKey || "-"}
+                              </td>
+                            )}
+                            {previewHasEvidence && (
+                              <td className="px-3 py-2 border-t">
+                                {row.data?.evidence || "-"}
+                              </td>
+                            )}
                             <td className="px-3 py-2 border-t">
                               {row.valid ? (
-                                <span className="text-green-600">✓ Valid</span>
+                                (row.warnings?.length || 0) > 0 ? (
+                                  <span className="text-amber-600">
+                                    ⚠ Warning
+                                  </span>
+                                ) : (
+                                  <span className="text-green-600">✓ Valid</span>
+                                )
                               ) : (
                                 <span className="text-red-600">✗ Invalid</span>
+                              )}
+                            </td>
+                            <td className="px-3 py-2 border-t max-w-xs">
+                              {row.valid &&
+                              (!row.warnings || row.warnings.length === 0) ? (
+                                <span className="text-slate-400">-</span>
+                              ) : (
+                                <div className="space-y-1">
+                                  {[...(row.errors || []), ...(row.warnings || [])]
+                                    .slice(0, 2)
+                                    .map((issue: any, issueIdx: number) => (
+                                      <p
+                                        key={issueIdx}
+                                        className={
+                                          issue.severity === "warning"
+                                            ? "text-amber-700 text-xs"
+                                            : "text-red-700 text-xs"
+                                        }
+                                      >
+                                        {issue.field}: {issue.message}
+                                      </p>
+                                    ))}
+                                </div>
                               )}
                             </td>
                           </tr>
@@ -465,7 +572,7 @@ export const ImportWizard: React.FC<ImportWizardProps> = ({
               {validationSummary.invalidRows > 0 && (
                 <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 px-4 py-3 rounded-lg">
                   <p className="font-semibold">
-                    ⚠️ Warning: {validationSummary.invalidRows} rows have errors
+                    Warning: {validationSummary.invalidRows} rows have errors
                   </p>
                   <p className="text-sm mt-2">
                     Only valid rows will be imported. You can download the error
@@ -507,7 +614,7 @@ export const ImportWizard: React.FC<ImportWizardProps> = ({
                   Cancel
                 </Button>
                 <Button onClick={handleUpload} disabled={!file || loading}>
-                  {loading ? "Uploading..." : "Next"}
+                  {loading ? "Uploading..." : "Validate CSV"}
                 </Button>
               </>
             )}

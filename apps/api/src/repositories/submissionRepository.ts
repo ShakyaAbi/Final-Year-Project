@@ -16,7 +16,7 @@ export const createSubmission = (data: {
   anomalyThreshold?: number | null;
   anomalyMethod?: string | null;
   anomalyMeta?: Record<string, any> | null;
-}) => prisma.submission.create({ data });
+}) => prisma.submission.create({ data: data as any });
 
 export const listSubmissions = (
   indicatorId: number,
@@ -59,7 +59,7 @@ export const updateSubmission = (
     anomalyMethod: string | null;
     anomalyMeta: Record<string, any> | null;
   }>,
-) => prisma.submission.update({ where: { id }, data });
+) => prisma.submission.update({ where: { id }, data: data as any });
 
 export const updateSubmissionData = (
   id: number,

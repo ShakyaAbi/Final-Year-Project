@@ -9,6 +9,12 @@ pip install -r requirements.txt
 uvicorn app:app --host 0.0.0.0 --port 8000
 ```
 
+## Run tests
+
+```bash
+pytest -q
+```
+
 ## Environment
 
 - `ML_SERVICE_API_KEY` (optional): if set, the service requires `Authorization: Bearer <key>`.

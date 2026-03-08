@@ -1,6 +1,6 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Layout } from "../components/Layout";
-import { useParams, Link, useSearchParams } from "react-router-dom";
+import { useParams, Link } from "react-router-dom";
 import { Indicator, IndicatorType, CategoryDefinition } from "../types";
 import { api } from "../services/api";
 import { Button } from "../components/ui/Button";
@@ -27,11 +27,12 @@ import {
   RotateCcw,
   CalendarClock,
   BellRing,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 
 export const IndicatorDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
-  const [searchParams] = useSearchParams();
   const [indicator, setIndicator] = useState<Indicator | undefined>(undefined);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -44,6 +45,8 @@ export const IndicatorDetail: React.FC = () => {
   const [evidence, setEvidence] = useState<string>("");
   const [attachedFile, setAttachedFile] = useState<File | null>(null);
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
+  const [selectedDisaggregationValues, setSelectedDisaggregationValues] =
+    useState<Record<string, string>>({});
 
   const [saving, setSaving] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
@@ -76,6 +79,27 @@ export const IndicatorDetail: React.FC = () => {
       }
     >
   >({});
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+
+  const isNumericInputType = (type: IndicatorType) =>
+    type === IndicatorType.NUMBER ||
+    type === IndicatorType.PERCENTAGE ||
+    type === IndicatorType.CURRENCY;
+
+  const buildSubmissionValue = (
+    type: IndicatorType,
+    rawValue: string,
+    categoryValue?: string,
+  ) => {
+    if (type === IndicatorType.CATEGORICAL) {
+      return categoryValue ?? rawValue;
+    }
+    if (isNumericInputType(type)) {
+      return Number(rawValue);
+    }
+    return rawValue;
+  };
 
   const reloadIndicator = async (includeDeleted = showDeleted) => {
     if (!id) return;
@@ -111,17 +135,30 @@ export const IndicatorDetail: React.FC = () => {
   }, [showDeleted]);
 
   useEffect(() => {
-    if (searchParams.get("csvSetup") === "1") {
-      setShowImportWizard(true);
-    }
-  }, [searchParams]);
-
-  useEffect(() => {
     if (!indicator) return;
     setReportingFrequency(
       indicator.frequency === "Daily" ? "DAILY" : "WEEKLY",
     );
   }, [indicator?.id, indicator?.frequency]);
+
+  useEffect(() => {
+    if (!indicator) return;
+    const dims = indicator.categoryConfig?.disaggregationDimensions || [];
+    if (dims.length === 0) {
+      setSelectedDisaggregationValues({});
+      return;
+    }
+    setSelectedDisaggregationValues((prev) => {
+      const next: Record<string, string> = {};
+      dims.forEach((dim) => {
+        const dimKey = dim.key || dim.label;
+        const currentValue = prev[dimKey];
+        next[dimKey] =
+          currentValue && dim.values.includes(currentValue) ? currentValue : "";
+      });
+      return next;
+    });
+  }, [indicator?.id]); // reset on indicator change
 
   useEffect(() => {
     if (!indicator) return;
@@ -150,6 +187,23 @@ export const IndicatorDetail: React.FC = () => {
     }
   };
 
+  const handleDownloadCsvTemplate = async () => {
+    if (!indicator) return;
+    try {
+      const blob = await api.downloadImportTemplateSample(indicator.id);
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `import-template-indicator-${indicator.id}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (err: any) {
+      setError(err?.message || "Failed to download CSV template.");
+    }
+  };
+
   const handleCategoryToggle = (categoryId: string, allowMultiple: boolean) => {
     if (allowMultiple) {
       setSelectedCategories((prev) =>
@@ -168,6 +222,11 @@ export const IndicatorDetail: React.FC = () => {
 
     const hasCategories = !!indicator.categories?.length;
     const categoryRequired = indicator.categoryConfig?.required === true;
+    const disaggregationDimensions =
+      indicator.categoryConfig?.disaggregationDimensions || [];
+    const primaryDisaggregationDimension =
+      disaggregationDimensions.find((d) => d.required) ||
+      (disaggregationDimensions.length > 0 ? disaggregationDimensions[0] : null);
 
     if (entryValue === "") return;
     if (
@@ -177,21 +236,36 @@ export const IndicatorDetail: React.FC = () => {
     ) {
       return;
     }
+    const missingRequiredDimension = disaggregationDimensions.find((dim) => {
+      if (!dim.required) return false;
+      const dimKey = dim.key || dim.label;
+      return !selectedDisaggregationValues[dimKey]?.trim();
+    });
+    if (missingRequiredDimension) {
+      setError(
+        `${missingRequiredDimension.label || "Disaggregation"} is required.`,
+      );
+      return;
+    }
+    const primaryDisaggregationKey = primaryDisaggregationDimension
+      ? selectedDisaggregationValues[
+          primaryDisaggregationDimension.key ||
+            primaryDisaggregationDimension.label
+        ] || ""
+      : "";
 
     setSaving(true);
     setError(null);
 
-    // Value is numeric/text; categories are stored separately when used
-    const valuePayload =
-      indicator.type === IndicatorType.NUMBER ||
-            indicator.type === IndicatorType.PERCENTAGE ||
-            indicator.type === IndicatorType.CURRENCY
-          ? Number(entryValue)
-          : entryValue;
     const categoryValuePayload =
       hasCategories && selectedCategories.length > 0
         ? selectedCategories.join(",")
         : undefined;
+    const valuePayload = buildSubmissionValue(
+      indicator.type,
+      entryValue,
+      categoryValuePayload,
+    );
 
     const finalEvidence = attachedFile
       ? `[Attached] ${attachedFile.name}`
@@ -204,6 +278,7 @@ export const IndicatorDetail: React.FC = () => {
         value: valuePayload,
         evidence: finalEvidence,
         categoryValue: categoryValuePayload,
+        disaggregationKey: primaryDisaggregationKey || undefined,
       });
       await reloadIndicator(showDeleted);
     } catch (err: any) {
@@ -214,6 +289,13 @@ export const IndicatorDetail: React.FC = () => {
     if (!didError) {
       setEntryValue("");
       setSelectedCategories([]);
+      setSelectedDisaggregationValues((prev) => {
+        const next: Record<string, string> = {};
+        Object.keys(prev).forEach((key) => {
+          next[key] = "";
+        });
+        return next;
+      });
       setEvidence("");
       setAttachedFile(null);
     }
@@ -267,17 +349,16 @@ export const IndicatorDetail: React.FC = () => {
     const row = editingRows[rowId];
     if (!row || !indicator) return;
     try {
-      const valuePayload =
-        indicator.type === IndicatorType.NUMBER ||
-        indicator.type === IndicatorType.PERCENTAGE ||
-        indicator.type === IndicatorType.CURRENCY ||
-        indicator.type === IndicatorType.CATEGORICAL
-          ? Number(row.value)
-          : row.value;
+      const categoryValuePayload = row.categoryValue || undefined;
+      const valuePayload = buildSubmissionValue(
+        indicator.type,
+        row.value,
+        categoryValuePayload,
+      );
       await api.updateSubmission(rowId, {
         reportedAt: row.reportedAt,
         value: valuePayload,
-        categoryValue: row.categoryValue || undefined,
+        categoryValue: categoryValuePayload,
         evidence: row.evidence || undefined,
       });
       cancelRowEdit(rowId);
@@ -344,6 +425,43 @@ export const IndicatorDetail: React.FC = () => {
     setSelectedRows(new Set());
     await reloadIndicator(showDeleted);
   };
+
+  // Sort and paginate values for table
+  const tableValues = useMemo(() => {
+    const values = indicator?.values ?? [];
+    return [...values].sort((a, b) => {
+      if (sortField === "date") {
+        return sortOrder === "asc"
+          ? new Date(a.date).getTime() - new Date(b.date).getTime()
+          : new Date(b.date).getTime() - new Date(a.date).getTime();
+      }
+      return sortOrder === "asc"
+        ? Number(a.value) - Number(b.value)
+        : Number(b.value) - Number(a.value);
+    });
+  }, [indicator?.values, sortField, sortOrder]);
+
+  const totalRows = tableValues.length;
+  const totalPages = Math.max(1, Math.ceil(totalRows / pageSize));
+  const safeCurrentPage = Math.min(currentPage, totalPages);
+  const pageStart = (safeCurrentPage - 1) * pageSize;
+  const pagedValues = tableValues.slice(pageStart, pageStart + pageSize);
+  const showingFrom = totalRows === 0 ? 0 : pageStart + 1;
+  const showingTo = Math.min(pageStart + pageSize, totalRows);
+
+  useEffect(() => {
+    if (currentPage !== safeCurrentPage) {
+      setCurrentPage(safeCurrentPage);
+    }
+  }, [currentPage, safeCurrentPage]);
+
+  const pageNumbers = (() => {
+    const pages: number[] = [];
+    const start = Math.max(1, safeCurrentPage - 2);
+    const end = Math.min(totalPages, safeCurrentPage + 2);
+    for (let i = start; i <= end; i += 1) pages.push(i);
+    return pages;
+  })();
 
   if (loading)
     return (
@@ -442,19 +560,6 @@ export const IndicatorDetail: React.FC = () => {
     return `Anomaly detected${suffix}`;
   };
 
-  // Sort values for table
-  const tableValues = [...indicator.values].sort((a, b) => {
-    if (sortField === "date") {
-      return sortOrder === "asc"
-        ? new Date(a.date).getTime() - new Date(b.date).getTime()
-        : new Date(b.date).getTime() - new Date(a.date).getTime();
-    } else {
-      return sortOrder === "asc"
-        ? Number(a.value) - Number(b.value)
-        : Number(b.value) - Number(a.value);
-    }
-  });
-
   return (
     <Layout>
       {/* Header */}
@@ -479,10 +584,28 @@ export const IndicatorDetail: React.FC = () => {
               {indicator.name}
             </h1>
           </div>
-          <Button variant="outline" size="sm">
-            <History className="w-4 h-4 mr-2" />
-            Definition History
-          </Button>
+          <div className="flex flex-wrap items-center gap-2 md:justify-end">
+            <Button size="sm" onClick={() => setShowImportWizard(true)}>
+              <UploadCloud className="w-4 h-4 mr-2" />
+              Import CSV
+            </Button>
+            <Button variant="outline" size="sm" onClick={handleDownloadCsvTemplate}>
+              <Download className="w-4 h-4 mr-2" />
+              CSV Template
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowExportDialog(true)}
+            >
+              <Download className="w-4 h-4 mr-2" />
+              Export CSV
+            </Button>
+            <Button variant="outline" size="sm">
+              <History className="w-4 h-4 mr-2" />
+              Definition History
+            </Button>
+          </div>
         </div>
       </div>
 
@@ -630,12 +753,12 @@ export const IndicatorDetail: React.FC = () => {
 
           {/* Data History Table */}
           <div className="space-y-4">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
               <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
                 <TableIcon className="w-5 h-5 text-slate-400" />
                 Data History
               </h3>
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
                 <label className="inline-flex items-center gap-2 px-3 py-1.5 text-xs rounded border border-slate-200 bg-white text-slate-600">
                   <input
                     type="checkbox"
@@ -663,6 +786,13 @@ export const IndicatorDetail: React.FC = () => {
                 <Button
                   variant="outline"
                   size="sm"
+                  onClick={handleDownloadCsvTemplate}
+                >
+                  <Download className="w-4 h-4 mr-2" /> CSV Template
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
                   onClick={() => setShowImportWizard(true)}
                 >
                   <UploadCloud className="w-4 h-4 mr-2" /> Import CSV
@@ -686,11 +816,11 @@ export const IndicatorDetail: React.FC = () => {
                         <input
                           type="checkbox"
                           checked={
-                            tableValues.length > 0 &&
-                            tableValues.every((row) => selectedRows.has(row.id))
+                            pagedValues.length > 0 &&
+                            pagedValues.every((row) => selectedRows.has(row.id))
                           }
                           onChange={(e) =>
-                            toggleSelectAll(e.target.checked, tableValues)
+                            toggleSelectAll(e.target.checked, pagedValues)
                           }
                         />
                       </th>
@@ -735,7 +865,7 @@ export const IndicatorDetail: React.FC = () => {
                         </td>
                       </tr>
                     ) : (
-                      tableValues.map((row) => {
+                      pagedValues.map((row) => {
                         const edit = editingRows[row.id];
                         const editable = canModifyRow(row);
                         return (
@@ -967,6 +1097,95 @@ export const IndicatorDetail: React.FC = () => {
                   </tbody>
                 </table>
               </div>
+              <div className="border-t border-slate-200 px-4 py-3 bg-slate-50/60">
+                <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                  <div className="flex flex-wrap items-center gap-3 text-xs text-slate-600">
+                    <span>
+                      Showing <span className="font-semibold">{showingFrom}</span>
+                      {" - "}
+                      <span className="font-semibold">{showingTo}</span> of{" "}
+                      <span className="font-semibold">{totalRows}</span> entries
+                    </span>
+                    <span>
+                      Selected:{" "}
+                      <span className="font-semibold">{selectedRows.size}</span>
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <label className="text-xs text-slate-600">Rows</label>
+                    <select
+                      value={pageSize}
+                      onChange={(e) => {
+                        setPageSize(Number(e.target.value));
+                        setCurrentPage(1);
+                      }}
+                      className="text-xs border border-slate-300 rounded px-2 py-1 bg-white"
+                    >
+                      <option value={10}>10</option>
+                      <option value={25}>25</option>
+                      <option value={50}>50</option>
+                    </select>
+                    <button
+                      type="button"
+                      className="inline-flex items-center gap-1 px-2 py-1 text-xs border border-slate-300 rounded bg-white disabled:opacity-40"
+                      onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                      disabled={safeCurrentPage <= 1}
+                    >
+                      <ChevronLeft className="w-3 h-3" />
+                      Prev
+                    </button>
+                    {safeCurrentPage > 3 && (
+                      <>
+                        <button
+                          type="button"
+                          className="px-2 py-1 text-xs border border-slate-300 rounded bg-white"
+                          onClick={() => setCurrentPage(1)}
+                        >
+                          1
+                        </button>
+                        <span className="px-1 text-xs text-slate-400">...</span>
+                      </>
+                    )}
+                    {pageNumbers.map((page) => (
+                      <button
+                        key={page}
+                        type="button"
+                        className={`px-2 py-1 text-xs border rounded ${
+                          page === safeCurrentPage
+                            ? "border-blue-300 bg-blue-50 text-blue-700"
+                            : "border-slate-300 bg-white"
+                        }`}
+                        onClick={() => setCurrentPage(page)}
+                      >
+                        {page}
+                      </button>
+                    ))}
+                    {safeCurrentPage < totalPages - 2 && (
+                      <>
+                        <span className="px-1 text-xs text-slate-400">...</span>
+                        <button
+                          type="button"
+                          className="px-2 py-1 text-xs border border-slate-300 rounded bg-white"
+                          onClick={() => setCurrentPage(totalPages)}
+                        >
+                          {totalPages}
+                        </button>
+                      </>
+                    )}
+                    <button
+                      type="button"
+                      className="inline-flex items-center gap-1 px-2 py-1 text-xs border border-slate-300 rounded bg-white disabled:opacity-40"
+                      onClick={() =>
+                        setCurrentPage((p) => Math.min(totalPages, p + 1))
+                      }
+                      disabled={safeCurrentPage >= totalPages}
+                    >
+                      Next
+                      <ChevronRight className="w-3 h-3" />
+                    </button>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -1000,26 +1219,13 @@ export const IndicatorDetail: React.FC = () => {
                 </label>
                 <input
                   type={
-                    indicator.type === IndicatorType.NUMBER ||
-                    indicator.type === IndicatorType.PERCENTAGE ||
-                    indicator.type === IndicatorType.CURRENCY ||
-                    indicator.type === IndicatorType.CATEGORICAL
-                      ? "number"
-                      : "text"
+                    isNumericInputType(indicator.type) ? "number" : "text"
                   }
                   step={
-                    indicator.type === IndicatorType.NUMBER ||
-                    indicator.type === IndicatorType.PERCENTAGE ||
-                    indicator.type === IndicatorType.CURRENCY ||
-                    indicator.type === IndicatorType.CATEGORICAL
-                      ? "0.01"
-                      : undefined
+                    isNumericInputType(indicator.type) ? "0.01" : undefined
                   }
                   placeholder={
-                    indicator.type === IndicatorType.NUMBER ||
-                    indicator.type === IndicatorType.PERCENTAGE ||
-                    indicator.type === IndicatorType.CURRENCY ||
-                    indicator.type === IndicatorType.CATEGORICAL
+                    isNumericInputType(indicator.type)
                       ? "e.g. 45"
                       : "e.g. Completed"
                   }
@@ -1029,8 +1235,7 @@ export const IndicatorDetail: React.FC = () => {
                 />
                 {(indicator.type === IndicatorType.NUMBER ||
                   indicator.type === IndicatorType.PERCENTAGE ||
-                  indicator.type === IndicatorType.CURRENCY ||
-                  indicator.type === IndicatorType.CATEGORICAL) && (
+                  indicator.type === IndicatorType.CURRENCY) && (
                   <p className="text-xs text-slate-400 mt-1">
                     Expected range: {indicator.minExpected} -{" "}
                     {indicator.maxExpected}
@@ -1086,6 +1291,73 @@ export const IndicatorDetail: React.FC = () => {
                         );
                       })}
                     </div>
+                  </div>
+                )}
+
+              {/* Disaggregation Selection (categorical only) */}
+              {indicator.type === IndicatorType.CATEGORICAL &&
+                indicator.categoryConfig?.disaggregationDimensions &&
+                indicator.categoryConfig.disaggregationDimensions.length > 0 && (
+                  <div>
+                    {(() => {
+                      const dims =
+                        indicator.categoryConfig?.disaggregationDimensions || [];
+                      const primaryDim = dims.find((d) => d.required) || dims[0];
+                      return (
+                        <div className="space-y-3">
+                          <div className="flex items-center justify-between">
+                            <label className="block text-sm font-medium text-slate-700">
+                              Disaggregation
+                            </label>
+                            {primaryDim && (
+                              <span className="text-[11px] text-slate-500">
+                                Saved key: {primaryDim.label || "Primary"}
+                              </span>
+                            )}
+                          </div>
+                          {dims.map((dim) => {
+                            const dimKey = dim.key || dim.label;
+                            const selectedValue =
+                              selectedDisaggregationValues[dimKey] || "";
+                            return (
+                              <div key={dimKey}>
+                                <label className="block text-xs font-medium text-slate-600 mb-1">
+                                  {dim.label || "Dimension"}{" "}
+                                  {dim.required && (
+                                    <span className="text-red-500">*</span>
+                                  )}
+                                </label>
+                                <select
+                                  value={selectedValue}
+                                  onChange={(e) =>
+                                    setSelectedDisaggregationValues((prev) => ({
+                                      ...prev,
+                                      [dimKey]: e.target.value,
+                                    }))
+                                  }
+                                  className="w-full rounded-md border-slate-300 border p-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white text-slate-900"
+                                >
+                                  <option value="">
+                                    Select {dim.label || "value"}
+                                  </option>
+                                  {dim.values.map((value) => (
+                                    <option key={value} value={value}>
+                                      {value}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+                            );
+                          })}
+                          {dims.length > 1 && (
+                            <p className="text-xs text-slate-500">
+                              Choose values for each dimension; the primary
+                              dimension is used for submission grouping.
+                            </p>
+                          )}
+                        </div>
+                      );
+                    })()}
                   </div>
                 )}
 

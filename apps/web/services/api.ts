@@ -132,8 +132,7 @@ const mapIndicatorValue = (v: any, type: IndicatorType): IndicatorValue => {
   const isNumericType =
     type === IndicatorType.NUMBER ||
     type === IndicatorType.PERCENTAGE ||
-    type === IndicatorType.CURRENCY ||
-    type === IndicatorType.CATEGORICAL;
+    type === IndicatorType.CURRENCY;
   const parsedValue = isNumericType ? Number(v.value) : v.value;
   const isAnomaly = v.isAnomaly === true;
   const rawCategoryValue =
@@ -223,6 +222,48 @@ const mapCurrentUser = (user: any): CurrentUser => ({
 
 const toReportingFrequency = (value?: Indicator["frequency"]) =>
   value === "Daily" ? "DAILY" : "WEEKLY";
+
+const normalizeDisaggregationDimensionKey = (value: any, fallbackLabel?: any) => {
+  const raw = String(value ?? "").trim() || String(fallbackLabel ?? "").trim();
+  if (!raw) return "";
+  return raw
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+};
+
+const normalizeCategoryConfigForApi = (categoryConfig?: any | null) => {
+  if (!categoryConfig) return categoryConfig ?? null;
+  const dims = Array.isArray(categoryConfig.disaggregationDimensions)
+    ? categoryConfig.disaggregationDimensions
+        .map((dim: any) => {
+          const label = String(dim?.label ?? "").trim();
+          const key = normalizeDisaggregationDimensionKey(dim?.key, label);
+          const values = Array.isArray(dim?.values)
+            ? dim.values
+                .map((v: any) => String(v).trim())
+                .filter((v: string) => v.length > 0)
+            : [];
+
+          return {
+            ...dim,
+            key,
+            label,
+            values,
+            required: typeof dim?.required === "boolean" ? dim.required : false,
+          };
+        })
+        .filter(
+          (dim: any) =>
+            dim.key.length > 0 || dim.label.length > 0 || dim.values.length > 0,
+        )
+    : undefined;
+
+  return {
+    ...categoryConfig,
+    disaggregationDimensions: dims,
+  };
+};
 
 const getProjectLogframe = async (id: string): Promise<LogframeNode[]> => {
   const tree = await request<any[]>(`/projects/${id}/logframe/tree`);
@@ -380,7 +421,7 @@ export const api = {
         anomalyConfig: payload.anomalyConfig ?? null,
         reportingFrequency: toReportingFrequency(payload.frequency),
         categories: payload.categories ?? null,
-        categoryConfig: payload.categoryConfig ?? null,
+        categoryConfig: normalizeCategoryConfigForApi(payload.categoryConfig),
       },
     });
     return mapIndicator(created);
@@ -445,7 +486,7 @@ export const api = {
         anomalyConfig: payload.anomalyConfig ?? null,
         reportingFrequency: toReportingFrequency(payload.frequency),
         categories: payload.categories ?? null,
-        categoryConfig: payload.categoryConfig ?? null,
+        categoryConfig: normalizeCategoryConfigForApi(payload.categoryConfig),
       },
     });
     return mapIndicator(updated);
@@ -462,6 +503,7 @@ export const api = {
       value: any;
       evidence?: string;
       categoryValue?: string;
+      disaggregationKey?: string;
     },
   ) =>
     request(`/indicators/${indicatorId}/submissions`, {
@@ -471,6 +513,7 @@ export const api = {
         value: payload.value,
         evidence: payload.evidence ?? null,
         categoryValue: payload.categoryValue ?? null,
+        disaggregationKey: payload.disaggregationKey ?? null,
       },
     }),
   updateSubmission: async (
@@ -555,27 +598,29 @@ export const api = {
     if (templateId) formData.append("templateId", String(templateId));
 
     const token = getToken();
-    const response = await fetch(
-      `${API_BASE}/indicators/${indicatorId}/import/upload`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-        body: formData,
+    const response = await fetch(`${API_BASE}/indicators/${indicatorId}/import`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
       },
-    );
+      body: formData,
+    });
 
     if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error?.message || "Upload failed");
+      const error = await response.json().catch(() => ({}));
+      const message =
+        error?.error?.message ||
+        error?.error ||
+        error?.message ||
+        "Upload failed";
+      throw new Error(message);
     }
 
     return response.json();
   },
 
   executeImport: async (jobId: number): Promise<void> =>
-    request(`/import-jobs/${jobId}/execute`, { method: "POST" }),
+    request(`/import-jobs/${jobId}/process`, { method: "POST" }),
 
   getImportJobStatus: async (jobId: number): Promise<any> =>
     request(`/import-jobs/${jobId}`),
@@ -642,6 +687,30 @@ export const api = {
 
   cloneImportTemplate: async (templateId: number): Promise<any> =>
     request(`/import-templates/${templateId}/clone`, { method: "POST" }),
+
+  downloadImportTemplateSample: async (indicatorId: string): Promise<Blob> => {
+    const token = getToken();
+    const response = await fetch(
+      `${API_BASE}/indicators/${indicatorId}/import-template-sample`,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      },
+    );
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      const message =
+        error?.error?.message ||
+        error?.error ||
+        error?.message ||
+        "Failed to download template";
+      throw new Error(message);
+    }
+
+    return response.blob();
+  },
 
   // Export Templates
   getExportTemplates: async (indicatorId: string): Promise<any[]> =>

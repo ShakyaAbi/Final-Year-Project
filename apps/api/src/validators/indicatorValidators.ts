@@ -58,12 +58,23 @@ const categoryDefinitionSchema = z.object({
   description: z.string().optional(),
 });
 
+const disaggregationDimensionSchema = z.object({
+  key: z.string().min(1),
+  label: z.string().min(1),
+  values: z.array(z.string()).min(1),
+  required: z.boolean().optional(),
+});
+
 const categoryConfigSchema = z
   .object({
     allowMultiple: z.boolean().optional(),
     maxSelections: z.number().int().positive().optional(),
     required: z.boolean().optional(),
     allowOther: z.boolean().optional(),
+    disaggregationDimensions: z
+      .array(disaggregationDimensionSchema)
+      .optional(),
+    expectedReportingEntities: z.number().int().nonnegative().optional(),
   })
   .optional()
   .nullable();

@@ -9,6 +9,7 @@
     "start": "node dist/server.js",
     "test": "jest --runInBand",
     "anomaly:backfill": "ts-node src/jobs/anomalyBackfill.ts",
+    "ml:canary": "ts-node src/jobs/mlCanary.ts",
     "prisma:migrate": "prisma migrate dev --name init",
     "prisma:generate": "prisma generate"
   },

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import {
   Project,
   LogframeNode,
@@ -159,13 +159,13 @@ export const IndicatorWizard: React.FC<IndicatorWizardProps> = ({
   const navigate = useNavigate();
   const [step, setStep] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const steps = [
     "Context",
     "Details",
     "Format",
     "Rules",
     "Frequency",
-    "CSV",
     "Review",
   ];
   const selectableTypes = [
@@ -215,8 +215,6 @@ export const IndicatorWizard: React.FC<IndicatorWizardProps> = ({
           categoryConfig: { allowMultiple: false, required: true },
         },
   );
-  const [openCsvSetupAfterCreate, setOpenCsvSetupAfterCreate] = useState(false);
-
   const updateField = (field: keyof Indicator, value: any) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
   };
@@ -276,13 +274,32 @@ export const IndicatorWizard: React.FC<IndicatorWizardProps> = ({
 
         const created = await api.createIndicator(project.id, newIndicator);
         onClose();
-        const csvSetupQuery = openCsvSetupAfterCreate ? "?csvSetup=1" : "";
-        navigate(`/indicators/${created.id}${csvSetupQuery}`);
+        navigate(`/indicators/${created.id}`);
       }
     } catch (error) {
       console.error(error);
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleDeleteIndicator = async () => {
+    if (!editingIndicator || isDeleting) return;
+    const confirmed = window.confirm(
+      `Delete indicator "${editingIndicator.name}"? This cannot be undone.`,
+    );
+    if (!confirmed) return;
+
+    setIsDeleting(true);
+    try {
+      await api.deleteIndicator(editingIndicator.id);
+      onClose();
+      window.location.reload();
+    } catch (error) {
+      console.error("Failed to delete indicator", error);
+      alert("Failed to delete indicator.");
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -1217,37 +1234,7 @@ export const IndicatorWizard: React.FC<IndicatorWizardProps> = ({
           </div>
         );
 
-      case 5: // CSV
-        return (
-          <div className="max-w-2xl mx-auto space-y-6">
-            <h2 className="text-xl font-bold text-slate-900 mb-2">
-              CSV Templates
-            </h2>
-            <p className="text-slate-500">
-              Configure CSV column mappings after creating the indicator. You
-              can manage import and export templates from the Indicator detail
-              page.
-            </p>
-
-            <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 space-y-3">
-              <label className="flex items-start gap-3 text-sm text-slate-700">
-                <input
-                  type="checkbox"
-                  checked={openCsvSetupAfterCreate}
-                  onChange={(e) => setOpenCsvSetupAfterCreate(e.target.checked)}
-                  className="mt-0.5 rounded border-slate-300"
-                />
-                <span>Open CSV template setup after indicator creation</span>
-              </label>
-              <p className="text-xs text-slate-500">
-                This will open the import wizard where you can create or select
-                templates and download a CSV header.
-              </p>
-            </div>
-          </div>
-        );
-
-      case 6: // Review
+      case 5: // Review
         return (
           <div className="max-w-3xl mx-auto">
             <h2 className="text-2xl font-bold text-slate-900 mb-6">
@@ -1363,7 +1350,7 @@ export const IndicatorWizard: React.FC<IndicatorWizardProps> = ({
   };
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full rounded-xl overflow-hidden">
       {/* Wizard Header */}
       <div className="bg-white pt-6 pb-2">
         <h1 className="text-2xl font-bold text-center text-slate-900">
@@ -1384,10 +1371,21 @@ export const IndicatorWizard: React.FC<IndicatorWizardProps> = ({
       </div>
 
       {/* Sticky Footer */}
-      <div className="p-4 border-t border-slate-200 bg-slate-50 flex justify-between items-center">
-        <Button variant="ghost" onClick={onClose}>
-          Cancel
-        </Button>
+      <div className="p-4 border-t border-slate-200 bg-slate-50 flex justify-between items-center rounded-b-xl">
+        <div className="flex items-center gap-2">
+          {editingIndicator && (
+            <Button
+              variant="danger"
+              onClick={handleDeleteIndicator}
+              isLoading={isDeleting}
+            >
+              Delete Indicator
+            </Button>
+          )}
+          <Button variant="ghost" onClick={onClose}>
+            Cancel
+          </Button>
+        </div>
 
         <div className="flex gap-3">
           {step > 0 && (
@@ -1397,11 +1395,15 @@ export const IndicatorWizard: React.FC<IndicatorWizardProps> = ({
           )}
           <Button
             onClick={handleNext}
-            disabled={!isStepValid() || isSubmitting}
+            disabled={!isStepValid() || isSubmitting || isDeleting}
             isLoading={isSubmitting}
             className="min-w-[120px]"
           >
-            {step === steps.length - 1 ? "Create Indicator" : "Next"}
+            {step === steps.length - 1
+              ? editingIndicator
+                ? "Save Changes"
+                : "Create Indicator"
+              : "Next"}
             {step !== steps.length - 1 && (
               <ChevronRight className="w-4 h-4 ml-2" />
             )}
