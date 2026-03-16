@@ -17,13 +17,17 @@ const sanitizeUser = (user: any) => ({
   createdAt: user.createdAt
 });
 
-export const register = async (input: { email: string; password: string; role: Role }) => {
+export const register = async (input: { email: string; password: string; role?: Role }) => {
   const existing = await userRepo.findByEmail(input.email);
   if (existing) {
     throw new BadRequestError('EMAIL_TAKEN', 'Email already registered');
   }
   const passwordHash = await hashPassword(input.password);
-  const user = await userRepo.create({ email: input.email, passwordHash, role: input.role });
+  const user = await userRepo.create({
+    email: input.email,
+    passwordHash,
+    role: input.role || Role.DATA_ENTRY
+  });
   return sanitizeUser(user);
 };
 

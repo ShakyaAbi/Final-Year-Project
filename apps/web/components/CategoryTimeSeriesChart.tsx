@@ -21,55 +21,31 @@ interface TimeSeriesPoint {
 
 interface CategoryTimeSeriesChartProps {
   indicatorId: string;
-  startDate: Date;
-  endDate: Date;
-  groupBy?: "day" | "week" | "month" | "quarter" | "year";
   categories: CategoryDefinition[];
 }
 
 export const CategoryTimeSeriesChart: React.FC<
   CategoryTimeSeriesChartProps
-> = ({ indicatorId, startDate, endDate, groupBy = "month", categories }) => {
-  const [selectedGroupBy, setSelectedGroupBy] = useState<"month" | "week">(groupBy);
-  const [selectedMonth, setSelectedMonth] = useState<string>("");
-
-  // Calculate month range for picker (last 12 months)
-  const months: string[] = [];
-  const now = new Date();
-  for (let i = 0; i < 12; i++) {
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    months.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
-  }
+> = ({ indicatorId, categories }) => {
+  const [selectedGroupBy, setSelectedGroupBy] = useState<"month" | "week">("month");
+  const [selectedRange, setSelectedRange] = useState<string>("6");
+  
   const [data, setData] = useState<TimeSeriesPoint[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Set default selectedMonth to most recent with data, or current month
   useEffect(() => {
-    if (!selectedMonth && data && data.length > 0) {
-      // Find most recent period with data
-      const mostRecent = data.slice().reverse().find(d => d.totalSubmissions > 0);
-      if (mostRecent) {
-        // Expect period in YYYY-MM or YYYY-MM-DD
-        const m = mostRecent.period.slice(0, 7);
-        setSelectedMonth(m);
-        return;
-      }
-      // Fallback: current month
-      const now = new Date();
-      setSelectedMonth(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`);
-    }
-  }, [data, selectedMonth]);
+    // Calculate start/end date from selectedRange
+    const now = new Date();
+    let filterStart = new Date();
+    const filterEnd = new Date();
 
-  useEffect(() => {
-    // Calculate start/end date from selectedMonth
-    let filterStart = startDate;
-    let filterEnd = endDate;
-    if (selectedMonth) {
-      const [year, month] = selectedMonth.split("-").map(Number);
-      filterStart = new Date(year, month - 1, 1);
-      filterEnd = new Date(year, month, 0, 23, 59, 59, 999); // End of month
+    if (selectedRange === "all") {
+      filterStart = new Date(2000, 0, 1); // Way back
+    } else {
+      filterStart = new Date(now.getFullYear(), now.getMonth() - Number(selectedRange), 1);
     }
+
     const fetchTimeSeries = async () => {
       setLoading(true);
       setError(null);
@@ -82,7 +58,17 @@ export const CategoryTimeSeriesChart: React.FC<
         const result = await api.get(
           `/indicators/${indicatorId}/category-time-series?${params}`,
         );
-        setData(result);
+
+        // If 'all' was selected, filter out empty leading periods to keep it clean
+        let finalData = result;
+        if (selectedRange === "all" && Array.isArray(result)) {
+           const firstDataIdx = result.findIndex(d => d.totalSubmissions > 0);
+           if (firstDataIdx !== -1) {
+             finalData = result.slice(firstDataIdx);
+           }
+        }
+
+        setData(finalData);
       } catch (err: any) {
         setError(err.message || "Failed to load time-series data");
       } finally {
@@ -90,7 +76,7 @@ export const CategoryTimeSeriesChart: React.FC<
       }
     };
     fetchTimeSeries();
-  }, [indicatorId, startDate, endDate, selectedGroupBy, selectedMonth]);
+  }, [indicatorId, selectedGroupBy, selectedRange]);
 
   if (loading) {
     return (
@@ -148,32 +134,39 @@ export const CategoryTimeSeriesChart: React.FC<
             </p>
           </div>
           <div className="flex flex-wrap gap-2 items-center">
+            {/* Range Selector */}
+            <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-lg mr-2">
+              {[
+                { label: "3M", value: "3" },
+                { label: "6M", value: "6" },
+                { label: "1Y", value: "12" },
+                { label: "All", value: "all" },
+              ].map((r) => (
+                <button
+                  key={r.value}
+                  onClick={() => setSelectedRange(r.value)}
+                  className={`px-3 py-1 rounded-md text-[10px] font-bold transition-all ${
+                    selectedRange === r.value
+                      ? "bg-white text-blue-600 shadow-sm"
+                      : "text-slate-500 hover:text-slate-700"
+                  }`}
+                >
+                  {r.label}
+                </button>
+              ))}
+            </div>
+
             {/* Group By Filter */}
             <select
               value={selectedGroupBy}
-              onChange={e => setSelectedGroupBy(e.target.value as "month" | "week")}
-              className="px-2 py-1 border border-slate-300 rounded-md text-xs bg-white text-slate-700"
+              onChange={(e) =>
+                setSelectedGroupBy(e.target.value as "month" | "week")
+              }
+              className="px-3 py-1.5 border border-slate-200 rounded-lg text-[11px] font-medium bg-white text-slate-700 focus:ring-2 focus:ring-blue-500 outline-none shadow-sm"
             >
               <option value="month">Month-wise</option>
               <option value="week">Week-wise</option>
             </select>
-            {/* Month Picker */}
-            <select
-              value={selectedMonth}
-              onChange={e => setSelectedMonth(e.target.value)}
-              className="px-2 py-1 border border-slate-300 rounded-md text-xs bg-white text-slate-700"
-            >
-              {months.map((m) => (
-                <option key={m} value={m}>{m}</option>
-              ))}
-            </select>
-            {/* Category Chips */}
-            {categories.map((cat) => (
-              <span key={cat.id} className="flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium" style={{ background: cat.color + '22', color: cat.color }}>
-                <span className="w-2 h-2 rounded-full mr-1" style={{ background: cat.color }} />
-                {cat.label}
-              </span>
-            ))}
           </div>
         </div>
       </div>

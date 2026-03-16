@@ -1,5 +1,6 @@
 import {
   ActivityLog,
+  AnomalyNotification,
   Indicator,
   IndicatorType,
   IndicatorValue,
@@ -810,6 +811,14 @@ export const api = {
 
   delete: async <T = any>(path: string): Promise<T> =>
     request<T>(path, { method: "DELETE" }),
+
+  getAnomalyNotifications: async (): Promise<{
+    notifications: AnomalyNotification[];
+    totalUnread: number;
+  }> => request("/notifications/anomalies"),
+
+  markAllAnomaliesRead: async (): Promise<void> =>
+    request("/notifications/anomalies/mark-read", { method: "POST" }),
 };
 
 export const authStorage = { getToken, setToken };

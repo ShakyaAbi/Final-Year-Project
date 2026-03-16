@@ -1196,39 +1196,49 @@ export const ProjectDetail: React.FC = () => {
               {/* Sidebar Column */}
               <div className="space-y-6">
                 <Card title="Recent Activity" className="h-full">
-                  <div className="relative pl-4 border-l-2 border-slate-100 space-y-6 py-2">
-                    {activities.map((activity, idx) => (
-                      <div key={activity.id} className="relative">
-                        <div
-                          className={`
-                                 absolute -left-[21px] top-0 w-3 h-3 rounded-full border-2 border-white
-                                 ${activity.type === "danger" ? "bg-red-500" : activity.type === "success" ? "bg-green-500" : activity.type === "warning" ? "bg-amber-500" : "bg-blue-400"}
-                              `}
-                        ></div>
-                        <div className="flex flex-col">
-                          <span className="text-xs text-slate-400 mb-0.5">
-                            {activity.date}
-                          </span>
-                          <p className="text-sm text-slate-800 font-medium">
-                            <span className="font-bold text-slate-900">
-                              {activity.user}
-                            </span>{" "}
-                            {activity.action}
-                          </p>
-                          <span className="text-xs text-slate-500 bg-slate-50 px-2 py-1 rounded border border-slate-100 mt-1 w-fit">
-                            {activity.item}
-                          </span>
+                  <div className="max-h-[600px] overflow-y-auto pr-2 custom-scrollbar">
+                    <div className="relative pl-4 border-l-2 border-slate-100 space-y-6 py-2 ml-1">
+                      {activities.map((activity) => (
+                        <div key={activity.id} className="relative">
+                          <div
+                            className={`
+                                   absolute -left-[21px] top-0 w-3 h-3 rounded-full border-2 border-white
+                                   ${activity.type === "danger" ? "bg-red-500" : activity.type === "success" ? "bg-green-500" : activity.type === "warning" ? "bg-amber-500" : "bg-blue-400"}
+                                `}
+                          ></div>
+                          <div className="flex flex-col">
+                            <span className="text-xs text-slate-400 mb-0.5">
+                              {activity.date}
+                            </span>
+                            <p className="text-sm text-slate-800 font-medium whitespace-normal break-words">
+                              <span className="font-bold text-slate-900">
+                                {activity.user}
+                              </span>{" "}
+                              {activity.action}
+                            </p>
+                            <span className="text-xs text-slate-500 bg-slate-50 px-2 py-1 rounded border border-slate-100 mt-1 w-fit">
+                              {activity.item}
+                            </span>
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      ))}
+                      {activities.length === 0 && (
+                        <div className="text-center py-8">
+                          <p className="text-sm text-slate-400">No recent activity</p>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="w-full mt-4 text-xs"
-                  >
-                    View All Activity
-                  </Button>
+                  <div className="mt-4 pt-4 border-t border-slate-50">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="w-full text-xs text-slate-500 hover:text-blue-600"
+                      onClick={() => navigate("/settings")}
+                    >
+                      View Full Audit Log
+                    </Button>
+                  </div>
                 </Card>
               </div>
             </div>

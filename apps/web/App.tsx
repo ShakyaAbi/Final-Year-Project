@@ -7,6 +7,7 @@ import { ProjectDetail } from './pages/ProjectDetail';
 import { IndicatorDetail } from './pages/IndicatorDetail';
 import { Settings } from './pages/Settings';
 import { DataEntry } from './pages/DataEntry';
+import { Register } from './pages/Register';
 
 import { PrivateRoute } from './components/PrivateRoute';
 
@@ -15,6 +16,7 @@ const App: React.FC = () => {
     <Router>
       <Routes>
         <Route path="/" element={<Login />} />
+        <Route path="/register" element={<Register />} />
         <Route path="/projects" element={<PrivateRoute><ProjectList /></PrivateRoute>} />
         <Route path="/projects/:id" element={<PrivateRoute><ProjectDetail /></PrivateRoute>} />
         <Route path="/indicators/:id" element={<PrivateRoute><IndicatorDetail /></PrivateRoute>} />

@@ -659,15 +659,6 @@ export const IndicatorDetail: React.FC = () => {
             indicator.categories.length > 0 && (
               <CategoryTimeSeriesChart
                 indicatorId={indicator.id}
-                startDate={
-                  new Date(
-                    new Date().getFullYear(),
-                    new Date().getMonth() - 5,
-                    1,
-                  )
-                }
-                endDate={new Date()}
-                groupBy="month"
                 categories={indicator.categories}
               />
             )}

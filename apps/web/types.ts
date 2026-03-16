@@ -197,3 +197,16 @@ export interface CurrentUser {
   organization?: string | null;
   avatar?: string | null;
 }
+
+export interface AnomalyNotification {
+  id: string;
+  submissionId: number;
+  indicatorId: number;
+  indicatorName: string;
+  projectId: number;
+  projectName: string;
+  anomalyReason: string | null;
+  anomalyStatus: string | null;
+  value: string;
+  reportedAt: string;
+}
