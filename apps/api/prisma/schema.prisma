@@ -103,6 +103,7 @@ model Project {
   location       String?
   donor          String?
   budgetAmount   Float?
+  budgetSpent    Float?
   budgetCurrency String?
   createdAt      DateTime       @default(now())
   nodes          LogframeNode[]

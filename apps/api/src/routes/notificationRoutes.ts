@@ -2,6 +2,7 @@ import { Router } from "express";
 import { authenticate } from "../middleware/auth";
 import {
   getAnomalyNotifications,
+  getOverdueNotifications,
   markAllAnomaliesRead,
 } from "../controllers/notificationController";
 
@@ -13,5 +14,6 @@ router.post(
   authenticate,
   markAllAnomaliesRead,
 );
+router.get("/notifications/overdue", authenticate, getOverdueNotifications);
 
 export default router;

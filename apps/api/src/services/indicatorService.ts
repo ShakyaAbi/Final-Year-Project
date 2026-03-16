@@ -52,7 +52,7 @@ export const createIndicator = async (
     minValue?: number | null;
     maxValue?: number | null;
     anomalyConfig?: Record<string, any> | null;
-    reportingFrequency?: "DAILY" | "WEEKLY";
+    reportingFrequency?: "DAILY" | "WEEKLY" | "MONTHLY" | "QUARTERLY" | "YEARLY";
     categories?: any[] | null;
     categoryConfig?: Record<string, any> | null;
     // Reminder fields
@@ -151,7 +151,7 @@ export const updateIndicator = async (
     minValue: number | null;
     maxValue: number | null;
     anomalyConfig: Record<string, any> | null;
-    reportingFrequency: "DAILY" | "WEEKLY";
+    reportingFrequency: "DAILY" | "WEEKLY" | "MONTHLY" | "QUARTERLY" | "YEARLY";
     categories: any[] | null;
     categoryConfig: Record<string, any> | null;
     // Reminder fields

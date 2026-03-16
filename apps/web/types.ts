@@ -38,6 +38,7 @@ export interface Project {
   location?: string;
   donor?: string;
   budgetAmount?: number;
+  budgetSpent?: number;
   budgetCurrency?: string;
   logframe: LogframeNode[]; // Root nodes (usually Goals)
 }
@@ -154,7 +155,7 @@ export interface Indicator {
   categories?: CategoryDefinition[]; // For Categorical
   categoryConfig?: CategoryConfig; // For Categorical
 
-  frequency: "Daily" | "Weekly" | "Monthly";
+  frequency: "Daily" | "Weekly" | "Monthly" | "Quarterly" | "Yearly";
   currentVersion: number;
   versions: IndicatorVersion[];
   values: IndicatorValue[];
@@ -181,10 +182,10 @@ export interface ProjectStats {
   budgetSpent: number;
   daysTotal: number;
   daysElapsed: number;
-  beneficiariesTarget: number;
-  beneficiariesReached: number;
-  activitiesTotal: number;
-  activitiesCompleted: number;
+  indicatorsTotal: number;
+  indicatorsReporting: number;
+  submissionsCount: number;
+  submissionsTarget?: number; // Optional for now
 }
 
 export interface CurrentUser {

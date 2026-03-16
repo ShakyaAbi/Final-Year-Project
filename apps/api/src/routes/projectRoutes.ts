@@ -9,6 +9,7 @@ import {
   deleteProject,
   getProject,
   getProjectActivities,
+  getProjectAlerts,
   getProjectStats,
   listProjects,
   updateProject
@@ -21,6 +22,7 @@ router.get('/projects', authenticate, listProjects);
 router.get('/projects/:id', authenticate, validate(projectIdParamSchema), getProject);
 router.get('/projects/:id/stats', authenticate, validate(projectIdParamSchema), getProjectStats);
 router.get('/projects/:id/activities', authenticate, validate(projectIdParamSchema), getProjectActivities);
+router.get('/projects/:id/alerts', authenticate, validate(projectIdParamSchema), getProjectAlerts);
 router.patch('/projects/:id', authenticate, requireRoles(Role.ADMIN, Role.MANAGER), validate(updateProjectSchema), updateProject);
 router.delete('/projects/:id', authenticate, requireRoles(Role.ADMIN, Role.MANAGER), validate(projectIdParamSchema), deleteProject);
 

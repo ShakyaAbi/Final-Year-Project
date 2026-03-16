@@ -34,6 +34,7 @@ import {
 export const IndicatorDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const [indicator, setIndicator] = useState<Indicator | undefined>(undefined);
+  const [project, setProject] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -79,6 +80,13 @@ export const IndicatorDetail: React.FC = () => {
       }
     >
   >({});
+  const [isEditingSettings, setIsEditingSettings] = useState(false);
+  const [settingsForm, setSettingsForm] = useState({
+    frequency: "Weekly" as Indicator["frequency"],
+    reminderEnabled: false,
+    reminderDaysBeforeDue: 1,
+    reminderDaysAfterDue: 1,
+  });
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
 
@@ -109,6 +117,11 @@ export const IndicatorDetail: React.FC = () => {
         api.getIndicatorSubmissions(id, { includeDeleted }),
       ]);
       setIndicator({ ...data, values: submissions });
+      
+      // Fetch project context for health reporting
+      if (data.projectId) {
+        api.getProject(data.projectId).then(setProject).catch(() => null);
+      }
     } catch (loadError) {
       console.error("Failed to load indicator", loadError);
       setIndicator(undefined);
@@ -143,7 +156,50 @@ export const IndicatorDetail: React.FC = () => {
           ? "MONTHLY"
           : "WEEKLY",
     );
-  }, [indicator?.id, indicator?.frequency]);
+
+    // Auto-set the best suggested date
+    const today = new Date();
+    const maxOffset = indicator.frequency === "Daily" ? 7 : 4;
+    let foundDate = false;
+
+    for (let offset = 0; offset < maxOffset; offset++) {
+      let dateStr = "";
+      const d = new Date(today);
+      if (indicator.frequency === "Daily") {
+        dateStr = new Date(d.getFullYear(), d.getMonth(), d.getDate() - offset)
+          .toISOString()
+          .split("T")[0];
+      } else if (indicator.frequency === "Weekly") {
+        const diff = d.getDate() - d.getDay() - offset * 7;
+        dateStr = new Date(d.getFullYear(), d.getMonth(), diff)
+          .toISOString()
+          .split("T")[0];
+      } else if (indicator.frequency === "Monthly") {
+        dateStr = new Date(d.getFullYear(), d.getMonth() - offset, 0)
+          .toISOString()
+          .split("T")[0];
+      }
+
+      const isDone = indicator.values.some((v) => v.date.startsWith(dateStr));
+      if (!isDone) {
+        setEntryDate(dateStr);
+        foundDate = true;
+        break;
+      }
+    }
+
+    if (!foundDate) {
+      setEntryDate(today.toISOString().split("T")[0]);
+    }
+
+    // Initialize settings form
+    setSettingsForm({
+      frequency: indicator.frequency,
+      reminderEnabled: indicator.reminderEnabled || false,
+      reminderDaysBeforeDue: indicator.reminderDaysBeforeDue || 1,
+      reminderDaysAfterDue: indicator.reminderDaysAfterDue || 1,
+    });
+  }, [indicator?.id, indicator?.frequency, indicator?.reminderEnabled, indicator?.reminderDaysBeforeDue, indicator?.reminderDaysAfterDue]);
 
   useEffect(() => {
     if (!indicator) return;
@@ -394,6 +450,24 @@ export const IndicatorDetail: React.FC = () => {
     } catch (err: any) {
       setError(err?.message || "Failed to restore submission.");
     }
+  };
+
+  const handleUpdateSettings = async () => {
+    if (!indicator) return;
+    setSaving(true);
+    try {
+      await api.updateIndicator(indicator.id, {
+        frequency: settingsForm.frequency,
+        reminderEnabled: settingsForm.reminderEnabled,
+        reminderDaysBeforeDue: settingsForm.reminderDaysBeforeDue,
+        reminderDaysAfterDue: settingsForm.reminderDaysAfterDue,
+      });
+      setIsEditingSettings(false);
+      await reloadIndicator(showDeleted);
+    } catch (err: any) {
+      setError(err?.message || "Failed to update settings.");
+    }
+    setSaving(false);
   };
 
   const toggleRowSelected = (rowId: string, checked: boolean) => {
@@ -753,59 +827,238 @@ export const IndicatorDetail: React.FC = () => {
             </div>
           )}
 
-          <div className="bg-white rounded-lg border border-slate-200 shadow-sm p-5">
+          <div className="bg-white rounded-lg border border-slate-200 shadow-sm p-5 overflow-hidden relative">
             <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
               <h3 className="text-base font-semibold text-slate-900 flex items-center gap-2">
-                <CalendarClock className="w-4 h-4 text-slate-500" />
+                <CalendarClock className="w-4 h-4 text-blue-600" />
                 Reporting Health
               </h3>
               <div className="flex items-center gap-2">
-                <span className="text-xs text-slate-500">Frequency</span>
+                <span className="text-xs text-slate-500">View as:</span>
                 <select
                   value={reportingFrequency}
                   onChange={(e) =>
                     setReportingFrequency(e.target.value as any)
                   }
-                  className="text-xs border border-slate-300 rounded px-2 py-1 bg-white"
+                  className="text-xs border border-slate-300 rounded px-2 py-1 bg-white focus:ring-1 focus:ring-blue-500 outline-none"
                 >
                   <option value="DAILY">Daily</option>
                   <option value="WEEKLY">Weekly</option>
                   <option value="MONTHLY">Monthly</option>
-                  <option value="QUARTERLY">Quarterly</option>
-                  <option value="YEARLY">Yearly</option>
                 </select>
               </div>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div className="rounded-md border border-amber-200 bg-amber-50 p-3">
-                <div className="text-xs text-amber-700 mb-1">Missed Entries</div>
-                <div className="text-xl font-bold text-amber-900">
-                  {missedEntryCount}
+
+            {(() => {
+              // Calculate compliance
+              const submissionsTotal = indicator.values.length;
+              let expectedSoFar = 1; // Minimum 1 expected
+              
+              if (project?.startDate) {
+                const start = new Date(project.startDate);
+                const end = new Date(); // now
+                const diffMs = Math.max(0, end.getTime() - start.getTime());
+                const diffDays = diffMs / (1000 * 60 * 60 * 24);
+                
+                if (reportingFrequency === "DAILY") expectedSoFar = Math.ceil(diffDays);
+                else if (reportingFrequency === "WEEKLY") expectedSoFar = Math.ceil(diffDays / 7);
+                else expectedSoFar = Math.ceil(diffDays / 30);
+              }
+              
+              const complianceRate = Math.min(100, Math.round((submissionsTotal / Math.max(1, expectedSoFar)) * 100));
+              const healthStatus = complianceRate >= 80 ? "Healthy" : complianceRate >= 50 ? "Needs Attention" : "Critical";
+              const healthColor = complianceRate >= 80 ? "text-green-600" : complianceRate >= 50 ? "text-amber-600" : "text-red-600";
+              const healthBg = complianceRate >= 80 ? "bg-green-50" : complianceRate >= 50 ? "bg-amber-50" : "bg-red-50";
+
+              return (
+                <div className="space-y-4">
+                  <div className={`p-4 rounded-xl border flex items-center justify-between ${healthBg} border-current border-opacity-10`}>
+                    <div>
+                      <div className={`text-xs font-bold uppercase tracking-wider mb-1 ${healthColor}`}>
+                        Compliance Status
+                      </div>
+                      <div className="text-xl font-black text-slate-900 flex items-baseline gap-2">
+                        {complianceRate}%
+                        <span className="text-xs font-medium text-slate-500">
+                          ({submissionsTotal} / {expectedSoFar} entries)
+                        </span>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className={`text-sm font-bold ${healthColor}`}>
+                        {healthStatus}
+                      </div>
+                      <div className="text-[10px] text-slate-400 font-medium">
+                        Based on project timeline
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="p-3 bg-slate-50 rounded-lg border border-slate-100">
+                      <div className="text-[10px] font-bold text-slate-400 uppercase mb-1">Missed Gaps</div>
+                      <div className="text-lg font-bold text-slate-700">{reportingGaps.length}</div>
+                    </div>
+                    <div className="p-3 bg-slate-50 rounded-lg border border-slate-100">
+                      <div className="text-[10px] font-bold text-slate-400 uppercase mb-1">Flagged Anomalies</div>
+                      <div className="text-lg font-bold text-slate-700">{anomalies.length}</div>
+                    </div>
+                  </div>
+
+                  {reportingGaps.length > 0 && (
+                    <div className="space-y-2">
+                      <div className="text-[10px] font-bold text-slate-400 uppercase flex items-center gap-2">
+                        <AlertTriangle className="w-3 h-3 text-amber-500" /> Major Reporting Gaps
+                      </div>
+                      {reportingGaps.slice(0, 2).map((gap, idx) => (
+                        <div
+                          key={`${gap.from}-${idx}`}
+                          className="text-[11px] text-slate-600 bg-white border border-slate-100 rounded px-3 py-2 flex items-center justify-between"
+                        >
+                          <div className="flex items-center gap-2">
+                            <CalendarClock className="w-3 h-3 text-slate-400" />
+                            <span>{formatDate(gap.from)} — {formatDate(gap.to)}</span>
+                          </div>
+                          <span className="font-bold text-amber-600">
+                            {gap.expectedSubmissions} periods missed
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
-              </div>
-              <div className="rounded-md border border-red-200 bg-red-50 p-3">
-                <div className="text-xs text-red-700 mb-1">Anomaly Flagged</div>
-                <div className="text-xl font-bold text-red-900">
-                  {anomalies.length}
-                </div>
-              </div>
+              );
+            })()}
+          </div>
+
+          {/* Reminder Settings Card */}
+          <div className="bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden">
+            <div className="px-5 py-3 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+              <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                <BellRing className="w-4 h-4 text-blue-600" />
+                Reminder Settings
+              </h3>
+              {!isEditingSettings && (
+                <button 
+                  onClick={() => setIsEditingSettings(true)}
+                  className="text-[10px] font-bold text-blue-600 hover:text-blue-800 uppercase tracking-wider"
+                >
+                  Configure
+                </button>
+              )}
             </div>
-            {reportingGaps.length > 0 && (
-              <div className="mt-4 space-y-2">
-                {reportingGaps.slice(0, 3).map((gap, idx) => (
-                  <div
-                    key={`${gap.from}-${idx}`}
-                    className="text-xs text-slate-700 bg-slate-50 border border-slate-200 rounded p-2 flex items-center gap-2"
-                  >
-                    <BellRing className="w-3.5 h-3.5 text-amber-600" />
-                    <span>
-                      Gap from {formatDate(gap.from)} to {formatDate(gap.to)} (
-                      {gap.daysMissing} days missed)
+            
+            <div className="p-5">
+              {!isEditingSettings ? (
+                <div className="space-y-4">
+                  <div className="flex justify-between items-center text-sm">
+                    <span className="text-slate-500">Frequency:</span>
+                    <span className="font-semibold text-slate-700">{indicator.frequency}</span>
+                  </div>
+                  <div className="flex justify-between items-center text-sm">
+                    <span className="text-slate-500">Automatic Reminders:</span>
+                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${indicator.reminderEnabled ? "bg-green-100 text-green-700" : "bg-slate-100 text-slate-500"}`}>
+                      {indicator.reminderEnabled ? "ENABLED" : "DISABLED"}
                     </span>
                   </div>
-                ))}
-              </div>
-            )}
+                  {indicator.reminderEnabled && (
+                    <div className="grid grid-cols-2 gap-4 pt-2 border-t border-slate-50">
+                      <div>
+                        <div className="text-[10px] font-bold text-slate-400 uppercase">Pre-reminder</div>
+                        <div className="text-sm font-medium text-slate-700">{indicator.reminderDaysBeforeDue || 0} days before</div>
+                      </div>
+                      <div>
+                        <div className="text-[10px] font-bold text-slate-400 uppercase">Overdue Alert</div>
+                        <div className="text-sm font-medium text-slate-700">{indicator.reminderDaysAfterDue || 0} days after</div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-4 animate-in fade-in slide-in-from-top-2">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Reporting Frequency</label>
+                    <select 
+                      value={settingsForm.frequency}
+                      onChange={(e) => setSettingsForm({...settingsForm, frequency: e.target.value as any})}
+                      className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                    >
+                      <option value="Daily">Daily</option>
+                      <option value="Weekly">Weekly</option>
+                      <option value="Monthly">Monthly</option>
+                      <option value="Quarterly">Quarterly</option>
+                      <option value="Yearly">Yearly</option>
+                    </select>
+                  </div>
+                  
+                  <div className="flex items-center justify-between p-3 bg-blue-50 rounded-lg">
+                    <div className="flex items-center gap-3">
+                      <div className={`p-2 rounded-lg ${settingsForm.reminderEnabled ? "bg-blue-600 text-white" : "bg-slate-200 text-slate-400"}`}>
+                        <BellRing className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-bold text-slate-900">Enable Reminders</h4>
+                        <p className="text-[10px] text-slate-500">Notify assigned users when data is due</p>
+                      </div>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input 
+                        type="checkbox" 
+                        className="sr-only peer" 
+                        checked={settingsForm.reminderEnabled}
+                        onChange={(e) => setSettingsForm({...settingsForm, reminderEnabled: e.target.checked})}
+                      />
+                      <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                    </label>
+                  </div>
+
+                  {settingsForm.reminderEnabled && (
+                    <div className="grid grid-cols-2 gap-4 animate-in zoom-in-95 duration-200">
+                      <div>
+                        <label className="block text-xs font-bold text-slate-500 mb-1">Days Before Due</label>
+                        <input 
+                          type="number" 
+                          min={0}
+                          value={settingsForm.reminderDaysBeforeDue}
+                          onChange={(e) => setSettingsForm({...settingsForm, reminderDaysBeforeDue: parseInt(e.target.value)})}
+                          className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-slate-500 mb-1">Days After Due</label>
+                        <input 
+                          type="number"
+                          min={0}
+                          value={settingsForm.reminderDaysAfterDue}
+                          onChange={(e) => setSettingsForm({...settingsForm, reminderDaysAfterDue: parseInt(e.target.value)})}
+                          className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="flex gap-2 pt-2">
+                    <Button 
+                      className="flex-1" 
+                      size="sm" 
+                      onClick={handleUpdateSettings}
+                      disabled={saving}
+                    >
+                      {saving ? "Saving..." : "Save Settings"}
+                    </Button>
+                    <Button 
+                      variant="outline" 
+                      className="flex-1" 
+                      size="sm" 
+                      onClick={() => setIsEditingSettings(false)}
+                      disabled={saving}
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Data History Table */}
@@ -1294,6 +1547,78 @@ export const IndicatorDetail: React.FC = () => {
                   onChange={(e) => setEntryDate(e.target.value)}
                   className="w-full rounded-md border-slate-300 border p-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white text-slate-900"
                 />
+
+                {/* Scheduled Points suggestions */}
+                {indicator.frequency && (
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {[0, 1, 2, 3, 4, 5, 6].map((offset) => {
+                      if (offset >= 4 && indicator.frequency !== "Daily")
+                        return null;
+
+                      const d = new Date();
+                      let label = "";
+                      let dateStr = "";
+
+                      if (indicator.frequency === "Daily") {
+                        const target = new Date(
+                          d.getFullYear(),
+                          d.getMonth(),
+                          d.getDate() - offset,
+                        );
+                        dateStr = target.toISOString().split("T")[0];
+                        label =
+                          offset === 0
+                            ? "Today"
+                            : offset === 1
+                              ? "Yesterday"
+                              : target.toLocaleDateString(undefined, {
+                                  weekday: "short",
+                                  day: "numeric",
+                                });
+                      } else if (indicator.frequency === "Weekly") {
+                        const diff = d.getDate() - d.getDay() - offset * 7;
+                        const target = new Date(d.getFullYear(), d.getMonth(), diff);
+                        dateStr = target.toISOString().split("T")[0];
+                        label = `Wk ${target.toLocaleDateString(undefined, { month: "short", day: "numeric" })}`;
+                      } else if (indicator.frequency === "Monthly") {
+                        const target = new Date(
+                          d.getFullYear(),
+                          d.getMonth() - offset,
+                          0,
+                        );
+                        dateStr = target.toISOString().split("T")[0];
+                        label = target.toLocaleString("default", {
+                          month: "short",
+                        });
+                      }
+
+                      if (!dateStr) return null;
+                      const isSelected = entryDate === dateStr;
+                      const isDone = indicator.values.some((v) =>
+                        v.date.startsWith(dateStr),
+                      );
+
+                      return (
+                        <button
+                          key={offset}
+                          type="button"
+                          onClick={() => setEntryDate(dateStr)}
+                          title={isDone ? "Already reported" : "Pending report"}
+                          className={`text-[10px] px-2 py-1 rounded border transition-all flex items-center gap-1 ${
+                            isSelected
+                              ? "bg-blue-600 border-blue-600 text-white z-10"
+                              : isDone
+                                ? "bg-slate-50 border-slate-200 text-slate-400 opacity-60"
+                                : "bg-amber-50 border-amber-200 text-amber-700 hover:border-amber-400"
+                          }`}
+                        >
+                          {isDone && <CheckCircle className="w-2.5 h-2.5" />}
+                          {label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">

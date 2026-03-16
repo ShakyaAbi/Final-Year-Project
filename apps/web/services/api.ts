@@ -126,6 +126,7 @@ const mapProject = (p: any, logframe: LogframeNode[] = []): Project => ({
   location: p.location ?? undefined,
   donor: p.donor ?? undefined,
   budgetAmount: p.budgetAmount ?? undefined,
+  budgetSpent: p.budgetSpent ?? undefined,
   budgetCurrency: p.budgetCurrency ?? undefined,
   logframe,
 });
@@ -231,6 +232,11 @@ const mapIndicator = (
     currentVersion: indicator.currentVersion ?? 1,
     versions: Array.isArray(indicator.versions) ? indicator.versions : [],
     values,
+    // Reminder fields
+    reminderEnabled: indicator.reminderEnabled ?? false,
+    reminderDaysBeforeDue: indicator.reminderDaysBeforeDue ?? undefined,
+    reminderDaysAfterDue: indicator.reminderDaysAfterDue ?? undefined,
+    reminderRecipients: indicator.reminderRecipients ?? undefined,
   };
 };
 
@@ -247,8 +253,17 @@ const mapCurrentUser = (user: any): CurrentUser => ({
   avatar: user.avatar ?? null,
 });
 
-const toReportingFrequency = (value?: Indicator["frequency"]) =>
-  value === "Daily" ? "DAILY" : value === "Monthly" ? "MONTHLY" : "WEEKLY";
+const toReportingFrequency = (value?: Indicator["frequency"]) => {
+  if (!value) return undefined;
+  switch (value) {
+    case "Daily": return "DAILY";
+    case "Weekly": return "WEEKLY";
+    case "Monthly": return "MONTHLY";
+    case "Quarterly": return "QUARTERLY";
+    case "Yearly": return "YEARLY";
+    default: return "WEEKLY";
+  }
+};
 
 const normalizeDisaggregationDimensionKey = (value: any, fallbackLabel?: any) => {
   const raw = String(value ?? "").trim() || String(fallbackLabel ?? "").trim();
@@ -336,6 +351,7 @@ export const api = {
         location: payload.location,
         donor: payload.donor,
         budgetAmount: payload.budgetAmount,
+        budgetSpent: payload.budgetSpent,
         budgetCurrency: payload.budgetCurrency,
       },
     });
@@ -357,6 +373,7 @@ export const api = {
         location: payload.location,
         donor: payload.donor,
         budgetAmount: payload.budgetAmount,
+        budgetSpent: payload.budgetSpent,
         budgetCurrency: payload.budgetCurrency,
       },
     });
@@ -462,69 +479,68 @@ export const api = {
     indicatorId: string,
     payload: Partial<Indicator>,
   ): Promise<Indicator> => {
-    const dataType =
-      payload.type === IndicatorType.PERCENTAGE
-        ? "PERCENT"
-        : payload.type === IndicatorType.BOOLEAN
-          ? "BOOLEAN"
-          : payload.type === IndicatorType.TEXT
-            ? "TEXT"
-            : payload.type === IndicatorType.CATEGORICAL
-              ? "CATEGORICAL"
-              : "NUMBER";
-    const isNumeric =
-      payload.type === IndicatorType.NUMBER ||
-      payload.type === IndicatorType.PERCENTAGE ||
-      payload.type === IndicatorType.CURRENCY;
-    const isCategorical = payload.type === IndicatorType.CATEGORICAL;
-    const unit =
-      payload.unit ||
-      (payload.type === IndicatorType.BOOLEAN
-        ? "yes/no"
-        : payload.type === IndicatorType.TEXT
-          ? "text"
-          : payload.type === IndicatorType.CATEGORICAL
-            ? "category"
-            : "unit");
+    const body: any = {
+      logframeNodeId: payload.nodeId ? Number(payload.nodeId) : undefined,
+      name: payload.name,
+    };
 
-    const baselineValue =
-      isNumeric && payload.baseline !== undefined
-        ? Number(payload.baseline)
-        : null;
-    const targetValue =
-      isNumeric && payload.target !== undefined ? Number(payload.target) : null;
-    const baselineCategory =
-      isCategorical && payload.baseline !== undefined
-        ? String(payload.baseline)
-        : null;
-    const targetCategory =
-      isCategorical && payload.target !== undefined
-        ? String(payload.target)
-        : null;
+    if (payload.type !== undefined) {
+      body.dataType =
+        payload.type === IndicatorType.PERCENTAGE
+          ? "PERCENT"
+          : payload.type === IndicatorType.BOOLEAN
+            ? "BOOLEAN"
+            : payload.type === IndicatorType.TEXT
+              ? "TEXT"
+              : payload.type === IndicatorType.CATEGORICAL
+                ? "CATEGORICAL"
+                : "NUMBER";
+    }
+
+    if (payload.unit !== undefined) {
+      body.unit = payload.unit;
+    } else if (payload.type !== undefined) {
+      body.unit =
+        payload.type === IndicatorType.BOOLEAN
+          ? "yes/no"
+          : payload.type === IndicatorType.TEXT
+            ? "text"
+            : payload.type === IndicatorType.CATEGORICAL
+              ? "category"
+              : "unit";
+    }
+
+    const type = payload.type; 
+    const isNumeric = type === IndicatorType.NUMBER || type === IndicatorType.PERCENTAGE || type === IndicatorType.CURRENCY;
+    const isCategorical = type === IndicatorType.CATEGORICAL;
+
+    if (payload.baseline !== undefined) {
+      if (isNumeric) body.baselineValue = Number(payload.baseline);
+      else if (isCategorical) body.baselineCategory = String(payload.baseline);
+      else body.baselineValue = null; // for text/boolean if we want to clear
+    }
+    if (payload.target !== undefined) {
+      if (isNumeric) body.targetValue = Number(payload.target);
+      else if (isCategorical) body.targetCategory = String(payload.target);
+      else body.targetValue = null;
+    }
+
+    if (payload.minExpected !== undefined) body.minValue = payload.minExpected;
+    if (payload.maxExpected !== undefined) body.maxValue = payload.maxExpected;
+    if (payload.anomalyConfig !== undefined) body.anomalyConfig = payload.anomalyConfig;
+    if (payload.frequency !== undefined) body.reportingFrequency = toReportingFrequency(payload.frequency);
+    if (payload.categories !== undefined) body.categories = payload.categories;
+    if (payload.categoryConfig !== undefined) body.categoryConfig = normalizeCategoryConfigForApi(payload.categoryConfig);
+    
+    // Reminder fields
+    if (payload.reminderEnabled !== undefined) body.reminderEnabled = payload.reminderEnabled;
+    if (payload.reminderDaysBeforeDue !== undefined) body.reminderDaysBeforeDue = payload.reminderDaysBeforeDue;
+    if (payload.reminderDaysAfterDue !== undefined) body.reminderDaysAfterDue = payload.reminderDaysAfterDue;
+    if (payload.reminderRecipients !== undefined) body.reminderRecipients = payload.reminderRecipients;
 
     const updated = await request<any>(`/indicators/${indicatorId}`, {
       method: "PATCH",
-      body: {
-        logframeNodeId: payload.nodeId ? Number(payload.nodeId) : undefined,
-        name: payload.name,
-        unit,
-        baselineValue,
-        targetValue,
-        baselineCategory,
-        targetCategory,
-        dataType,
-        minValue: payload.minExpected ?? null,
-        maxValue: payload.maxExpected ?? null,
-        anomalyConfig: payload.anomalyConfig ?? null,
-        reportingFrequency: toReportingFrequency(payload.frequency),
-        categories: payload.categories ?? null,
-        categoryConfig: normalizeCategoryConfigForApi(payload.categoryConfig),
-        // Reminder fields
-        reminderEnabled: payload.reminderEnabled ?? false,
-        reminderDaysBeforeDue: payload.reminderDaysBeforeDue ?? null,
-        reminderDaysAfterDue: payload.reminderDaysAfterDue ?? null,
-        reminderRecipients: payload.reminderRecipients ?? null,
-      },
+      body,
     });
     return mapIndicator(updated);
   },
@@ -639,6 +655,8 @@ export const api = {
     request(`/projects/${projectId}/stats`),
   getProjectActivities: async (projectId: string): Promise<ActivityLog[]> =>
     request(`/projects/${projectId}/activities`),
+  getProjectAlerts: async (projectId: string): Promise<any[]> =>
+    request(`/projects/${projectId}/alerts`),
   getCategoryDistribution: async (indicatorId: string): Promise<any> =>
     request(`/indicators/${indicatorId}/category-distribution`),
   deleteIndicator: async (id: string): Promise<void> =>
@@ -816,6 +834,9 @@ export const api = {
     notifications: AnomalyNotification[];
     totalUnread: number;
   }> => request("/notifications/anomalies"),
+
+  getOverdueNotifications: async (): Promise<any[]> =>
+    request("/notifications/overdue"),
 
   markAllAnomaliesRead: async (): Promise<void> =>
     request("/notifications/anomalies/mark-read", { method: "POST" }),

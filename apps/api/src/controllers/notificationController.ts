@@ -11,3 +11,8 @@ export const markAllAnomaliesRead = asyncHandler(async (req, res) => {
   await notificationService.markAllAnomaliesRead(userId);
   res.status(204).end();
 });
+
+export const getOverdueNotifications = asyncHandler(async (req, res) => {
+  const result = await notificationService.getOverdueNotifications();
+  res.json(result);
+});

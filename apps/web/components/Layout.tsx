@@ -16,6 +16,7 @@ import {
   AlertTriangle,
   CheckCircle,
   AlertCircle,
+  Clock,
 } from "lucide-react";
 import { AnomalyNotification, CurrentUser } from "../types";
 import Silk from "./ui/Silk";
@@ -29,6 +30,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
   const [sidebarOpen, setSidebarOpen] = React.useState(false);
   const [isCollapsed, setIsCollapsed] = React.useState(false);
   const [notifications, setNotifications] = useState<AnomalyNotification[]>([]);
+  const [overdueNotifications, setOverdueNotifications] = useState<any[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
   const [markingRead, setMarkingRead] = useState(false);
@@ -71,10 +73,14 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
   }, [location.pathname]);
 
   const fetchNotifications = () => {
-    api.getAnomalyNotifications()
-      .then(({ notifications, totalUnread }) => {
+    Promise.all([
+      api.getAnomalyNotifications(),
+      api.getOverdueNotifications(),
+    ])
+      .then(([{ notifications, totalUnread }, overdue]) => {
         setNotifications(notifications);
-        setUnreadCount(totalUnread);
+        setOverdueNotifications(overdue || []);
+        setUnreadCount(totalUnread + (overdue?.length || 0));
       })
       .catch(() => {});
   };
@@ -350,9 +356,9 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
                   <div className="absolute right-0 mt-2 w-96 bg-white rounded-xl shadow-xl border border-slate-100 py-2 z-20 animate-in fade-in slide-in-from-top-2">
                     <div className="px-4 py-3 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
                       <div>
-                        <h3 className="font-semibold text-sm text-slate-900">Anomaly Alerts</h3>
+                        <h3 className="font-semibold text-sm text-slate-900">Notifications</h3>
                         <p className="text-xs text-slate-500 mt-0.5">
-                          {unreadCount > 0 ? `${unreadCount} unacknowledged` : "All caught up"}
+                          {unreadCount > 0 ? `${unreadCount} alerts attention` : "All caught up"}
                         </p>
                       </div>
                       {unreadCount > 0 && (
@@ -366,6 +372,36 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
                       )}
                     </div>
                     <div className="max-h-[400px] overflow-y-auto divide-y divide-slate-50">
+                      {overdueNotifications.length > 0 &&
+                        overdueNotifications.map((n) => (
+                          <Link
+                            key={n.id}
+                            to={`/indicators/${n.indicatorId}`}
+                            onClick={() => setShowNotifications(false)}
+                            className="px-4 py-3 hover:bg-amber-50/60 flex gap-3 transition-colors cursor-pointer group block"
+                          >
+                            <div className="mt-0.5 w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center flex-shrink-0">
+                              <Clock className="w-4 h-4 text-amber-500" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-start justify-between gap-2">
+                                <p className="text-sm font-semibold text-slate-900 leading-tight group-hover:text-amber-700 truncate">
+                                  {n.indicatorName} Overdue
+                                </p>
+                                <span className="flex-shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 uppercase tracking-wide">
+                                  Overdue
+                                </span>
+                              </div>
+                              <p className="text-xs text-slate-500 mt-0.5 truncate">
+                                {n.projectName}
+                              </p>
+                              <p className="text-xs text-amber-600 mt-1 line-clamp-2">
+                                Last report was {n.daysOverdue} days ago. Expected {n.expectedFrequency.toLowerCase()}.
+                              </p>
+                            </div>
+                          </Link>
+                        ))}
+
                       {notifications.length > 0 ? (
                         notifications.map((n) => (
                           <Link
@@ -380,7 +416,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
                             <div className="flex-1 min-w-0">
                               <div className="flex items-start justify-between gap-2">
                                 <p className="text-sm font-semibold text-slate-900 leading-tight group-hover:text-red-700 truncate">
-                                  {n.indicatorName}
+                                  {n.indicatorName} anomaly
                                 </p>
                                 {n.anomalyStatus === "DETECTED" && (
                                   <span className="flex-shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-red-100 text-red-700 uppercase tracking-wide">
@@ -396,21 +432,21 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
                                   {n.anomalyReason}
                                 </p>
                               )}
-                              <p className="text-[11px] text-slate-400 mt-1">
-                                {new Date(n.reportedAt).toLocaleDateString("en-US", {
-                                  month: "short", day: "2-digit", year: "numeric",
-                                  timeZone: "UTC",
-                                })}
-                              </p>
                             </div>
                           </Link>
                         ))
                       ) : (
-                        <div className="py-10 text-center">
-                          <CheckCircle className="w-8 h-8 text-green-400 mx-auto mb-2" />
-                          <p className="text-sm text-slate-500 font-medium">No anomalies detected</p>
-                          <p className="text-xs text-slate-400 mt-1">All indicator values look normal</p>
-                        </div>
+                        overdueNotifications.length === 0 && (
+                          <div className="py-10 text-center">
+                            <CheckCircle className="w-8 h-8 text-green-400 mx-auto mb-2" />
+                            <p className="text-sm text-slate-500 font-medium">
+                              Everything looks good!
+                            </p>
+                            <p className="text-xs text-slate-400 mt-1">
+                              No anomalies or late reports.
+                            </p>
+                          </div>
+                        )
                       )}
                     </div>
                     <div className="px-4 py-2 border-t border-slate-100 text-center bg-slate-50/30">

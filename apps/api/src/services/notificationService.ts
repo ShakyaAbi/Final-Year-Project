@@ -16,6 +16,17 @@ export interface AnomalyNotificationItem {
   reportedAt: Date;
 }
 
+export interface OverdueNotificationItem {
+  id: string;
+  indicatorId: number;
+  indicatorName: string;
+  projectId: number;
+  projectName: string;
+  lastReportedAt: Date | null;
+  expectedFrequency: string;
+  daysOverdue: number;
+}
+
 export const getAnomalyNotifications = async (): Promise<{
   notifications: AnomalyNotificationItem[];
   totalUnread: number;
@@ -33,17 +44,12 @@ export const getAnomalyNotifications = async (): Promise<{
     take: MAX_NOTIFICATIONS,
     include: {
       indicator: {
-        select: {
-          id: true,
-          name: true,
-          projectId: true,
-          project: {
-            select: { id: true, name: true },
-          },
+        include: {
+          project: true,
         },
       },
-    },
-  } as any);
+    } as any,
+  });
 
   const notifications: AnomalyNotificationItem[] = anomalousSubmissions.map(
     (sub: any) => ({
@@ -70,6 +76,61 @@ export const getAnomalyNotifications = async (): Promise<{
   });
 
   return { notifications, totalUnread };
+};
+
+export const getOverdueNotifications = async (): Promise<OverdueNotificationItem[]> => {
+  const indicators = await prisma.indicator.findMany({
+    include: {
+      project: true,
+      submissions: {
+        where: { deletedAt: null },
+        orderBy: { reportedAt: 'desc' },
+        take: 1
+      }
+    } as any
+  });
+
+  const now = new Date();
+  const overdue: OverdueNotificationItem[] = [];
+
+  for (const indicator of indicators as any[]) {
+    // Only process if reminders are actually enabled for this indicator
+    if (!indicator.reminderEnabled) continue;
+
+    const freq = (indicator.validationConfig as any)?.reportingFrequency || 'WEEKLY';
+    const lastSub = (indicator.submissions as any[])[0];
+    const refDate = lastSub ? lastSub.reportedAt : (indicator.project as any)?.startDate;
+
+    if (!refDate) continue;
+
+    let expectedDays = 7;
+    if (freq === 'DAILY') expectedDays = 1;
+    else if (freq === 'MONTHLY') expectedDays = 30;
+    else if (freq === 'QUARTERLY') expectedDays = 90;
+    else if (freq === 'YEARLY') expectedDays = 365;
+
+    const diffMs = now.getTime() - refDate.getTime();
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+    
+    // threshold is expected frequency days + grace period from settings
+    const gracePeriod = indicator.reminderDaysAfterDue ?? 2;
+    const alertThreshold = expectedDays + gracePeriod;
+
+    if (diffDays > alertThreshold) {
+      overdue.push({
+        id: `overdue-${indicator.id}`,
+        indicatorId: indicator.id,
+        indicatorName: indicator.name,
+        projectId: indicator.project.id,
+        projectName: indicator.project.name,
+        lastReportedAt: lastSub ? lastSub.reportedAt : null,
+        expectedFrequency: freq,
+        daysOverdue: diffDays
+      });
+    }
+  }
+
+  return overdue.sort((a, b) => b.daysOverdue - a.daysOverdue).slice(0, MAX_NOTIFICATIONS);
 };
 
 export const markAllAnomaliesRead = async (userId: number): Promise<void> => {
