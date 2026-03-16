@@ -1,53 +1,47 @@
 import request from "supertest";
-import { createServer, IncomingMessage, ServerResponse } from "http";
 import { prisma } from "../src/prisma";
 import { Role, IndicatorDataType } from "@prisma/client";
 
 let app: any;
 
 describe("ML Anomaly Detection", () => {
-  let server: ReturnType<typeof createServer>;
-  let serverUrl: string;
   let authToken: string;
   let projectId: number;
   let nodeId: number;
   let indicatorId: number;
+  let fetchSpy: jest.SpyInstance;
 
   beforeAll(async () => {
     jest.resetModules();
-    server = createServer((req: IncomingMessage, res: ServerResponse) => {
-      if (req.method === "POST" && req.url === "/score") {
-        let body = "";
-        req.on("data", (chunk) => {
-          body += chunk;
-        });
-        req.on("end", () => {
-          const payload = JSON.parse(body || "{}");
+    process.env.ML_SERVICE_URL = "http://ml.mock";
+    process.env.ML_SERVICE_TIMEOUT_MS = "2000";
+
+    fetchSpy = jest
+      .spyOn(global as any, "fetch")
+      .mockImplementation(async (url: string, init: any) => {
+        if (url.endsWith("/score")) {
+          const payload = JSON.parse(init?.body || "{}");
           const newValue = Number(payload.newValue ?? 0);
           const isAnomaly = newValue > 100;
-          const response = {
-            isAnomaly,
-            score: isAnomaly ? 0.9 : 0.1,
-            threshold: 0.5,
-            method: "ISOLATION_FOREST",
-            reason: isAnomaly
-              ? "Isolation Forest score >= threshold"
-              : "Within expected range",
-            meta: { windowSize: 50, minPoints: 2, contamination: 0.05 },
-          };
-          res.writeHead(200, { "Content-Type": "application/json" });
-          res.end(JSON.stringify(response));
-        });
-        return;
-      }
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              isAnomaly,
+              score: isAnomaly ? 0.9 : 0.1,
+              threshold: 0.5,
+              method: "ISOLATION_FOREST",
+              reason: isAnomaly
+                ? "Isolation Forest score >= threshold"
+                : "Within expected range",
+              meta: { windowSize: 50, minPoints: 2, contamination: 0.05 },
+            }),
+            text: async () => "",
+          } as any;
+        }
 
-      if (req.method === "POST" && req.url === "/score/batch") {
-        let body = "";
-        req.on("data", (chunk) => {
-          body += chunk;
-        });
-        req.on("end", () => {
-          const payload = JSON.parse(body || "{}");
+        if (url.endsWith("/score/batch")) {
+          const payload = JSON.parse(init?.body || "{}");
           const values = Array.isArray(payload.values) ? payload.values : [];
           const results = values.map((value: number) => ({
             isAnomaly: value > 100,
@@ -60,27 +54,21 @@ describe("ML Anomaly Detection", () => {
                 : "Within expected range",
             meta: { windowSize: 50, minPoints: 2, contamination: 0.05 },
           }));
-          res.writeHead(200, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ results }));
-        });
-        return;
-      }
-
-      res.writeHead(404);
-      res.end();
-    });
-
-    await new Promise<void>((resolve) => {
-      server.listen(0, "127.0.0.1", () => {
-        const address = server.address();
-        if (address && typeof address !== "string") {
-          serverUrl = `http://127.0.0.1:${address.port}`;
-          process.env.ML_SERVICE_URL = serverUrl;
-          process.env.ML_SERVICE_TIMEOUT_MS = "2000";
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({ results }),
+            text: async () => "",
+          } as any;
         }
-        resolve();
+
+        return {
+          ok: false,
+          status: 404,
+          json: async () => ({}),
+          text: async () => "not found",
+        } as any;
       });
-    });
 
     app = (await import("../src/app")).default;
 
@@ -94,7 +82,7 @@ describe("ML Anomaly Detection", () => {
     });
 
     const loginRes = await request(app)
-      .post("/api/auth/login")
+      .post("/api/v1/auth/login")
       .send({ email: "anomaly-ml@test.com", password: "password123" });
     authToken = loginRes.body.token;
 
@@ -148,21 +136,21 @@ describe("ML Anomaly Detection", () => {
         },
       ],
     });
-  });
+  }, 20000);
 
   afterAll(async () => {
+    fetchSpy?.mockRestore();
     await prisma.submission.deleteMany();
     await prisma.indicator.deleteMany();
     await prisma.logframeNode.deleteMany();
     await prisma.project.deleteMany();
     await prisma.user.deleteMany({ where: { email: "anomaly-ml@test.com" } });
     await prisma.$disconnect();
-    server.close();
   });
 
   test("should score anomaly using ML service", async () => {
     const res = await request(app)
-      .post(`/api/indicators/${indicatorId}/submissions`)
+      .post(`/api/v1/indicators/${indicatorId}/submissions`)
       .set("Authorization", `Bearer ${authToken}`)
       .send({ reportedAt: "2024-01-15", value: 200 });
 
@@ -171,5 +159,6 @@ describe("ML Anomaly Detection", () => {
     expect(res.body.anomalyScore).toBeDefined();
     expect(res.body.anomalyThreshold).toBeDefined();
     expect(res.body.anomalyMethod).toBe("ISOLATION_FOREST");
+    expect(res.body.anomalyMeta?.mlValidation?.status).toBe("ML_OK");
   });
 });

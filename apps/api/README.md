@@ -46,6 +46,11 @@ Run the backfill job to rescore recent submissions:
 npm run anomaly:backfill
 ```
 
+Run an ML canary check (intended for CI/scheduled monitoring):
+```bash
+npm run ml:canary
+```
+
 ## Migrations and Prisma
 - Run migrations: `npm run prisma:migrate`
 - Generate client: `npm run prisma:generate`
@@ -54,6 +59,7 @@ npm run anomaly:backfill
 ## API
 - Base path: `/api/v1`
 - Docs: `GET /docs` (Swagger UI sourced from `openapi/openapi.yml`)
+- ML health: `GET /api/v1/health/ml` (ADMIN/MANAGER)
 - Error shape: `{ "error": { "code": string, "message": string, "details"?: any } }`
 
 ## Notes
