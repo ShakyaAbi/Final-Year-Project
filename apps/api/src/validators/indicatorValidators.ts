@@ -80,7 +80,7 @@ const categoryConfigSchema = z
   .nullable();
 
 const reportingFrequencySchema = z
-  .enum(["DAILY", "WEEKLY"])
+  .enum(["DAILY", "WEEKLY", "MONTHLY", "QUARTERLY", "YEARLY"])
   .optional();
 
 export const projectIndicatorParamsSchema = {

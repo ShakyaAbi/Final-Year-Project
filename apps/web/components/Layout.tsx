@@ -17,8 +17,9 @@ import {
   CheckCircle,
   AlertCircle,
 } from "lucide-react";
-import { ActivityLog } from "../types";
+import { ActivityLog, CurrentUser } from "../types";
 import Silk from "./ui/Silk";
+import { api } from "../services/api";
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -30,6 +31,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
   const [notifications, setNotifications] = useState<ActivityLog[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
 
   const location = useLocation();
   const navigate = useNavigate();
@@ -70,6 +72,10 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
   useEffect(() => {
     setNotifications([]);
     setUnreadCount(0);
+    
+    api.me()
+      .then(user => setCurrentUser(user))
+      .catch(err => console.error("Could not load user profile", err));
   }, []);
 
   const navItems = [
@@ -79,6 +85,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
   ];
 
   const handleLogout = () => {
+    localStorage.removeItem("merlin_token");
     navigate("/");
   };
 
@@ -239,15 +246,15 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
             } w-full p-3 rounded-xl border border-white/10 bg-slate-900/50 hover:bg-slate-800/70 transition-colors group text-left`}
           >
             <div className="h-10 w-10 rounded-full bg-slate-100 text-slate-900 flex items-center justify-center font-semibold text-sm border border-slate-300/70 flex-shrink-0">
-              JD
+              {currentUser?.name ? currentUser.name.substring(0, 2).toUpperCase() : currentUser?.email?.substring(0, 2).toUpperCase() || "ME"}
             </div>
             {!isCollapsed && (
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-semibold text-slate-100 truncate">
-                  John Doe
+                  {currentUser?.name || currentUser?.email || "User"}
                 </p>
                 <p className="text-xs text-slate-400 truncate group-hover:text-slate-300">
-                  Program Manager
+                  {currentUser?.jobTitle || (currentUser?.role ? currentUser.role.charAt(0).toUpperCase() + currentUser.role.slice(1).toLowerCase() : "Role")}
                 </p>
               </div>
             )}

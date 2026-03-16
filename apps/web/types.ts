@@ -192,4 +192,8 @@ export interface CurrentUser {
   email: string;
   role: string;
   createdAt?: string;
+  name?: string | null;
+  jobTitle?: string | null;
+  organization?: string | null;
+  avatar?: string | null;
 }

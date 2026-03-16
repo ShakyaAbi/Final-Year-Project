@@ -59,7 +59,7 @@ export const IndicatorDetail: React.FC = () => {
   const [showImportWizard, setShowImportWizard] = useState(false);
   const [showExportDialog, setShowExportDialog] = useState(false);
   const [reportingFrequency, setReportingFrequency] = useState<
-    "DAILY" | "WEEKLY"
+    "DAILY" | "WEEKLY" | "MONTHLY"
   >("WEEKLY");
   const [reportingGaps, setReportingGaps] = useState<any[]>([]);
   const [showDeleted, setShowDeleted] = useState(false);
@@ -137,7 +137,11 @@ export const IndicatorDetail: React.FC = () => {
   useEffect(() => {
     if (!indicator) return;
     setReportingFrequency(
-      indicator.frequency === "Daily" ? "DAILY" : "WEEKLY",
+      indicator.frequency === "Daily"
+        ? "DAILY"
+        : indicator.frequency === "Monthly"
+          ? "MONTHLY"
+          : "WEEKLY",
     );
   }, [indicator?.id, indicator?.frequency]);
 
@@ -536,8 +540,17 @@ export const IndicatorDetail: React.FC = () => {
     value: string | number | undefined,
     categoryValue?: string,
   ): string => {
-    const label = formatCategoryValue(categoryValue);
-    return label ? `${value ?? "N/A"} (${label})` : String(value ?? "N/A");
+    // For categorical indicators, prefer showing only the human-readable label
+    if (categoryValue) {
+      const label = formatCategoryValue(categoryValue);
+      if (label) return label;
+    }
+    // If there's no categoryValue, the value field itself may hold the category ID
+    if (isCategorical && value !== undefined && value !== null && value !== "") {
+      const label = formatCategoryValue(String(value));
+      if (label && label !== String(value)) return label;
+    }
+    return String(value ?? "N/A");
   };
 
   const inferAnomalyReason = (
@@ -636,7 +649,7 @@ export const IndicatorDetail: React.FC = () => {
         {/* Main Content Area */}
         <div className="lg:col-span-2 space-y-8">
           {/* Charts Section */}
-          {isNumeric && (
+          {(isNumeric || isCategorical) && (
             <IndicatorCharts indicator={filteredIndicator!} />
           )}
 
@@ -760,12 +773,15 @@ export const IndicatorDetail: React.FC = () => {
                 <select
                   value={reportingFrequency}
                   onChange={(e) =>
-                    setReportingFrequency(e.target.value as "DAILY" | "WEEKLY")
+                    setReportingFrequency(e.target.value as any)
                   }
                   className="text-xs border border-slate-300 rounded px-2 py-1 bg-white"
                 >
                   <option value="DAILY">Daily</option>
                   <option value="WEEKLY">Weekly</option>
+                  <option value="MONTHLY">Monthly</option>
+                  <option value="QUARTERLY">Quarterly</option>
+                  <option value="YEARLY">Yearly</option>
                 </select>
               </div>
             </div>

@@ -46,10 +46,17 @@ const request = async <T>(
   });
 
   if (!res.ok) {
-    if (res.status === 401 || (res.status === 404 && path === "/auth/me")) {
+    if (res.status === 401) {
+      if (path === "/auth/me") {
+        localStorage.removeItem(tokenKey);
+        window.location.hash = "/";
+      }
+    } else if (res.status === 404 && path === "/auth/me") {
+      // Keep existing behavior for missing /auth/me (treat as logged-out)
       localStorage.removeItem(tokenKey);
-      window.location.href = "/";
+      window.location.hash = "/";
     }
+
     const data = await res.json().catch(() => ({}));
     const message = data?.error?.message || res.statusText;
     throw new Error(message);
@@ -233,10 +240,14 @@ const mapCurrentUser = (user: any): CurrentUser => ({
   createdAt: user.createdAt
     ? new Date(user.createdAt).toISOString()
     : undefined,
+  name: user.name ?? null,
+  jobTitle: user.jobTitle ?? null,
+  organization: user.organization ?? null,
+  avatar: user.avatar ?? null,
 });
 
 const toReportingFrequency = (value?: Indicator["frequency"]) =>
-  value === "Daily" ? "DAILY" : "WEEKLY";
+  value === "Daily" ? "DAILY" : value === "Monthly" ? "MONTHLY" : "WEEKLY";
 
 const normalizeDisaggregationDimensionKey = (value: any, fallbackLabel?: any) => {
   const raw = String(value ?? "").trim() || String(fallbackLabel ?? "").trim();

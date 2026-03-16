@@ -41,7 +41,8 @@ export const login = async (input: { email: string; password: string }) => {
 };
 
 export const getCurrentUser = async (id: number) => {
-  const user = await userRepo.findById(id);
+  const numericId = typeof id === 'string' ? Number(id) : id;
+  const user = await userRepo.findById(numericId as number);
   if (!user) {
     throw new NotFoundError('USER_NOT_FOUND', 'User not found');
   }

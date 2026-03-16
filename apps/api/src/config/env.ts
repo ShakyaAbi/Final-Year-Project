@@ -17,7 +17,7 @@ export const config = {
   rateLimitEnabled: (process.env.RATE_LIMIT_ENABLED ?? "true") === "true",
   rateLimitWindowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS ?? "900000", 10),
   rateLimitMax: parseInt(process.env.RATE_LIMIT_MAX ?? "100", 10),
-  authDisabled: (process.env.AUTH_DISABLED ?? "true") === "true",
+  authDisabled: (process.env.AUTH_DISABLED ?? "false") === "true",
   mlServiceUrl: process.env.ML_SERVICE_URL ?? "",
   mlServiceTimeoutMs: parseInt(
     process.env.ML_SERVICE_TIMEOUT_MS ?? "5000",

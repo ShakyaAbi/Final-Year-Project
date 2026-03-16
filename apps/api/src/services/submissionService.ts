@@ -591,6 +591,7 @@ export const listSubmissions = async (
     reportedAt: submission.reportedAt,
     value: submission.value,
     categoryValue: submission.categoryValue,
+    disaggregationKey: submission.disaggregationKey,
     evidence: submission.evidence,
     createdByUserId: submission.createdByUserId,
     createdAt: submission.createdAt,
