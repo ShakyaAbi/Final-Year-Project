@@ -55,6 +55,11 @@ export const createIndicator = async (
     reportingFrequency?: "DAILY" | "WEEKLY";
     categories?: any[] | null;
     categoryConfig?: Record<string, any> | null;
+    // Reminder fields
+    reminderEnabled?: boolean;
+    reminderDaysBeforeDue?: number | null;
+    reminderDaysAfterDue?: number | null;
+    reminderRecipients?: string[] | null;
   },
   userId: number,
 ) => {
@@ -96,6 +101,11 @@ export const createIndicator = async (
     },
     categories: validatedCategories as any,
     categoryConfig: validatedCategoryConfig as any,
+    // Reminder fields
+    reminderEnabled: data.reminderEnabled ?? false,
+    reminderDaysBeforeDue: data.reminderDaysBeforeDue ?? null,
+    reminderDaysAfterDue: data.reminderDaysAfterDue ?? null,
+    reminderRecipients: data.reminderRecipients ?? null,
   });
 
   // Auto-create default import and export templates
@@ -144,6 +154,11 @@ export const updateIndicator = async (
     reportingFrequency: "DAILY" | "WEEKLY";
     categories: any[] | null;
     categoryConfig: Record<string, any> | null;
+    // Reminder fields
+    reminderEnabled?: boolean;
+    reminderDaysBeforeDue?: number | null;
+    reminderDaysAfterDue?: number | null;
+    reminderRecipients?: string[] | null;
   }>,
 ) => {
   const indicator = await indicatorRepo.getById(id);
@@ -199,6 +214,11 @@ export const updateIndicator = async (
         : undefined,
     categories: validatedCategories,
     categoryConfig: validatedCategoryConfig,
+    // Reminder fields
+    reminderEnabled: data.reminderEnabled,
+    reminderDaysBeforeDue: data.reminderDaysBeforeDue,
+    reminderDaysAfterDue: data.reminderDaysAfterDue,
+    reminderRecipients: data.reminderRecipients,
   });
 };
 

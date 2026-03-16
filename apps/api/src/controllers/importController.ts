@@ -118,6 +118,7 @@ export const getImportJobStatus = asyncHandler(
 export const executeImport = asyncHandler(
   async (req: Request, res: Response) => {
     const { jobId } = req.params;
+    const { selectedRowNumbers } = req.body || {};
 
     const job = await importJobRepo.findById(parseInt(jobId));
 
@@ -131,8 +132,8 @@ export const executeImport = asyncHandler(
         .json({ error: "Job must be validated before import" });
     }
 
-    // Execute import in background
-    importService.commitToDatabase(parseInt(jobId)).catch((error) => {
+    // Execute import in background, pass selectedRowNumbers
+    importService.commitToDatabase(parseInt(jobId), selectedRowNumbers).catch((error) => {
       console.error("Import failed:", error);
       importJobRepo.markFailed(parseInt(jobId));
     });

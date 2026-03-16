@@ -17,6 +17,11 @@ export const createIndicator = (data: {
   categories?: any[] | null;
   categoryConfig?: Record<string, any> | null;
   validationConfig?: Record<string, any> | null;
+  // Reminder fields
+  reminderEnabled?: boolean;
+  reminderDaysBeforeDue?: number | null;
+  reminderDaysAfterDue?: number | null;
+  reminderRecipients?: string[] | null;
 }) =>
   prisma.indicator.create({
     data: {
@@ -25,6 +30,10 @@ export const createIndicator = (data: {
       categories: data.categories as any,
       categoryConfig: data.categoryConfig as any,
       validationConfig: data.validationConfig as any,
+      reminderEnabled: data.reminderEnabled ?? false,
+      reminderDaysBeforeDue: data.reminderDaysBeforeDue ?? null,
+      reminderDaysAfterDue: data.reminderDaysAfterDue ?? null,
+      reminderRecipients: data.reminderRecipients ? (data.reminderRecipients as any) : null,
     },
   });
 
@@ -61,6 +70,11 @@ export const updateIndicator = (
     categories: any[] | null;
     categoryConfig: Record<string, any> | null;
     validationConfig: Record<string, any> | null;
+    // Reminder fields
+    reminderEnabled?: boolean;
+    reminderDaysBeforeDue?: number | null;
+    reminderDaysAfterDue?: number | null;
+    reminderRecipients?: string[] | null;
   }>,
 ) =>
   prisma.indicator.update({
@@ -81,6 +95,10 @@ export const updateIndicator = (
         data.validationConfig !== undefined
           ? (data.validationConfig as any)
           : undefined,
+      reminderEnabled: data.reminderEnabled,
+      reminderDaysBeforeDue: data.reminderDaysBeforeDue,
+      reminderDaysAfterDue: data.reminderDaysAfterDue,
+      reminderRecipients: data.reminderRecipients ? (data.reminderRecipients as any) : undefined,
     },
   });
 
