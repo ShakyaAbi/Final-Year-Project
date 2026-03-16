@@ -8,7 +8,12 @@ import {
 import Papa from "papaparse";
 import { format, parse, isValid } from "date-fns";
 import { ImportJobRepository } from "../repositories/importJobRepository";
-import { validateCategoricalValue } from "./categoricalService";
+import {
+  CategoryConfig,
+  CategoryDefinition,
+  validateDisaggregationKey,
+} from "./categoricalService";
+import { normalizeSubmissionByIndicator } from "./submissionNormalization";
 
 interface ParsedRow {
   rowNumber: number;
@@ -350,7 +355,19 @@ export class ImportService {
           (!isCaseSensitive ? categoryMap[lookupKey] : undefined);
         normalized[colDef.fieldName] = mapped ?? trimmed;
       } else {
-        normalized[colDef.fieldName] = value;
+        const trimmed = String(value).trim();
+        const allowedValues = Array.isArray(transform.allowedValues)
+          ? transform.allowedValues.map((v: any) => String(v).trim())
+          : [];
+
+        if (allowedValues.length > 0) {
+          const matched = allowedValues.find(
+            (v: string) => v.toLowerCase() === trimmed.toLowerCase(),
+          );
+          normalized[colDef.fieldName] = matched ?? trimmed;
+        } else {
+          normalized[colDef.fieldName] = trimmed;
+        }
       }
     }
 
@@ -377,7 +394,23 @@ export class ImportService {
       });
     }
 
-    if (data.value === undefined || data.value === null) {
+    if (indicator.dataType === "CATEGORICAL") {
+      const hasCategoricalValue =
+        data.value !== undefined &&
+        data.value !== null &&
+        String(data.value).trim().length > 0;
+      const hasCategoryMirror =
+        data.categoryValue !== undefined &&
+        data.categoryValue !== null &&
+        String(data.categoryValue).trim().length > 0;
+      if (!hasCategoricalValue && !hasCategoryMirror) {
+        errors.push({
+          field: "value",
+          message: "Value is required",
+          severity: "error",
+        });
+      }
+    } else if (data.value === undefined || data.value === null) {
       errors.push({
         field: "value",
         message: "Value is required",
@@ -401,8 +434,7 @@ export class ImportService {
     // Numeric validation
     if (
       indicator.dataType === "NUMBER" ||
-      indicator.dataType === "PERCENT" ||
-      indicator.dataType === "CATEGORICAL"
+      indicator.dataType === "PERCENT"
     ) {
       const numValue = parseFloat(data.value);
 
@@ -430,35 +462,44 @@ export class ImportService {
       }
     }
 
-    // Category validation
     if (indicator.dataType === "CATEGORICAL") {
-      const categories = (indicator.categories as any) || [];
-      const config = (indicator.categoryConfig as any) || {};
-      const required = config.required ?? true;
-      const rawCategoryValue = data.categoryValue;
+      try {
+        const categoryConfig = ((indicator.categoryConfig as any) ||
+          null) as CategoryConfig | null;
+        validateDisaggregationKey(data.disaggregationKey, categoryConfig);
+      } catch (err: any) {
+        errors.push({
+          field: "disaggregationKey",
+          message:
+            err?.message || "Invalid disaggregation value for this indicator",
+          severity: "error",
+        });
+      }
 
-      if (!rawCategoryValue || String(rawCategoryValue).trim().length === 0) {
-        if (required) {
-          errors.push({
-            field: "categoryValue",
-            message: "Category is required",
-            severity: "error",
-          });
-        }
-      } else {
-        try {
-          validateCategoricalValue(
-            String(rawCategoryValue),
-            categories,
-            config,
-          );
-        } catch (err: any) {
-          errors.push({
-            field: "categoryValue",
-            message: err?.message || "Invalid category selection",
-            severity: "error",
-          });
-        }
+      try {
+        const normalized = normalizeSubmissionByIndicator({
+          dataType: indicator.dataType,
+          payload: {
+            value: data.value,
+            categoryValue: data.categoryValue,
+          },
+          min: indicator.minValue,
+          max: indicator.maxValue,
+          categories: ((indicator.categories as any) || null) as
+            | CategoryDefinition[]
+            | null,
+          categoryConfig: ((indicator.categoryConfig as any) || null) as
+            | CategoryConfig
+            | null,
+        });
+        data.value = normalized.normalizedValue;
+        data.categoryValue = normalized.normalizedCategoryValue;
+      } catch (err: any) {
+        errors.push({
+          field: "value",
+          message: err?.message || "Invalid category selection",
+          severity: "error",
+        });
       }
     }
 

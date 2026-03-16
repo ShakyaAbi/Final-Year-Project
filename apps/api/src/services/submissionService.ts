@@ -1,19 +1,24 @@
 import { IndicatorDataType, AnomalyStatus, Role } from "@prisma/client";
 import * as indicatorRepo from "../repositories/indicatorRepository";
 import * as submissionRepo from "../repositories/submissionRepository";
-import { BadRequestError, ForbiddenError, NotFoundError } from "../utils/errors";
-import { scoreSubmission, ScoreResult } from "./mlService";
+import {
+  BadRequestError,
+  ForbiddenError,
+  NotFoundError,
+  ServiceUnavailableError,
+} from "../utils/errors";
+import { config as runtimeConfig } from "../config/env";
+import { MlServiceError, scoreSubmission, ScoreResult } from "./mlService";
 import {
   AnomalyConfig,
   normalizeAnomalyConfig,
 } from "./anomalyConfig";
 import {
-  validateCategoricalValue,
-  formatCategoricalValue,
   validateDisaggregationKey,
   CategoryDefinition,
   CategoryConfig,
 } from "./categoricalService";
+import { normalizeSubmissionByIndicator } from "./submissionNormalization";
 
 
 const parseDate = (value?: string | null) => {
@@ -23,63 +28,6 @@ const parseDate = (value?: string | null) => {
     throw new BadRequestError("INVALID_DATE", "Invalid date value");
   }
   return d;
-};
-
-const normalizeValue = (
-  dataType: IndicatorDataType,
-  value: any,
-  min?: number | null,
-  max?: number | null,
-  categories?: CategoryDefinition[] | null,
-  categoryConfig?: CategoryConfig | null,
-) => {
-  switch (dataType) {
-    case "NUMBER": {
-      const num = Number(value);
-      if (!Number.isFinite(num))
-        throw new BadRequestError("INVALID_VALUE", "Value must be numeric");
-      return num.toString();
-    }
-    case "PERCENT": {
-      const num = Number(value);
-      if (!Number.isFinite(num))
-        throw new BadRequestError("INVALID_VALUE", "Value must be numeric");
-      const lower = min ?? 0;
-      const upper = max ?? 100;
-      if (num < lower || num > upper) {
-        throw new BadRequestError(
-          "VALUE_OUT_OF_RANGE",
-          `Percent must be between ${lower} and ${upper}`,
-        );
-      }
-      return num.toString();
-    }
-    case "BOOLEAN": {
-      if (typeof value === "boolean") return value.toString();
-      if (
-        typeof value === "string" &&
-        ["true", "false"].includes(value.toLowerCase())
-      ) {
-        return value.toLowerCase();
-      }
-      throw new BadRequestError("INVALID_VALUE", "Value must be boolean");
-    }
-    case "TEXT": {
-      if (value === undefined || value === null) {
-        throw new BadRequestError("INVALID_VALUE", "Value cannot be empty");
-      }
-      return String(value);
-    }
-    case "CATEGORICAL": {
-      const num = Number(value);
-      if (!Number.isFinite(num)) {
-        throw new BadRequestError("INVALID_VALUE", "Value must be numeric");
-      }
-      return num.toString();
-    }
-    default:
-      throw new BadRequestError("INVALID_VALUE", "Unsupported data type");
-  }
 };
 
 const median = (values: number[]) => {
@@ -128,7 +76,7 @@ const assessRangeAnomaly = (
   min?: number | null,
   max?: number | null,
 ) => {
-  if (dataType === "NUMBER" || dataType === "CATEGORICAL") {
+  if (dataType === "NUMBER") {
     const num = Number(value);
     if (!Number.isFinite(num)) return { isAnomaly: false };
     if (min !== null && min !== undefined && num < min) {
@@ -341,8 +289,7 @@ const detectRulesAnomalyForNewValue = (
 
 const isNumericDataType = (dataType: IndicatorDataType) =>
   dataType === "NUMBER" ||
-  dataType === "PERCENT" ||
-  dataType === "CATEGORICAL";
+  dataType === "PERCENT";
 
 const EDIT_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -395,6 +342,47 @@ const scoreWithMl = async (
   });
 };
 
+type MlValidationStatus =
+  | "ML_OK"
+  | "ML_FALLBACK"
+  | "ML_SKIPPED_INSUFFICIENT_DATA";
+
+const toMlErrorDetails = (error: unknown) => {
+  if (error instanceof MlServiceError) {
+    return {
+      errorType: error.type,
+      message: error.message,
+      statusCode: error.statusCode ?? null,
+    };
+  }
+  if (error instanceof Error) {
+    return {
+      errorType: "UNKNOWN",
+      message: error.message,
+      statusCode: null,
+    };
+  }
+  return {
+    errorType: "UNKNOWN",
+    message: "Unknown ML service error",
+    statusCode: null,
+  };
+};
+
+const withMlValidationMeta = (
+  baseMeta: Record<string, any> | null | undefined,
+  status: MlValidationStatus,
+  extras: Record<string, any> = {},
+) => ({
+  ...(baseMeta ?? {}),
+  mlValidation: {
+    status,
+    attemptedAt: new Date().toISOString(),
+    timeoutMs: runtimeConfig.mlServiceTimeoutMs,
+    ...extras,
+  },
+});
+
 export const createSubmission = async (
   indicatorId: number,
   data: {
@@ -422,41 +410,18 @@ export const createSubmission = async (
     validateDisaggregationKey(data.disaggregationKey, categoryConfig);
   }
 
-  let normalizedCategoryValue: string | null = null;
-  if (categories && categories.length > 0) {
-    const config = categoryConfig || { required: false };
-    const rawCategoryValue =
-      data.categoryValue ?? (indicator.dataType === "CATEGORICAL" ? "" : null);
-    const shouldValidate =
-      indicator.dataType === "CATEGORICAL" ||
-      config.required === true ||
-      (rawCategoryValue !== null && rawCategoryValue !== undefined);
-
-    if (shouldValidate) {
-      const selectedIds = validateCategoricalValue(
-        String(rawCategoryValue ?? ""),
-        categories,
-        config,
-      );
-      normalizedCategoryValue =
-        selectedIds.length > 0 ? formatCategoricalValue(selectedIds) : null;
-    }
-  } else if (indicator.dataType === "CATEGORICAL") {
-    throw new BadRequestError(
-      "NO_CATEGORIES",
-      "Indicator has no categories defined",
-    );
-  }
-
-  // Normalize value - always required, including for CATEGORICAL (numeric)
-  const normalizedValue = normalizeValue(
-    indicator.dataType,
-    data.value,
-    indicator.minValue,
-    indicator.maxValue,
-    categories,
-    categoryConfig,
-  );
+  const { normalizedValue, normalizedCategoryValue } =
+    normalizeSubmissionByIndicator({
+      dataType: indicator.dataType,
+      payload: {
+        value: data.value,
+        categoryValue: data.categoryValue,
+      },
+      min: indicator.minValue,
+      max: indicator.maxValue,
+      categories,
+      categoryConfig,
+    });
 
   // Get recent submissions for anomaly detection context
   const config = normalizeAnomalyConfig(
@@ -513,10 +478,11 @@ export const createSubmission = async (
           anomalyScore: result.score,
           anomalyThreshold: result.threshold,
           anomalyMethod: result.method,
-          anomalyMeta: result.meta,
+          anomalyMeta: withMlValidationMeta(result.meta, "ML_OK"),
         };
       } catch (error) {
         if (config.fallback?.useRulesOnServiceError !== false) {
+          const mlError = toMlErrorDetails(error);
           const ruleResult = detectRulesAnomalyForNewValue(
             normalizedValue,
             indicator.dataType,
@@ -527,7 +493,18 @@ export const createSubmission = async (
           anomalyResult = {
             isAnomaly: ruleResult.isAnomaly,
             anomalyReason: ruleResult.anomalyReason,
+            anomalyMethod: "RULES_FALLBACK",
+            anomalyMeta: withMlValidationMeta(null, "ML_FALLBACK", {
+              ...mlError,
+              fallbackUsed: true,
+            }),
           };
+        } else {
+          throw new ServiceUnavailableError(
+            "ML_UNAVAILABLE",
+            "ML scoring failed and fallback is disabled",
+            toMlErrorDetails(error),
+          );
         }
       }
     } else if (config.fallback?.useRulesWhenInsufficientData !== false) {
@@ -541,7 +518,22 @@ export const createSubmission = async (
       anomalyResult = {
         isAnomaly: ruleResult.isAnomaly,
         anomalyReason: ruleResult.anomalyReason ?? "Insufficient data",
+        anomalyMethod: "RULES_FALLBACK",
+        anomalyMeta: withMlValidationMeta(null, "ML_SKIPPED_INSUFFICIENT_DATA", {
+          fallbackUsed: true,
+          minPoints,
+          observedPoints: numericValues.length,
+        }),
       };
+    } else {
+      throw new ServiceUnavailableError(
+        "ML_UNAVAILABLE",
+        "ML requires more historical data and fallback is disabled",
+        {
+          minPoints,
+          observedPoints: numericValues.length,
+        },
+      );
     }
   } else {
     const ruleResult = detectRulesAnomalyForNewValue(
@@ -657,40 +649,18 @@ export const updateSubmission = async (
     validateDisaggregationKey(data.disaggregationKey, categoryConfig);
   }
 
-  let normalizedCategoryValue: string | null = null;
-  if (categories && categories.length > 0) {
-    const config = categoryConfig || { required: false };
-    const rawCategoryValue =
-      data.categoryValue ?? (indicator.dataType === "CATEGORICAL" ? "" : null);
-    const shouldValidate =
-      indicator.dataType === "CATEGORICAL" ||
-      config.required === true ||
-      (rawCategoryValue !== null && rawCategoryValue !== undefined);
-
-    if (shouldValidate) {
-      const selectedIds = validateCategoricalValue(
-        String(rawCategoryValue ?? ""),
-        categories,
-        config,
-      );
-      normalizedCategoryValue =
-        selectedIds.length > 0 ? formatCategoricalValue(selectedIds) : null;
-    }
-  } else if (indicator.dataType === "CATEGORICAL") {
-    throw new BadRequestError(
-      "NO_CATEGORIES",
-      "Indicator has no categories defined",
-    );
-  }
-
-  const normalizedValue = normalizeValue(
-    indicator.dataType,
-    data.value,
-    indicator.minValue,
-    indicator.maxValue,
-    categories,
-    categoryConfig,
-  );
+  const { normalizedValue, normalizedCategoryValue } =
+    normalizeSubmissionByIndicator({
+      dataType: indicator.dataType,
+      payload: {
+        value: data.value,
+        categoryValue: data.categoryValue,
+      },
+      min: indicator.minValue,
+      max: indicator.maxValue,
+      categories,
+      categoryConfig,
+    });
 
   const config = normalizeAnomalyConfig(
     (indicator.anomalyConfig as any) ?? null,
@@ -747,10 +717,11 @@ export const updateSubmission = async (
           anomalyScore: result.score,
           anomalyThreshold: result.threshold,
           anomalyMethod: result.method,
-          anomalyMeta: result.meta,
+          anomalyMeta: withMlValidationMeta(result.meta, "ML_OK"),
         };
       } catch (_error) {
         if (config.fallback?.useRulesOnServiceError !== false) {
+          const mlError = toMlErrorDetails(_error);
           const ruleResult = detectRulesAnomalyForNewValue(
             normalizedValue,
             indicator.dataType,
@@ -761,7 +732,18 @@ export const updateSubmission = async (
           anomalyResult = {
             isAnomaly: ruleResult.isAnomaly,
             anomalyReason: ruleResult.anomalyReason,
+            anomalyMethod: "RULES_FALLBACK",
+            anomalyMeta: withMlValidationMeta(null, "ML_FALLBACK", {
+              ...mlError,
+              fallbackUsed: true,
+            }),
           };
+        } else {
+          throw new ServiceUnavailableError(
+            "ML_UNAVAILABLE",
+            "ML scoring failed and fallback is disabled",
+            toMlErrorDetails(_error),
+          );
         }
       }
     } else if (config.fallback?.useRulesWhenInsufficientData !== false) {
@@ -775,7 +757,22 @@ export const updateSubmission = async (
       anomalyResult = {
         isAnomaly: ruleResult.isAnomaly,
         anomalyReason: ruleResult.anomalyReason ?? "Insufficient data",
+        anomalyMethod: "RULES_FALLBACK",
+        anomalyMeta: withMlValidationMeta(null, "ML_SKIPPED_INSUFFICIENT_DATA", {
+          fallbackUsed: true,
+          minPoints,
+          observedPoints: numericValues.length,
+        }),
       };
+    } else {
+      throw new ServiceUnavailableError(
+        "ML_UNAVAILABLE",
+        "ML requires more historical data and fallback is disabled",
+        {
+          minPoints,
+          observedPoints: numericValues.length,
+        },
+      );
     }
   } else {
     const ruleResult = detectRulesAnomalyForNewValue(

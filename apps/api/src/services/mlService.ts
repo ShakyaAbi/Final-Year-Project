@@ -24,6 +24,28 @@ export type ScoreResult = {
   meta?: Record<string, any> | null;
 };
 
+export type MlHealthStatus = {
+  reachable: boolean;
+  latencyMs: number | null;
+  checkedAt: string;
+  lastError?: string;
+};
+
+export class MlServiceError extends Error {
+  type: "CONFIG" | "TIMEOUT" | "HTTP" | "NETWORK";
+  statusCode?: number;
+
+  constructor(
+    type: "CONFIG" | "TIMEOUT" | "HTTP" | "NETWORK",
+    message: string,
+    statusCode?: number,
+  ) {
+    super(message);
+    this.type = type;
+    this.statusCode = statusCode;
+  }
+}
+
 const buildHeaders = () => {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
@@ -34,24 +56,48 @@ const buildHeaders = () => {
   return headers;
 };
 
-export const scoreSubmission = async (
-  payload: ScoreRequest,
-): Promise<ScoreResult> => {
+const callMlEndpoint = async (
+  path: string,
+  payload: unknown,
+): Promise<Response> => {
   if (!config.mlServiceUrl) {
-    throw new Error("ML service URL is not configured");
+    throw new MlServiceError("CONFIG", "ML service URL is not configured");
   }
 
   const baseUrl = config.mlServiceUrl.replace(/\/$/, "");
-  const res = await fetch(`${baseUrl}/score`, {
-    method: "POST",
-    headers: buildHeaders(),
-    body: JSON.stringify(payload),
-    signal: AbortSignal.timeout(config.mlServiceTimeoutMs),
-  });
+  try {
+    return await fetch(`${baseUrl}${path}`, {
+      method: "POST",
+      headers: buildHeaders(),
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(config.mlServiceTimeoutMs),
+    });
+  } catch (error: any) {
+    if (error?.name === "TimeoutError") {
+      throw new MlServiceError(
+        "TIMEOUT",
+        `ML service timed out after ${config.mlServiceTimeoutMs}ms`,
+      );
+    }
+    throw new MlServiceError(
+      "NETWORK",
+      `ML service network error: ${error?.message || "Unknown error"}`,
+    );
+  }
+};
+
+export const scoreSubmission = async (
+  payload: ScoreRequest,
+): Promise<ScoreResult> => {
+  const res = await callMlEndpoint("/score", payload);
 
   if (!res.ok) {
     const message = await res.text().catch(() => res.statusText);
-    throw new Error(`ML service error: ${message || res.statusText}`);
+    throw new MlServiceError(
+      "HTTP",
+      `ML service error: ${message || res.statusText}`,
+      res.status,
+    );
   }
 
   return (await res.json()) as ScoreResult;
@@ -63,22 +109,59 @@ export const scoreBatch = async (payload: {
   values: number[];
   config: ScoreRequest["config"];
 }): Promise<{ results: ScoreResult[] }> => {
-  if (!config.mlServiceUrl) {
-    throw new Error("ML service URL is not configured");
-  }
-
-  const baseUrl = config.mlServiceUrl.replace(/\/$/, "");
-  const res = await fetch(`${baseUrl}/score/batch`, {
-    method: "POST",
-    headers: buildHeaders(),
-    body: JSON.stringify(payload),
-    signal: AbortSignal.timeout(config.mlServiceTimeoutMs),
-  });
+  const res = await callMlEndpoint("/score/batch", payload);
 
   if (!res.ok) {
     const message = await res.text().catch(() => res.statusText);
-    throw new Error(`ML service error: ${message || res.statusText}`);
+    throw new MlServiceError(
+      "HTTP",
+      `ML service error: ${message || res.statusText}`,
+      res.status,
+    );
   }
 
   return (await res.json()) as { results: ScoreResult[] };
+};
+
+export const healthCheck = async (): Promise<MlHealthStatus> => {
+  const checkedAt = new Date().toISOString();
+  if (!config.mlServiceUrl) {
+    return {
+      reachable: false,
+      latencyMs: null,
+      checkedAt,
+      lastError: "ML service URL is not configured",
+    };
+  }
+
+  const baseUrl = config.mlServiceUrl.replace(/\/$/, "");
+  const startedAt = Date.now();
+  try {
+    const res = await fetch(`${baseUrl}/health`, {
+      method: "GET",
+      headers: buildHeaders(),
+      signal: AbortSignal.timeout(config.mlServiceTimeoutMs),
+    });
+    if (!res.ok) {
+      const message = await res.text().catch(() => res.statusText);
+      return {
+        reachable: false,
+        latencyMs: Date.now() - startedAt,
+        checkedAt,
+        lastError: message || res.statusText,
+      };
+    }
+    return {
+      reachable: true,
+      latencyMs: Date.now() - startedAt,
+      checkedAt,
+    };
+  } catch (error: any) {
+    return {
+      reachable: false,
+      latencyMs: Date.now() - startedAt,
+      checkedAt,
+      lastError: error?.message || "ML health check failed",
+    };
+  }
 };

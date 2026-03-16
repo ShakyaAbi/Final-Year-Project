@@ -99,6 +99,8 @@ export const validateDisaggregationDimensions = (
     );
   }
 
+  const seenKeys = new Set<string>();
+
   return dimensions.map((dim, index) => {
     if (!dim || typeof dim !== "object") {
       throw new BadRequestError(
@@ -107,39 +109,64 @@ export const validateDisaggregationDimensions = (
       );
     }
 
-    if (!dim.key || typeof dim.key !== "string") {
+    const key =
+      typeof dim.key === "string"
+        ? dim.key
+            .trim()
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, "_")
+            .replace(/^_+|_+$/g, "")
+        : "";
+    const label = typeof dim.label === "string" ? dim.label.trim() : "";
+    const values = Array.isArray(dim.values)
+      ? dim.values
+          .map((v: any) => String(v).trim())
+          .filter((v: string) => v.length > 0)
+      : [];
+
+    if (!key) {
       throw new BadRequestError(
         "INVALID_DIMENSION_KEY",
         `Dimension at index ${index} must have a valid key`,
       );
     }
 
-    if (!dim.label || typeof dim.label !== "string") {
+    if (!label) {
       throw new BadRequestError(
         "INVALID_DIMENSION_LABEL",
         `Dimension at index ${index} must have a valid label`,
       );
     }
 
-    if (!Array.isArray(dim.values) || dim.values.length === 0) {
+    if (seenKeys.has(key)) {
+      throw new BadRequestError(
+        "DUPLICATE_DIMENSION_KEY",
+        `Disaggregation key '${key}' is duplicated`,
+      );
+    }
+    seenKeys.add(key);
+
+    if (values.length === 0) {
       throw new BadRequestError(
         "INVALID_DIMENSION_VALUES",
         `Dimension at index ${index} must have at least one value`,
       );
     }
 
-    if (typeof dim.required !== "boolean") {
+    if (dim.required !== undefined && typeof dim.required !== "boolean") {
       throw new BadRequestError(
         "INVALID_DIMENSION_REQUIRED",
         `Dimension at index ${index} must specify if it's required`,
       );
     }
 
+    const uniqueValues = Array.from(new Set<string>(values));
+
     return {
-      key: dim.key,
-      label: dim.label,
-      values: dim.values.map((v: any) => String(v)),
-      required: dim.required,
+      key,
+      label,
+      values: uniqueValues,
+      required: typeof dim.required === "boolean" ? dim.required : false,
     };
   });
 };
@@ -424,29 +451,34 @@ export const validateDisaggregationKey = (
   disaggregationKey: string | null | undefined,
   categoryConfig: CategoryConfig | null,
 ): boolean => {
-  if (!categoryConfig || !categoryConfig.disaggregationDimensions) {
+  const dimensions = categoryConfig?.disaggregationDimensions || [];
+  if (dimensions.length === 0) {
     return true; // No dimensions defined, any key is valid
   }
 
-  const requiredDimension = categoryConfig.disaggregationDimensions.find(
-    (d) => d.required,
-  );
+  // Validate against the primary dimension (required dimension, or first one)
+  const primaryDimension = dimensions.find((d) => d.required) || dimensions[0];
 
-  if (!requiredDimension) {
-    return true; // No required dimension
+  const normalizedKey = typeof disaggregationKey === "string"
+    ? disaggregationKey.trim()
+    : "";
+
+  if (!normalizedKey) {
+    if (primaryDimension.required) {
+      throw new BadRequestError(
+        "MISSING_DISAGGREGATION",
+        `Disaggregation key is required for dimension: ${primaryDimension.label}`,
+      );
+    }
+    return true;
   }
 
-  if (!disaggregationKey) {
-    throw new BadRequestError(
-      "MISSING_DISAGGREGATION",
-      `Disaggregation key is required for dimension: ${requiredDimension.label}`,
-    );
-  }
+  const validValues = primaryDimension.values.map((v) => String(v).trim());
 
-  if (!requiredDimension.values.includes(disaggregationKey)) {
+  if (!validValues.includes(normalizedKey)) {
     throw new BadRequestError(
       "INVALID_DISAGGREGATION_VALUE",
-      `'${disaggregationKey}' is not a valid value for ${requiredDimension.label}. Valid values: ${requiredDimension.values.slice(0, 5).join(", ")}...`,
+      `'${normalizedKey}' is not a valid value for ${primaryDimension.label}. Valid values: ${validValues.slice(0, 5).join(", ")}${validValues.length > 5 ? "..." : ""}`,
     );
   }
 
