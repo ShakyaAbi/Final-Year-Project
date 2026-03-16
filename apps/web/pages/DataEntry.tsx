@@ -19,8 +19,10 @@ import {
   Link as LinkIcon,
   UploadCloud,
   X,
+  FileBox,
 } from "lucide-react";
 import { Link, useSearchParams } from "react-router-dom";
+import { extractTextFromPDF, parseDataFromText } from "../utils/pdfParser";
 
 export const DataEntry: React.FC = () => {
   const [projects, setProjects] = useState<Project[]>([]);
@@ -76,6 +78,8 @@ export const DataEntry: React.FC = () => {
       }
     >
   >({});
+
+  const [parsingPdfId, setParsingPdfId] = useState<string | null>(null);
 
   const isNumericInputType = (type: IndicatorType) =>
     type === IndicatorType.NUMBER ||
@@ -305,6 +309,38 @@ export const DataEntry: React.FC = () => {
       ...prev,
       [id]: { ...prev[id], file: null },
     }));
+  };
+
+  const handleAutoFillPdf = async (id: string, file: File) => {
+    if (file.type !== "application/pdf") {
+      alert("Please upload a valid PDF file.");
+      return;
+    }
+    setParsingPdfId(id);
+    try {
+      const text = await extractTextFromPDF(file);
+      const parsed = parseDataFromText(text);
+
+      setEntries((prev) => {
+        const current = prev[id];
+        return {
+          ...prev,
+          [id]: {
+            ...current,
+            // Keep first 5000 chars as evidence to avoid extreme payloads
+            evidence: parsed.text.substring(0, 5000) + (parsed.text.length > 5000 ? "..." : ""),
+            date: parsed.suggestedDate || current.date,
+            value: parsed.suggestedValue || current.value,
+            file: file,
+          },
+        };
+      });
+    } catch (err) {
+      console.error(err);
+      alert("Failed to parse PDF data.");
+    } finally {
+      setParsingPdfId(null);
+    }
   };
 
   const handleSubmit = async (id: string) => {
@@ -812,9 +848,32 @@ export const DataEntry: React.FC = () => {
 
                     {/* Verification Evidence (Drag & Drop) */}
                     <div className="md:col-span-6">
-                      <label className="block text-xs font-semibold text-slate-500 mb-1.5 flex items-center gap-1">
-                        <LinkIcon className="w-3 h-3" /> Verification Source
-                      </label>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <label className="text-xs font-semibold text-slate-500 flex items-center gap-1">
+                          <LinkIcon className="w-3 h-3" /> Verification Source
+                        </label>
+                        <div className="flex items-center gap-2">
+                          {parsingPdfId === indicator.id ? (
+                            <span className="text-xs text-blue-500 animate-pulse flex items-center gap-1">
+                              Parsing...
+                            </span>
+                          ) : (
+                            <label className="cursor-pointer flex items-center gap-1 text-[10px] uppercase font-bold text-blue-600 bg-blue-50 hover:bg-blue-100 border border-blue-200 px-2 py-0.5 rounded transition-colors">
+                              <FileBox className="w-3 h-3" />
+                              Auto-Fill from PDF
+                              <input
+                                type="file"
+                                accept=".pdf"
+                                className="hidden"
+                                onChange={(e) =>
+                                  e.target.files?.[0] &&
+                                  handleAutoFillPdf(indicator.id, e.target.files[0])
+                                }
+                              />
+                            </label>
+                          )}
+                        </div>
+                      </div>
 
                       {entry.file ? (
                         <div className="w-full px-3 py-2.5 border border-blue-200 bg-blue-50 rounded-lg flex items-center justify-between animate-in fade-in">

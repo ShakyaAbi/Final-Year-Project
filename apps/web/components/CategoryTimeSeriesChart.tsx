@@ -30,19 +30,54 @@ interface CategoryTimeSeriesChartProps {
 export const CategoryTimeSeriesChart: React.FC<
   CategoryTimeSeriesChartProps
 > = ({ indicatorId, startDate, endDate, groupBy = "month", categories }) => {
+  const [selectedGroupBy, setSelectedGroupBy] = useState<"month" | "week">(groupBy);
+  const [selectedMonth, setSelectedMonth] = useState<string>("");
+
+  // Calculate month range for picker (last 12 months)
+  const months: string[] = [];
+  const now = new Date();
+  for (let i = 0; i < 12; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    months.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
+  }
   const [data, setData] = useState<TimeSeriesPoint[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Set default selectedMonth to most recent with data, or current month
   useEffect(() => {
+    if (!selectedMonth && data && data.length > 0) {
+      // Find most recent period with data
+      const mostRecent = data.slice().reverse().find(d => d.totalSubmissions > 0);
+      if (mostRecent) {
+        // Expect period in YYYY-MM or YYYY-MM-DD
+        const m = mostRecent.period.slice(0, 7);
+        setSelectedMonth(m);
+        return;
+      }
+      // Fallback: current month
+      const now = new Date();
+      setSelectedMonth(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`);
+    }
+  }, [data, selectedMonth]);
+
+  useEffect(() => {
+    // Calculate start/end date from selectedMonth
+    let filterStart = startDate;
+    let filterEnd = endDate;
+    if (selectedMonth) {
+      const [year, month] = selectedMonth.split("-").map(Number);
+      filterStart = new Date(year, month - 1, 1);
+      filterEnd = new Date(year, month, 0, 23, 59, 59, 999); // End of month
+    }
     const fetchTimeSeries = async () => {
       setLoading(true);
       setError(null);
       try {
         const params = new URLSearchParams({
-          startDate: startDate.toISOString().split("T")[0],
-          endDate: endDate.toISOString().split("T")[0],
-          groupBy,
+          startDate: filterStart.toISOString().split("T")[0],
+          endDate: filterEnd.toISOString().split("T")[0],
+          groupBy: selectedGroupBy,
         });
         const result = await api.get(
           `/indicators/${indicatorId}/category-time-series?${params}`,
@@ -54,9 +89,8 @@ export const CategoryTimeSeriesChart: React.FC<
         setLoading(false);
       }
     };
-
     fetchTimeSeries();
-  }, [indicatorId, startDate, endDate, groupBy]);
+  }, [indicatorId, startDate, endDate, selectedGroupBy, selectedMonth]);
 
   if (loading) {
     return (
@@ -98,29 +132,47 @@ export const CategoryTimeSeriesChart: React.FC<
     categoryColors[cat.id] = cat.color || "#4d66ff";
   });
 
+  // Find the latest period with data
+  const latestWithDataIdx = data.map((d) => d.totalSubmissions > 0).lastIndexOf(true);
   return (
     <Card>
       <div className="p-4 border-b border-slate-200">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
           <div>
             <h3 className="text-lg font-semibold text-slate-900 flex items-center gap-2">
               <TrendingUp className="w-5 h-5" />
               Category Distribution Over Time
             </h3>
             <p className="text-sm text-slate-600">
-              Showing {data.length}{" "}
-              {groupBy === "month" ? "months" : `${groupBy}s`}
+              Showing {data.length} {selectedGroupBy === "month" ? "months" : `${selectedGroupBy}s`}
             </p>
           </div>
-          <div className="flex flex-wrap gap-3">
+          <div className="flex flex-wrap gap-2 items-center">
+            {/* Group By Filter */}
+            <select
+              value={selectedGroupBy}
+              onChange={e => setSelectedGroupBy(e.target.value as "month" | "week")}
+              className="px-2 py-1 border border-slate-300 rounded-md text-xs bg-white text-slate-700"
+            >
+              <option value="month">Month-wise</option>
+              <option value="week">Week-wise</option>
+            </select>
+            {/* Month Picker */}
+            <select
+              value={selectedMonth}
+              onChange={e => setSelectedMonth(e.target.value)}
+              className="px-2 py-1 border border-slate-300 rounded-md text-xs bg-white text-slate-700"
+            >
+              {months.map((m) => (
+                <option key={m} value={m}>{m}</option>
+              ))}
+            </select>
+            {/* Category Chips */}
             {categories.map((cat) => (
-              <div key={cat.id} className="flex items-center gap-2">
-                <div
-                  className="w-3 h-3 rounded-full"
-                  style={{ backgroundColor: cat.color || "#4d66ff" }}
-                />
-                <span className="text-xs text-slate-600">{cat.label}</span>
-              </div>
+              <span key={cat.id} className="flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium" style={{ background: cat.color + '22', color: cat.color }}>
+                <span className="w-2 h-2 rounded-full mr-1" style={{ background: cat.color }} />
+                {cat.label}
+              </span>
             ))}
           </div>
         </div>
@@ -129,44 +181,33 @@ export const CategoryTimeSeriesChart: React.FC<
       <div className="p-6">
         {/* Stacked Bar Chart */}
         <div className="space-y-4">
-          {data.map((point) => {
+          {data.map((point, idx) => {
             const totalCount = point.totalSubmissions;
-
+            const isCurrent = idx === latestWithDataIdx;
+            const isEmpty = totalCount === 0;
             return (
-              <div key={point.period} className="space-y-2">
+              <div key={point.period} className={`space-y-2 transition-all ${isCurrent ? 'ring-2 ring-blue-400 bg-blue-50/40' : ''} ${isEmpty ? 'opacity-60' : ''} rounded-lg p-2`}> 
                 <div className="flex items-center justify-between text-sm">
-                  <span className="font-medium text-slate-700">
-                    {point.period}
-                  </span>
-                  <span className="text-slate-500">
-                    {totalCount} submission{totalCount !== 1 ? "s" : ""}
-                  </span>
+                  <span className={`font-medium ${isCurrent ? 'text-blue-700' : 'text-slate-700'}`}>{point.period}</span>
+                  <span className="text-slate-500">{totalCount} submission{totalCount !== 1 ? "s" : ""}</span>
                 </div>
-
-                <div className="relative h-12 bg-slate-100 rounded-lg overflow-hidden">
+                <div className="relative h-10 bg-slate-100 rounded-lg overflow-hidden">
                   {totalCount > 0 ? (
                     <div className="flex h-full">
                       {categories.map((cat) => {
-                        const dist = point.categoryDistribution.find(
-                          (item) => item.categoryId === cat.id,
-                        );
+                        const dist = point.categoryDistribution.find((item) => item.categoryId === cat.id);
                         const percentage = dist?.percentage || 0;
                         const count = dist?.count || 0;
-
                         if (count === 0) return null;
-
                         return (
                           <div
                             key={cat.id}
-                            className="relative group transition-opacity hover:opacity-80"
-                            style={{
-                              width: `${percentage}%`,
-                              backgroundColor: cat.color || "#4d66ff",
-                            }}
+                            className="relative group transition-opacity hover:opacity-90"
+                            style={{ width: `${percentage}%`, backgroundColor: cat.color || "#4d66ff" }}
                           >
                             <div className="absolute inset-0 flex items-center justify-center">
                               {percentage > 10 && (
-                                <span className="text-xs font-semibold text-white">
+                                <span className="text-xs font-semibold text-white drop-shadow">
                                   {count}
                                 </span>
                               )}
@@ -182,22 +223,18 @@ export const CategoryTimeSeriesChart: React.FC<
                     </div>
                   ) : (
                     <div className="flex items-center justify-center h-full text-xs text-slate-400">
-                      No data
+                      <span className="flex items-center gap-1"><AlertCircle className="w-4 h-4" /> No data</span>
                     </div>
                   )}
                 </div>
-
-                {/* Percentage breakdown */}
-                <div className="flex gap-4 text-xs text-slate-600 pl-1">
+                {/* Chips for each category with count */}
+                <div className="flex gap-2 flex-wrap text-xs pl-1 mt-1">
                   {categories.map((cat) => {
-                    const dist = point.categoryDistribution.find(
-                      (item) => item.categoryId === cat.id,
-                    );
+                    const dist = point.categoryDistribution.find((item) => item.categoryId === cat.id);
                     if (!dist || dist.count === 0) return null;
-
                     return (
-                      <span key={cat.id}>
-                        {cat.label}: {Math.round(dist.percentage)}%
+                      <span key={cat.id} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full font-medium" style={{ background: cat.color + '22', color: cat.color }}>
+                        {cat.label}: {dist.count} ({Math.round(dist.percentage)}%)
                       </span>
                     );
                   })}
@@ -208,33 +245,22 @@ export const CategoryTimeSeriesChart: React.FC<
         </div>
 
         {/* Summary Stats */}
-        <div className="mt-6 pt-6 border-t border-slate-200 grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div>
+        <div className="mt-8 pt-6 border-t border-slate-200 grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="bg-slate-50 rounded-lg p-3 text-center">
             <div className="text-xs text-slate-600 mb-1">Total Periods</div>
-            <div className="text-xl font-bold text-slate-900">
-              {data.length}
-            </div>
+            <div className="text-xl font-bold text-slate-900">{data.length}</div>
           </div>
-          <div>
+          <div className="bg-slate-50 rounded-lg p-3 text-center">
             <div className="text-xs text-slate-600 mb-1">Total Submissions</div>
-            <div className="text-xl font-bold text-slate-900">
-              {data.reduce((sum, d) => sum + d.totalSubmissions, 0)}
-            </div>
+            <div className="text-xl font-bold text-slate-900">{data.reduce((sum, d) => sum + d.totalSubmissions, 0)}</div>
           </div>
-          <div>
+          <div className="bg-slate-50 rounded-lg p-3 text-center">
             <div className="text-xs text-slate-600 mb-1">Avg per Period</div>
-            <div className="text-xl font-bold text-slate-900">
-              {Math.round(
-                data.reduce((sum, d) => sum + d.totalSubmissions, 0) /
-                  data.length,
-              )}
-            </div>
+            <div className="text-xl font-bold text-slate-900">{Math.round(data.reduce((sum, d) => sum + d.totalSubmissions, 0) / data.length)}</div>
           </div>
-          <div>
+          <div className="bg-slate-50 rounded-lg p-3 text-center">
             <div className="text-xs text-slate-600 mb-1">Peak Period</div>
-            <div className="text-xl font-bold text-slate-900">
-              {maxSubmissions}
-            </div>
+            <div className="text-xl font-bold text-slate-900">{maxSubmissions}</div>
           </div>
         </div>
       </div>

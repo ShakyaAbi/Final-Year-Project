@@ -27,6 +27,8 @@ interface DisaggregationComparisonProps {
   indicatorId: string;
   categories: CategoryDefinition[];
   dimensionLabel?: string;
+  onSelectDisaggregation?: (key: string | null) => void;
+  selectedKey?: string | null;
 }
 
 const formatDate = (value: string | null) => {
@@ -43,7 +45,13 @@ const formatDate = (value: string | null) => {
 
 export const DisaggregationComparison: React.FC<
   DisaggregationComparisonProps
-> = ({ indicatorId, categories, dimensionLabel = "Entity" }) => {
+> = ({
+  indicatorId,
+  categories,
+  dimensionLabel = "Entity",
+  onSelectDisaggregation,
+  selectedKey,
+}) => {
   const [rows, setRows] = useState<DisaggregatedRow[]>([]);
   const [totalSubmissions, setTotalSubmissions] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -105,9 +113,8 @@ export const DisaggregationComparison: React.FC<
             Disaggregation Value Comparison
           </h3>
           <p className="text-xs text-slate-600 mt-1">
-            Disaggregation splits one indicator by a dimension like{" "}
-            {dimensionLabel.toLowerCase()} so you can compare values across
-            groups.
+            Click a row below to filter the data history by that{" "}
+            {dimensionLabel.toLowerCase()}.
           </p>
         </div>
         <div className="text-xs text-slate-500">
@@ -124,13 +131,17 @@ export const DisaggregationComparison: React.FC<
           </div>
         </div>
         <div className="rounded border border-slate-200 p-3 bg-slate-50">
-          <div className="text-xs text-slate-500">Average per {dimensionLabel}</div>
+          <div className="text-xs text-slate-500">
+            Average per {dimensionLabel}
+          </div>
           <div className="text-xl font-bold text-slate-900">
             {averagePerEntity.toFixed(1)}
           </div>
         </div>
         <div className="rounded border border-slate-200 p-3 bg-slate-50">
-          <div className="text-xs text-slate-500">Most Active {dimensionLabel}</div>
+          <div className="text-xs text-slate-500">
+            Most Active {dimensionLabel}
+          </div>
           <div className="text-sm font-semibold text-slate-900 truncate">
             {rows[0]?.disaggregationLabel || "N/A"}
           </div>
@@ -169,10 +180,33 @@ export const DisaggregationComparison: React.FC<
                 row.categoryDistribution.map((item) => [item.categoryId, item]),
               );
               const delta = row.totalSubmissions - averagePerEntity;
+              const isSelected = selectedKey === row.disaggregationKey;
+
               return (
-                <tr key={row.disaggregationKey} className="hover:bg-slate-50">
-                  <td className="px-3 py-2 font-medium text-slate-900">
-                    {row.disaggregationLabel}
+                <tr
+                  key={row.disaggregationKey}
+                  onClick={() =>
+                    onSelectDisaggregation?.(
+                      isSelected ? null : row.disaggregationKey,
+                    )
+                  }
+                  className={`cursor-pointer transition-colors ${
+                    isSelected
+                      ? "bg-blue-50 hover:bg-blue-100"
+                      : "hover:bg-slate-50"
+                  }`}
+                >
+                  <td className="px-3 py-2 font-medium">
+                    <div className="flex items-center gap-2">
+                      {isSelected && (
+                        <div className="w-1.5 h-1.5 rounded-full bg-blue-600" />
+                      )}
+                      <span
+                        className={isSelected ? "text-blue-700" : "text-slate-900"}
+                      >
+                        {row.disaggregationLabel}
+                      </span>
+                    </div>
                   </td>
                   <td className="px-3 py-2 text-right text-slate-700">
                     {row.totalSubmissions}

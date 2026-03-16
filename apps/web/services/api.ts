@@ -33,16 +33,30 @@ const request = async <T>(
   const token = getToken();
   if (token) headers.Authorization = `Bearer ${token}`;
 
+  const isFormData = options.body instanceof FormData;
+  if (isFormData) {
+    // Let the browser set the boundary for multipart/form-data
+    delete headers["Content-Type"];
+  }
+
   const res = await fetch(`${API_BASE}${path}`, {
     method: options.method || "GET",
     headers,
-    body: options.body ? JSON.stringify(options.body) : undefined,
+    body: isFormData ? options.body : (options.body ? JSON.stringify(options.body) : undefined),
   });
 
   if (!res.ok) {
+    if (res.status === 401 || (res.status === 404 && path === "/auth/me")) {
+      localStorage.removeItem(tokenKey);
+      window.location.href = "/";
+    }
     const data = await res.json().catch(() => ({}));
     const message = data?.error?.message || res.statusText;
     throw new Error(message);
+  }
+
+  if (res.status === 204) {
+    return {} as T;
   }
 
   return res.json() as Promise<T>;
@@ -161,6 +175,7 @@ const mapIndicatorValue = (v: any, type: IndicatorType): IndicatorValue => {
     deletedByUserId: v.deletedByUserId ? String(v.deletedByUserId) : undefined,
     updatedAt: v.updatedAt ? new Date(v.updatedAt).toISOString() : undefined,
     updatedByUserId: v.updatedByUserId ? String(v.updatedByUserId) : undefined,
+    disaggregationKey: v.disaggregationKey ?? undefined,
   };
 };
 
@@ -422,6 +437,11 @@ export const api = {
         reportingFrequency: toReportingFrequency(payload.frequency),
         categories: payload.categories ?? null,
         categoryConfig: normalizeCategoryConfigForApi(payload.categoryConfig),
+        // Reminder fields
+        reminderEnabled: payload.reminderEnabled ?? false,
+        reminderDaysBeforeDue: payload.reminderDaysBeforeDue ?? null,
+        reminderDaysAfterDue: payload.reminderDaysAfterDue ?? null,
+        reminderRecipients: payload.reminderRecipients ?? null,
       },
     });
     return mapIndicator(created);
@@ -487,6 +507,11 @@ export const api = {
         reportingFrequency: toReportingFrequency(payload.frequency),
         categories: payload.categories ?? null,
         categoryConfig: normalizeCategoryConfigForApi(payload.categoryConfig),
+        // Reminder fields
+        reminderEnabled: payload.reminderEnabled ?? false,
+        reminderDaysBeforeDue: payload.reminderDaysBeforeDue ?? null,
+        reminderDaysAfterDue: payload.reminderDaysAfterDue ?? null,
+        reminderRecipients: payload.reminderRecipients ?? null,
       },
     });
     return mapIndicator(updated);
@@ -501,12 +526,31 @@ export const api = {
     payload: {
       reportedAt: string;
       value: any;
-      evidence?: string;
-      categoryValue?: string;
-      disaggregationKey?: string;
+      evidence?: string | null;
+      categoryValue?: string | null;
+      disaggregationKey?: string | null;
     },
-  ) =>
-    request(`/indicators/${indicatorId}/submissions`, {
+    file?: File | null,
+  ): Promise<IndicatorValue> => {
+    if (file) {
+      const formData = new FormData();
+      formData.append("reportedAt", payload.reportedAt);
+      formData.append("value", String(payload.value));
+      if (payload.categoryValue)
+        formData.append("categoryValue", payload.categoryValue);
+      if (payload.disaggregationKey)
+        formData.append("disaggregationKey", payload.disaggregationKey);
+      formData.append("file", file);
+      return request<IndicatorValue>(
+        `/indicators/${indicatorId}/submissions`,
+        {
+          method: "POST",
+          body: formData,
+        },
+      );
+    }
+
+    return request<IndicatorValue>(`/indicators/${indicatorId}/submissions`, {
       method: "POST",
       body: {
         reportedAt: payload.reportedAt,
@@ -515,7 +559,8 @@ export const api = {
         categoryValue: payload.categoryValue ?? null,
         disaggregationKey: payload.disaggregationKey ?? null,
       },
-    }),
+    });
+  },
   updateSubmission: async (
     submissionId: string,
     payload: {
@@ -619,8 +664,11 @@ export const api = {
     return response.json();
   },
 
-  executeImport: async (jobId: number): Promise<void> =>
-    request(`/import-jobs/${jobId}/process`, { method: "POST" }),
+  executeImport: async (jobId: number, selectedRowNumbers?: number[]): Promise<void> =>
+    request(`/import-jobs/${jobId}/process`, {
+      method: "POST",
+      body: selectedRowNumbers ? { selectedRowNumbers } : undefined,
+    }),
 
   getImportJobStatus: async (jobId: number): Promise<any> =>
     request(`/import-jobs/${jobId}`),

@@ -48,6 +48,7 @@ export interface IndicatorValue {
   date: string;
   value: number | string;
   categoryValue?: string; // Optional compatibility mirror of categorical value
+  disaggregationKey?: string; // Added for dimensional filtering
   isAnomaly: boolean;
   anomalyReason?: string;
   anomalyScore?: number;
@@ -157,6 +158,12 @@ export interface Indicator {
   currentVersion: number;
   versions: IndicatorVersion[];
   values: IndicatorValue[];
+
+  // Reminder fields
+  reminderEnabled?: boolean;
+  reminderDaysBeforeDue?: number | null;
+  reminderDaysAfterDue?: number | null;
+  reminderRecipients?: string[] | null;
 }
 
 export interface ActivityLog {
