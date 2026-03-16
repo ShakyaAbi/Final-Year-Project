@@ -253,6 +253,21 @@ export const ProjectDetail: React.FC = () => {
     setIsSavingEdit(true);
     setEditError(null);
     try {
+      const name = editForm.name.trim();
+      if (!name) {
+        setEditError("Project name is required.");
+        return;
+      }
+
+      if (
+        editForm.startDate &&
+        editForm.endDate &&
+        editForm.startDate > editForm.endDate
+      ) {
+        setEditError("End date must be on or after start date.");
+        return;
+      }
+
       const sectors = editForm.sectors
         .split(",")
         .map((s) => s.trim())
@@ -260,13 +275,22 @@ export const ProjectDetail: React.FC = () => {
       const budgetAmount =
         editForm.budgetAmount.trim() === ""
           ? undefined
-          : Number(editForm.budgetAmount);
+          : Number(editForm.budgetAmount.replace(/,/g, ""));
       if (budgetAmount !== undefined && Number.isNaN(budgetAmount)) {
         setEditError("Budget amount must be a number.");
         return;
       }
+      if (budgetAmount !== undefined && budgetAmount < 0) {
+        setEditError("Budget amount cannot be negative.");
+        return;
+      }
+      const budgetCurrency = editForm.budgetCurrency.trim().toUpperCase();
+      if (budgetAmount !== undefined && !budgetCurrency) {
+        setEditError("Budget currency is required when budget amount is set.");
+        return;
+      }
       const updated = await api.updateProject(project.id, {
-        name: editForm.name.trim(),
+        name,
         description: editForm.description.trim() || undefined,
         status: editForm.status as Project["status"],
         startDate: editForm.startDate || undefined,
@@ -275,7 +299,7 @@ export const ProjectDetail: React.FC = () => {
         location: editForm.location.trim() || undefined,
         donor: editForm.donor.trim() || undefined,
         budgetAmount,
-        budgetCurrency: editForm.budgetCurrency.trim() || undefined,
+        budgetCurrency: budgetCurrency || undefined,
       });
       setProject(updated);
       setIsEditOpen(false);
@@ -439,6 +463,27 @@ export const ProjectDetail: React.FC = () => {
       </Layout>
     );
 
+  const projectNameMissing = editForm.name.trim().length === 0;
+  const dateRangeInvalid =
+    !!editForm.startDate &&
+    !!editForm.endDate &&
+    editForm.startDate > editForm.endDate;
+  const parsedBudgetAmount =
+    editForm.budgetAmount.trim() === ""
+      ? undefined
+      : Number(editForm.budgetAmount.replace(/,/g, ""));
+  const budgetInvalid =
+    parsedBudgetAmount !== undefined &&
+    (Number.isNaN(parsedBudgetAmount) || parsedBudgetAmount < 0);
+  const budgetCurrencyMissing =
+    parsedBudgetAmount !== undefined && editForm.budgetCurrency.trim() === "";
+  const canSaveProject =
+    !isSavingEdit &&
+    !projectNameMissing &&
+    !dateRangeInvalid &&
+    !budgetInvalid &&
+    !budgetCurrencyMissing;
+
   return (
     <Layout>
       {/* Header */}
@@ -492,182 +537,261 @@ export const ProjectDetail: React.FC = () => {
         isOpen={isEditOpen}
         onClose={() => setIsEditOpen(false)}
         title="Edit Project"
-        size="md"
+        size="lg"
       >
-        <div className="p-6 space-y-4 overflow-y-auto">
+        <div className="space-y-5">
           {editError && (
-            <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg p-3">
+            <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-xl p-3">
               {editError}
             </div>
           )}
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">
-              Project Name
-            </label>
-            <input
-              type="text"
-              value={editForm.name}
-              onChange={(e) =>
-                setEditForm((prev) => ({ ...prev, name: e.target.value }))
-              }
-              className="w-full px-3 py-2.5 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none bg-white text-slate-900 shadow-sm"
-              placeholder="Project name"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">
-              Description
-            </label>
-            <textarea
-              rows={4}
-              value={editForm.description}
-              onChange={(e) =>
-                setEditForm((prev) => ({
-                  ...prev,
-                  description: e.target.value,
-                }))
-              }
-              className="w-full px-3 py-2.5 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none bg-white text-slate-900 shadow-sm"
-              placeholder="Short summary"
-            />
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="rounded-xl border border-slate-200 bg-slate-50/40 p-4 space-y-4">
+            <div>
+              <h4 className="text-sm font-semibold text-slate-900">
+                Basic Information
+              </h4>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Set the core identity and summary for this project.
+              </p>
+            </div>
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">
-                Start Date
+                Project Name <span className="text-red-500">*</span>
               </label>
               <input
-                type="date"
-                value={editForm.startDate}
+                type="text"
+                value={editForm.name}
+                onChange={(e) =>
+                  setEditForm((prev) => ({ ...prev, name: e.target.value }))
+                }
+                className={`w-full px-3 py-2.5 border rounded-xl focus:ring-2 focus:ring-blue-500 outline-none bg-white text-slate-900 shadow-sm ${
+                  projectNameMissing ? "border-red-300" : "border-slate-200"
+                }`}
+                placeholder="e.g., National Infrastructure Development Program"
+              />
+              {projectNameMissing && (
+                <p className="text-xs text-red-600 mt-1">
+                  Project name is required.
+                </p>
+              )}
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">
+                Description
+              </label>
+              <textarea
+                rows={4}
+                value={editForm.description}
                 onChange={(e) =>
                   setEditForm((prev) => ({
                     ...prev,
-                    startDate: e.target.value,
+                    description: e.target.value,
                   }))
                 }
-                className="w-full px-3 py-2.5 border border-slate-200 rounded-xl bg-white text-slate-900 shadow-sm"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">
-                End Date
-              </label>
-              <input
-                type="date"
-                value={editForm.endDate}
-                onChange={(e) =>
-                  setEditForm((prev) => ({ ...prev, endDate: e.target.value }))
-                }
-                className="w-full px-3 py-2.5 border border-slate-200 rounded-xl bg-white text-slate-900 shadow-sm"
+                className="w-full px-3 py-2.5 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none bg-white text-slate-900 shadow-sm"
+                placeholder="What does this project deliver, where, and for whom?"
               />
             </div>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+          <div className="rounded-xl border border-slate-200 bg-slate-50/40 p-4 space-y-4">
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">
-                Status
-              </label>
-              <select
-                value={editForm.status}
-                onChange={(e) =>
-                  setEditForm((prev) => ({ ...prev, status: e.target.value }))
-                }
-                className="w-full px-3 py-2.5 border border-slate-200 rounded-xl bg-white text-slate-900 shadow-sm"
+              <h4 className="text-sm font-semibold text-slate-900">
+                Schedule & Classification
+              </h4>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Keep timeline and program categorization aligned.
+              </p>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">
+                  Start Date
+                </label>
+                <input
+                  type="date"
+                  value={editForm.startDate}
+                  onChange={(e) =>
+                    setEditForm((prev) => ({
+                      ...prev,
+                      startDate: e.target.value,
+                    }))
+                  }
+                  className={`w-full px-3 py-2.5 border rounded-xl bg-white text-slate-900 shadow-sm ${
+                    dateRangeInvalid ? "border-red-300" : "border-slate-200"
+                  }`}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">
+                  End Date
+                </label>
+                <input
+                  type="date"
+                  value={editForm.endDate}
+                  onChange={(e) =>
+                    setEditForm((prev) => ({ ...prev, endDate: e.target.value }))
+                  }
+                  className={`w-full px-3 py-2.5 border rounded-xl bg-white text-slate-900 shadow-sm ${
+                    dateRangeInvalid ? "border-red-300" : "border-slate-200"
+                  }`}
+                />
+              </div>
+            </div>
+            {dateRangeInvalid && (
+              <p className="text-xs text-red-600 -mt-2">
+                End date must be on or after start date.
+              </p>
+            )}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">
+                  Status
+                </label>
+                <select
+                  value={editForm.status}
+                  onChange={(e) =>
+                    setEditForm((prev) => ({ ...prev, status: e.target.value }))
+                  }
+                  className="w-full px-3 py-2.5 border border-slate-200 rounded-xl bg-white text-slate-900 shadow-sm"
+                >
+                  <option value="Draft">Draft</option>
+                  <option value="Active">Active</option>
+                  <option value="Archived">Archived</option>
+                  <option value="Completed">Completed</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">
+                  Sectors
+                </label>
+                <input
+                  type="text"
+                  value={editForm.sectors}
+                  onChange={(e) =>
+                    setEditForm((prev) => ({ ...prev, sectors: e.target.value }))
+                  }
+                  className="w-full px-3 py-2.5 border border-slate-200 rounded-xl bg-white text-slate-900 shadow-sm"
+                  placeholder="Agriculture, Education, Health"
+                />
+                <p className="text-xs text-slate-500 mt-1">
+                  Use comma-separated values.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-slate-200 bg-slate-50/40 p-4 space-y-4">
+            <div>
+              <h4 className="text-sm font-semibold text-slate-900">
+                Stakeholders & Budget
+              </h4>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Capture ownership and financial context.
+              </p>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">
+                  Location
+                </label>
+                <input
+                  type="text"
+                  value={editForm.location}
+                  onChange={(e) =>
+                    setEditForm((prev) => ({ ...prev, location: e.target.value }))
+                  }
+                  className="w-full px-3 py-2.5 border border-slate-200 rounded-xl bg-white text-slate-900 shadow-sm"
+                  placeholder="e.g., National / Province / District"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">
+                  Donor
+                </label>
+                <input
+                  type="text"
+                  value={editForm.donor}
+                  onChange={(e) =>
+                    setEditForm((prev) => ({ ...prev, donor: e.target.value }))
+                  }
+                  className="w-full px-3 py-2.5 border border-slate-200 rounded-xl bg-white text-slate-900 shadow-sm"
+                  placeholder="e.g., World Bank"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">
+                  Budget Amount
+                </label>
+                <input
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  value={editForm.budgetAmount}
+                  onChange={(e) =>
+                    setEditForm((prev) => ({
+                      ...prev,
+                      budgetAmount: e.target.value,
+                    }))
+                  }
+                  className={`w-full px-3 py-2.5 border rounded-xl bg-white text-slate-900 shadow-sm ${
+                    budgetInvalid ? "border-red-300" : "border-slate-200"
+                  }`}
+                  placeholder="50000"
+                />
+                {budgetInvalid && (
+                  <p className="text-xs text-red-600 mt-1">
+                    Enter a valid non-negative number.
+                  </p>
+                )}
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">
+                  Budget Currency
+                </label>
+                <input
+                  type="text"
+                  maxLength={3}
+                  value={editForm.budgetCurrency}
+                  onChange={(e) =>
+                    setEditForm((prev) => ({
+                      ...prev,
+                      budgetCurrency: e.target.value.toUpperCase(),
+                    }))
+                  }
+                  className={`w-full px-3 py-2.5 border rounded-xl bg-white text-slate-900 shadow-sm uppercase ${
+                    budgetCurrencyMissing ? "border-red-300" : "border-slate-200"
+                  }`}
+                  placeholder="USD"
+                />
+                {budgetCurrencyMissing && (
+                  <p className="text-xs text-red-600 mt-1">
+                    Currency is required when amount is provided.
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between gap-3 pt-1">
+            <p className="text-xs text-slate-500">
+              Fields marked with <span className="text-red-500">*</span> are
+              required.
+            </p>
+            <div className="flex items-center justify-end gap-3">
+              <Button variant="outline" onClick={() => setIsEditOpen(false)}>
+                Cancel
+              </Button>
+              <Button
+                onClick={handleSaveProject}
+                isLoading={isSavingEdit}
+                disabled={!canSaveProject}
               >
-                <option value="Draft">Draft</option>
-                <option value="Active">Active</option>
-                <option value="Archived">Archived</option>
-                <option value="Completed">Completed</option>
-              </select>
+                Save Changes
+              </Button>
             </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">
-                Sectors
-              </label>
-              <input
-                type="text"
-                value={editForm.sectors}
-                onChange={(e) =>
-                  setEditForm((prev) => ({ ...prev, sectors: e.target.value }))
-                }
-                className="w-full px-3 py-2.5 border border-slate-200 rounded-xl bg-white text-slate-900 shadow-sm"
-                placeholder="Agriculture, Education"
-              />
-            </div>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">
-                Location
-              </label>
-              <input
-                type="text"
-                value={editForm.location}
-                onChange={(e) =>
-                  setEditForm((prev) => ({ ...prev, location: e.target.value }))
-                }
-                className="w-full px-3 py-2.5 border border-slate-200 rounded-xl bg-white text-slate-900 shadow-sm"
-                placeholder="Location"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">
-                Donor
-              </label>
-              <input
-                type="text"
-                value={editForm.donor}
-                onChange={(e) =>
-                  setEditForm((prev) => ({ ...prev, donor: e.target.value }))
-                }
-                className="w-full px-3 py-2.5 border border-slate-200 rounded-xl bg-white text-slate-900 shadow-sm"
-                placeholder="Donor"
-              />
-            </div>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">
-                Budget Amount
-              </label>
-              <input
-                type="text"
-                value={editForm.budgetAmount}
-                onChange={(e) =>
-                  setEditForm((prev) => ({
-                    ...prev,
-                    budgetAmount: e.target.value,
-                  }))
-                }
-                className="w-full px-3 py-2.5 border border-slate-200 rounded-xl bg-white text-slate-900 shadow-sm"
-                placeholder="50000"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">
-                Budget Currency
-              </label>
-              <input
-                type="text"
-                value={editForm.budgetCurrency}
-                onChange={(e) =>
-                  setEditForm((prev) => ({
-                    ...prev,
-                    budgetCurrency: e.target.value,
-                  }))
-                }
-                className="w-full px-3 py-2.5 border border-slate-200 rounded-xl bg-white text-slate-900 shadow-sm"
-                placeholder="USD"
-              />
-            </div>
-          </div>
-          <div className="flex items-center justify-end gap-3 pt-2">
-            <Button variant="outline" onClick={() => setIsEditOpen(false)}>
-              Cancel
-            </Button>
-            <Button onClick={handleSaveProject} isLoading={isSavingEdit}>
-              Save Changes
-            </Button>
           </div>
         </div>
       </Modal>

@@ -268,7 +268,8 @@ export const IndicatorCharts: React.FC<IndicatorChartsProps> = ({
     if (numeric !== null) return numeric;
     if (!isCategorical) return null;
     const ids = parseCategoryIds(
-      entry.categoryValue || (typeof entry.value === "string" ? entry.value : ""),
+      entry.categoryValue ||
+        (typeof entry.value === "string" ? entry.value : ""),
     );
     const firstId = ids[0];
     if (!firstId) return null;
@@ -551,7 +552,10 @@ export const IndicatorCharts: React.FC<IndicatorChartsProps> = ({
         : 0;
     const categoricalProgress = hasCategoricalTarget
       ? Math.min(
-          Math.max((categoricalMatchedCount / targetCategoryIds.length) * 100, 0),
+          Math.max(
+            (categoricalMatchedCount / targetCategoryIds.length) * 100,
+            0,
+          ),
           100,
         )
       : 0;
@@ -645,7 +649,9 @@ export const IndicatorCharts: React.FC<IndicatorChartsProps> = ({
           </div>
           <div className="bg-white p-6 rounded-lg border border-slate-200 shadow-sm md:col-span-2">
             <p className="text-sm text-slate-500 font-medium mb-4">
-              {isCategorical ? "Category Match to Target" : "Progress to Target"}
+              {isCategorical
+                ? "Category Match to Target"
+                : "Progress to Target"}
             </p>
             <div className="relative h-4 bg-slate-100 rounded-full overflow-hidden">
               <div

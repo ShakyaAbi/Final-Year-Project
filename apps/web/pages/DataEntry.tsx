@@ -77,6 +77,25 @@ export const DataEntry: React.FC = () => {
     >
   >({});
 
+  const isNumericInputType = (type: IndicatorType) =>
+    type === IndicatorType.NUMBER ||
+    type === IndicatorType.PERCENTAGE ||
+    type === IndicatorType.CURRENCY;
+
+  const buildSubmissionValue = (
+    type: IndicatorType,
+    rawValue: string,
+    categoryValue?: string,
+  ) => {
+    if (type === IndicatorType.CATEGORICAL) {
+      return categoryValue ?? rawValue;
+    }
+    if (isNumericInputType(type)) {
+      return Number(rawValue);
+    }
+    return rawValue;
+  };
+
   useEffect(() => {
     const pid = searchParams.get("projectId");
     if (pid) setSelectedProject(pid);
@@ -320,18 +339,15 @@ export const DataEntry: React.FC = () => {
 
     // Call service
     // For CATEGORICAL: value is the category ID(s), for others: value is numeric/text
-    const valuePayload =
-      indicator?.type === IndicatorType.CATEGORICAL
-        ? Number(entry.value)
-        : indicator?.type === IndicatorType.NUMBER ||
-            indicator?.type === IndicatorType.PERCENTAGE ||
-            indicator?.type === IndicatorType.CURRENCY
-          ? Number(entry.value)
-          : entry.value;
     const categoryValuePayload =
       hasCategories && (entry.selectedCategories || []).length > 0
         ? (entry.selectedCategories || []).join(",")
         : undefined;
+    const valuePayload = buildSubmissionValue(
+      indicator?.type || IndicatorType.TEXT,
+      entry.value,
+      categoryValuePayload,
+    );
 
     try {
       await api.createSubmission(id, {
@@ -357,12 +373,15 @@ export const DataEntry: React.FC = () => {
       prevIndicators.map((ind) => {
         if (ind.id === id) {
           // Parse value same way the service does for consistency in UI
-          const numVal = parseFloat(entry.value);
-          const finalValue = !isNaN(numVal) ? numVal : entry.value;
           const categoryValue =
             (entry.selectedCategories || []).length > 0
               ? entry.selectedCategories.join(",")
               : undefined;
+          const finalValue = buildSubmissionValue(
+            ind.type,
+            entry.value,
+            categoryValue,
+          );
 
           const newEntry: IndicatorValue = {
             id: `temp-${Date.now()}`,
@@ -413,13 +432,7 @@ export const DataEntry: React.FC = () => {
   };
 
   const getInputType = (type: IndicatorType) => {
-    // Categorical indicators also use numeric values now
-    return type === IndicatorType.NUMBER ||
-      type === IndicatorType.PERCENTAGE ||
-      type === IndicatorType.CURRENCY ||
-      type === IndicatorType.CATEGORICAL
-      ? "number"
-      : "text";
+    return isNumericInputType(type) ? "number" : "text";
   };
 
   const canModifySubmission = (row: IndicatorValue) => {
@@ -463,13 +476,11 @@ export const DataEntry: React.FC = () => {
     const indicator = indicators.find((ind) => ind.id === edit.indicatorId);
     if (!indicator) return;
     try {
-      const valuePayload =
-        indicator.type === IndicatorType.NUMBER ||
-        indicator.type === IndicatorType.PERCENTAGE ||
-        indicator.type === IndicatorType.CURRENCY ||
-        indicator.type === IndicatorType.CATEGORICAL
-          ? Number(edit.value)
-          : edit.value;
+      const valuePayload = buildSubmissionValue(
+        indicator.type,
+        edit.value,
+        edit.categoryValue || undefined,
+      );
       await api.updateSubmission(submissionId, {
         reportedAt: edit.reportedAt,
         value: valuePayload,

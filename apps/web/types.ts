@@ -47,7 +47,7 @@ export interface IndicatorValue {
   indicatorId?: string;
   date: string;
   value: number | string;
-  categoryValue?: string; // Comma-separated category IDs when categorization is used
+  categoryValue?: string; // Optional compatibility mirror of categorical value
   isAnomaly: boolean;
   anomalyReason?: string;
   anomalyScore?: number;
@@ -108,6 +108,7 @@ export interface DisaggregationDimension {
   label: string;
   description?: string;
   values: string[];
+  required?: boolean;
 }
 
 export interface CategoryConfig {
