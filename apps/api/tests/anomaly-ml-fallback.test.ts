@@ -17,8 +17,8 @@ describe("ML fallback behavior", () => {
     process.env.ML_SERVICE_TIMEOUT_MS = "1500";
 
     fetchSpy = jest
-      .spyOn(global as any, "fetch")
-      .mockImplementation(async (url: string) => {
+      .spyOn(global, "fetch")
+      .mockImplementation(async (url: any) => {
         if (url.endsWith("/health")) {
           return {
             ok: true,
