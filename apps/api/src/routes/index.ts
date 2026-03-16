@@ -7,6 +7,7 @@ import submissionRoutes from "./submissionRoutes";
 import importRoutes from "./importRoutes";
 import exportRoutes from "./exportRoutes";
 import templateRoutes from "./templateRoutes";
+import healthRoutes from "./healthRoutes";
 
 const router = Router();
 
@@ -18,5 +19,6 @@ router.use("/", submissionRoutes);
 router.use("/", importRoutes);
 router.use("/", exportRoutes);
 router.use("/", templateRoutes);
+router.use("/", healthRoutes);
 
 export default router;
