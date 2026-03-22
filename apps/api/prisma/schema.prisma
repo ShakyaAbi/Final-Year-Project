@@ -117,6 +117,9 @@ model LogframeNode {
   type        NodeType
   title       String
   description String?
+  assumptions String?
+  risks       String?
+
   parent      LogframeNode? @relation("LogframeHierarchy", fields: [parentId], references: [id])
   parentId    Int?
   children    LogframeNode[] @relation("LogframeHierarchy")

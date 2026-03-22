@@ -1,10 +1,11 @@
 import { z } from 'zod';
 import { NodeType } from '@prisma/client';
 
-const numericId = z
-  .string()
-  .regex(/^\d+$/)
-  .transform((v) => Number(v));
+const numericId = z.union([
+  z.string().regex(/^\d+$/).transform((v) => Number(v)),
+  z.number().int()
+]);
+
 
 export const projectLogframeParamsSchema = {
   params: z.object({
@@ -17,7 +18,9 @@ export const createLogframeNodeSchema = {
     type: z.nativeEnum(NodeType),
     title: z.string().min(1),
     description: z.string().optional(),
-    parentId: numericId.optional(),
+    assumptions: z.string().optional(),
+    risks: z.string().optional(),
+    parentId: numericId.nullable().optional(),
     sortOrder: z.number().int().optional()
   })
 };
@@ -33,6 +36,8 @@ export const updateLogframeNodeSchema = {
   body: z.object({
     title: z.string().min(1).optional(),
     description: z.string().optional(),
+    assumptions: z.string().optional(),
+    risks: z.string().optional(),
     parentId: numericId.nullable().optional(),
     sortOrder: z.number().int().optional(),
     type: z.nativeEnum(NodeType).optional()
