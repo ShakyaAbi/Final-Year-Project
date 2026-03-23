@@ -11,7 +11,7 @@ const transporter = nodemailer.createTransport({
   } : undefined,
 });
 
-export async function sendReminderEmail({ to, subject, text }: { to: string; subject: string; text: string }) {
+export async function sendReminderEmail({ to, subject, text, html }: { to: string; subject: string; text: string; html?: string }) {
   if (!config.smtp.host) {
     console.log(`[EMAIL-MOCK] To: ${to}\nSubject: ${subject}\n${text}`);
     return;
@@ -23,6 +23,7 @@ export async function sendReminderEmail({ to, subject, text }: { to: string; sub
       to,
       subject,
       text,
+      html,
     });
     console.log(`[EMAIL] Sent message to ${to}: ${info.messageId}`);
   } catch (err) {
