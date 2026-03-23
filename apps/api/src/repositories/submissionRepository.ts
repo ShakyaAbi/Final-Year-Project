@@ -99,3 +99,18 @@ export const restoreSubmission = (id: number, userId: number) =>
       updatedByUserId: userId,
     } as any,
   });
+
+export const findUniqueSubmission = (
+  indicatorId: number,
+  reportedAt: Date,
+  disaggregationKey: string | null,
+) =>
+  prisma.submission.findFirst({
+    where: {
+      indicatorId,
+      reportedAt,
+      disaggregationKey: disaggregationKey || null,
+      deletedAt: null,
+    } as any,
+  });
+

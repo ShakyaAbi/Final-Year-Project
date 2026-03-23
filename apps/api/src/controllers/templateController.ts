@@ -1,12 +1,11 @@
 import { Request, Response } from "express";
 import { ImportTemplateRepository } from "../repositories/importTemplateRepository";
-import { ExportTemplateRepository } from "../repositories/exportTemplateRepository";
 import { TemplateService } from "../services/templateService";
+
 import { prisma } from "../prisma";
 import { asyncHandler } from "../utils/asyncHandler";
 
 const importTemplateRepo = new ImportTemplateRepository(prisma);
-const exportTemplateRepo = new ExportTemplateRepository(prisma);
 const templateService = new TemplateService(prisma);
 
 /**
@@ -177,92 +176,3 @@ export const downloadImportTemplateSample = asyncHandler(
   },
 );
 
-// Export templates (similar structure)
-
-export const createExportTemplate = asyncHandler(
-  async (req: Request, res: Response) => {
-    const { indicatorId } = req.params;
-    const {
-      name,
-      description,
-      columnConfig,
-      filterConfig,
-      formatConfig,
-      isDefault,
-    } = req.body;
-
-    const template = await exportTemplateRepo.create({
-      name,
-      description,
-      columnConfig,
-      filterConfig,
-      formatConfig,
-      isDefault: isDefault || false,
-      indicator: { connect: { id: parseInt(indicatorId) } },
-      createdBy: { connect: { id: (req as any).user.id } },
-    });
-
-    res.status(201).json(template);
-  },
-);
-
-export const getExportTemplates = asyncHandler(
-  async (req: Request, res: Response) => {
-    const { indicatorId } = req.params;
-
-    const templates = await exportTemplateRepo.findByIndicatorId(
-      parseInt(indicatorId),
-    );
-
-    res.json(templates);
-  },
-);
-
-export const getExportTemplate = asyncHandler(
-  async (req: Request, res: Response) => {
-    const { templateId } = req.params;
-
-    const template = await exportTemplateRepo.findById(parseInt(templateId));
-
-    if (!template) {
-      return res.status(404).json({ error: "Template not found" });
-    }
-
-    res.json(template);
-  },
-);
-
-export const updateExportTemplate = asyncHandler(
-  async (req: Request, res: Response) => {
-    const { templateId } = req.params;
-    const {
-      name,
-      description,
-      columnConfig,
-      filterConfig,
-      formatConfig,
-      isDefault,
-    } = req.body;
-
-    const template = await exportTemplateRepo.update(parseInt(templateId), {
-      name,
-      description,
-      columnConfig,
-      filterConfig,
-      formatConfig,
-      isDefault,
-    });
-
-    res.json(template);
-  },
-);
-
-export const deleteExportTemplate = asyncHandler(
-  async (req: Request, res: Response) => {
-    const { templateId } = req.params;
-
-    await exportTemplateRepo.delete(parseInt(templateId));
-
-    res.json({ message: "Template deleted" });
-  },
-);

@@ -33,11 +33,14 @@ const anomalyConfigSchema = z
       .optional(),
     ml: z
       .object({
-        method: z.literal("ISOLATION_FOREST").default("ISOLATION_FOREST"),
-        contamination: z.number().min(0.001).max(0.5).default(0.05),
-        windowSize: z.number().int().min(10).max(500).default(50),
-        minPoints: z.number().int().min(10).max(500).default(20),
+        method: z
+          .enum(["ISOLATION_FOREST", "Z_SCORE", "LOF", "DBSCAN"])
+          .default("ISOLATION_FOREST"),
+        contamination: z.number().min(0.001).max(0.5).default(0.05).optional(),
+        windowSize: z.number().int().min(5).max(500).default(50).optional(),
+        minPoints: z.number().int().min(5).max(500).default(20).optional(),
         seed: z.number().int().optional(),
+        zscore_threshold: z.number().positive().default(3.5).optional(),
       })
       .optional(),
     fallback: z

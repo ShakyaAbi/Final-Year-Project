@@ -456,23 +456,71 @@ export const validateDisaggregationKey = (
     return true; // No dimensions defined, any key is valid
   }
 
-  // Validate against the primary dimension (required dimension, or first one)
-  const primaryDimension = dimensions.find((d) => d.required) || dimensions[0];
-
   const normalizedKey = typeof disaggregationKey === "string"
     ? disaggregationKey.trim()
     : "";
 
+  // Check if any dimension is required
+  const requiredDimension = dimensions.find((d) => d.required);
+
   if (!normalizedKey) {
-    if (primaryDimension.required) {
+    if (requiredDimension) {
       throw new BadRequestError(
         "MISSING_DISAGGREGATION",
-        `Disaggregation key is required for dimension: ${primaryDimension.label}`,
+        `Disaggregation key is required for dimension: ${requiredDimension.label}`,
       );
     }
     return true;
   }
 
+  // Check if this is a composite key (contains pipe delimiter)
+  if (normalizedKey.includes("|")) {
+    const parts = normalizedKey.split("|");
+    for (const part of parts) {
+      const colonIndex = part.indexOf(":");
+      if (colonIndex === -1) {
+        throw new BadRequestError(
+          "INVALID_DISAGGREGATION_FORMAT",
+          `Invalid composite key part: '${part}'. Expected format: dimensionKey:value`,
+        );
+      }
+      const dimKey = part.substring(0, colonIndex).trim();
+      const dimValue = part.substring(colonIndex + 1).trim();
+
+      // Find matching dimension
+      const matchingDim = dimensions.find((d) => d.key === dimKey || d.label === dimKey);
+      if (!matchingDim) {
+        throw new BadRequestError(
+          "INVALID_DISAGGREGATION_DIMENSION",
+          `Unknown disaggregation dimension: '${dimKey}'`,
+        );
+      }
+
+      const validValues = matchingDim.values.map((v) => String(v).trim());
+      if (!validValues.includes(dimValue)) {
+        throw new BadRequestError(
+          "INVALID_DISAGGREGATION_VALUE",
+          `'${dimValue}' is not a valid value for ${matchingDim.label}. Valid values: ${validValues.slice(0, 5).join(", ")}${validValues.length > 5 ? "..." : ""}`,
+        );
+      }
+    }
+
+    // Check that all required dimensions are present in composite key
+    const presentDimKeys = parts.map((p) => p.substring(0, p.indexOf(":")).trim());
+    for (const dim of dimensions) {
+      if (dim.required && !presentDimKeys.includes(dim.key)) {
+        throw new BadRequestError(
+          "MISSING_DISAGGREGATION",
+          `Required disaggregation dimension '${dim.label}' is missing from composite key`,
+        );
+      }
+    }
+
+    return true;
+  }
+
+  // Simple key (single dimension) — backward compatible
+  const primaryDimension = dimensions.find((d) => d.required) || dimensions[0];
   const validValues = primaryDimension.values.map((v) => String(v).trim());
 
   if (!validValues.includes(normalizedKey)) {

@@ -383,50 +383,12 @@ const withMlValidationMeta = (
   },
 });
 
-export const createSubmission = async (
-  indicatorId: number,
-  data: {
-    reportedAt: string;
-    value: any;
-    categoryValue?: string | null;
-    disaggregationKey?: string | null;
-    evidence?: string | null;
-  },
-  userId: number,
+const detectAnomaly = async (
+  indicator: any,
+  normalizedValue: string,
+  excludeSubmissionId?: number,
 ) => {
-  const indicator = await indicatorRepo.getById(indicatorId);
-  if (!indicator)
-    throw new NotFoundError("INDICATOR_NOT_FOUND", "Indicator not found");
-
-  const reportedAt = parseDate(data.reportedAt);
-
-  // Extract categories and categoryConfig for validation
-  const categories = indicator.categories as any as CategoryDefinition[] | null;
-  const categoryConfig =
-    indicator.categoryConfig as any as CategoryConfig | null;
-
-  // Validate disaggregation key if provided or required
-  if (indicator.dataType === "CATEGORICAL") {
-    validateDisaggregationKey(data.disaggregationKey, categoryConfig);
-  }
-
-  const { normalizedValue, normalizedCategoryValue } =
-    normalizeSubmissionByIndicator({
-      dataType: indicator.dataType,
-      payload: {
-        value: data.value,
-        categoryValue: data.categoryValue,
-      },
-      min: indicator.minValue,
-      max: indicator.maxValue,
-      categories,
-      categoryConfig,
-    });
-
-  // Get recent submissions for anomaly detection context
-  const config = normalizeAnomalyConfig(
-    (indicator.anomalyConfig as any) ?? null,
-  );
+  const config = normalizeAnomalyConfig((indicator.anomalyConfig as any) ?? null);
   const ruleWindowSize = Math.max(
     config.outlier?.windowSize ?? 8,
     (config.trend?.windowSize ?? 6) * 2,
@@ -435,12 +397,12 @@ export const createSubmission = async (
   const windowSize = Math.max(ruleWindowSize, mlWindowSize);
 
   const recentSubmissions = await submissionRepo.getRecentSubmissions(
-    indicatorId,
-    windowSize,
+    indicator.id,
+    excludeSubmissionId ? windowSize + 1 : windowSize,
   );
-  const chronological = [...recentSubmissions].sort(
-    (a, b) => a.reportedAt.getTime() - b.reportedAt.getTime(),
-  );
+  const chronological = [...recentSubmissions]
+    .filter((s) => s.id !== excludeSubmissionId)
+    .sort((a, b) => a.reportedAt.getTime() - b.reportedAt.getTime());
 
   let anomalyResult: {
     isAnomaly: boolean;
@@ -466,7 +428,7 @@ export const createSubmission = async (
     if (numericValues.length >= minPoints && Number.isFinite(newNumericValue)) {
       try {
         const result = await scoreWithMl(
-          indicatorId,
+          indicator.id,
           indicator.dataType,
           numericValues,
           newNumericValue,
@@ -549,14 +511,66 @@ export const createSubmission = async (
     };
   }
 
-  return submissionRepo.createSubmission({
+  return anomalyResult;
+};
+
+export const createSubmission = async (
+  indicatorId: number,
+  data: {
+    reportedAt: string;
+    value: any;
+    categoryValue?: string | null;
+    disaggregationKey?: string | null;
+    evidence?: string | null;
+  },
+  userId: number,
+) => {
+  const indicator = await indicatorRepo.getById(indicatorId);
+  if (!indicator)
+    throw new NotFoundError("INDICATOR_NOT_FOUND", "Indicator not found");
+
+  const reportedAt = parseDate(data.reportedAt);
+
+  // Extract categories and categoryConfig for validation
+  const categories = indicator.categories as any as CategoryDefinition[] | null;
+  const categoryConfig =
+    indicator.categoryConfig as any as CategoryConfig | null;
+
+  // Validate disaggregation key if provided or required
+  if (indicator.dataType === "CATEGORICAL") {
+    validateDisaggregationKey(data.disaggregationKey, categoryConfig);
+  }
+
+  const { normalizedValue, normalizedCategoryValue } =
+    normalizeSubmissionByIndicator({
+      dataType: indicator.dataType,
+      payload: {
+        value: data.value,
+        categoryValue: data.categoryValue,
+      },
+      min: indicator.minValue,
+      max: indicator.maxValue,
+      categories,
+      categoryConfig,
+    });
+
+  // Run anomaly detection
+  const anomalyResult = await detectAnomaly(indicator, normalizedValue);
+
+  // Check if a submission already exists for this bucket to avoid P2002
+  const existing = await submissionRepo.findUniqueSubmission(
+    indicatorId,
+    reportedAt!,
+    data.disaggregationKey ?? null
+  );
+
+  const submissionData = {
     indicatorId,
     reportedAt: reportedAt!,
     value: normalizedValue,
     categoryValue: normalizedCategoryValue,
     disaggregationKey: data.disaggregationKey ?? null,
     evidence: data.evidence ?? null,
-    createdByUserId: userId,
     isAnomaly: anomalyResult.isAnomaly,
     anomalyReason: anomalyResult.anomalyReason ?? null,
     anomalyStatus: anomalyResult.isAnomaly ? AnomalyStatus.DETECTED : null,
@@ -564,7 +578,20 @@ export const createSubmission = async (
     anomalyThreshold: anomalyResult.anomalyThreshold ?? null,
     anomalyMethod: anomalyResult.anomalyMethod ?? null,
     anomalyMeta: anomalyResult.anomalyMeta ?? null,
+  };
+
+  if (existing) {
+    return submissionRepo.updateSubmissionData(existing.id, {
+      ...submissionData,
+      updatedByUserId: userId,
+    });
+  }
+
+  return submissionRepo.createSubmission({
+    ...submissionData,
+    createdByUserId: userId,
   });
+
 };
 
 export const listSubmissions = async (
@@ -663,131 +690,8 @@ export const updateSubmission = async (
       categoryConfig,
     });
 
-  const config = normalizeAnomalyConfig(
-    (indicator.anomalyConfig as any) ?? null,
-  );
-  const ruleWindowSize = Math.max(
-    config.outlier?.windowSize ?? 8,
-    (config.trend?.windowSize ?? 6) * 2,
-  );
-  const mlWindowSize = config.ml?.windowSize ?? 50;
-  const windowSize = Math.max(ruleWindowSize, mlWindowSize);
-
-  const recentSubmissions = await submissionRepo.getRecentSubmissions(
-    indicator.id,
-    windowSize + 1,
-  );
-
-  const chronological = [...recentSubmissions]
-    .filter((s) => s.id !== submission.id)
-    .sort((a, b) => a.reportedAt.getTime() - b.reportedAt.getTime());
-
-  let anomalyResult: {
-    isAnomaly: boolean;
-    anomalyReason?: string;
-    anomalyScore?: number | null;
-    anomalyThreshold?: number | null;
-    anomalyMethod?: string | null;
-    anomalyMeta?: Record<string, any> | null;
-  } = { isAnomaly: false };
-
-  const shouldUseMl =
-    config.enabled &&
-    config.mode === "ML" &&
-    isNumericDataType(indicator.dataType);
-
-  if (shouldUseMl) {
-    const numericValues = chronological
-      .map((s) => Number(s.value))
-      .filter(Number.isFinite);
-    const newNumericValue = Number(normalizedValue);
-    const minPoints = config.ml?.minPoints ?? 20;
-
-    if (numericValues.length >= minPoints && Number.isFinite(newNumericValue)) {
-      try {
-        const result = await scoreWithMl(
-          indicator.id,
-          indicator.dataType,
-          numericValues,
-          newNumericValue,
-          config,
-        );
-        anomalyResult = {
-          isAnomaly: result.isAnomaly,
-          anomalyReason: result.reason,
-          anomalyScore: result.score,
-          anomalyThreshold: result.threshold,
-          anomalyMethod: result.method,
-          anomalyMeta: withMlValidationMeta(result.meta, "ML_OK"),
-        };
-      } catch (_error) {
-        if (config.fallback?.useRulesOnServiceError !== false) {
-          const mlError = toMlErrorDetails(_error);
-          const ruleResult = detectRulesAnomalyForNewValue(
-            normalizedValue,
-            indicator.dataType,
-            chronological,
-            indicator,
-            config,
-          );
-          anomalyResult = {
-            isAnomaly: ruleResult.isAnomaly,
-            anomalyReason: ruleResult.anomalyReason,
-            anomalyMethod: "RULES_FALLBACK",
-            anomalyMeta: withMlValidationMeta(null, "ML_FALLBACK", {
-              ...mlError,
-              fallbackUsed: true,
-            }),
-          };
-        } else {
-          throw new ServiceUnavailableError(
-            "ML_UNAVAILABLE",
-            "ML scoring failed and fallback is disabled",
-            toMlErrorDetails(_error),
-          );
-        }
-      }
-    } else if (config.fallback?.useRulesWhenInsufficientData !== false) {
-      const ruleResult = detectRulesAnomalyForNewValue(
-        normalizedValue,
-        indicator.dataType,
-        chronological,
-        indicator,
-        config,
-      );
-      anomalyResult = {
-        isAnomaly: ruleResult.isAnomaly,
-        anomalyReason: ruleResult.anomalyReason ?? "Insufficient data",
-        anomalyMethod: "RULES_FALLBACK",
-        anomalyMeta: withMlValidationMeta(null, "ML_SKIPPED_INSUFFICIENT_DATA", {
-          fallbackUsed: true,
-          minPoints,
-          observedPoints: numericValues.length,
-        }),
-      };
-    } else {
-      throw new ServiceUnavailableError(
-        "ML_UNAVAILABLE",
-        "ML requires more historical data and fallback is disabled",
-        {
-          minPoints,
-          observedPoints: numericValues.length,
-        },
-      );
-    }
-  } else {
-    const ruleResult = detectRulesAnomalyForNewValue(
-      normalizedValue,
-      indicator.dataType,
-      chronological,
-      indicator,
-      config,
-    );
-    anomalyResult = {
-      isAnomaly: ruleResult.isAnomaly,
-      anomalyReason: ruleResult.anomalyReason,
-    };
-  }
+  // Run anomaly detection
+  const anomalyResult = await detectAnomaly(indicator, normalizedValue, submission.id);
 
   try {
     return await submissionRepo.updateSubmissionData(submission.id, {
