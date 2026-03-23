@@ -112,7 +112,7 @@ export const createIndicator = async (
   try {
     const templateService = new TemplateService(prisma);
     await templateService.createDefaultImportTemplate(indicator.id, userId);
-    await templateService.createDefaultExportTemplate(indicator.id, userId);
+
   } catch (error) {
     console.error("Failed to create default templates:", error);
     // Don't fail indicator creation if template creation fails
@@ -536,9 +536,11 @@ export const getReportingCompliance = async (
     where: {
       indicatorId,
       reportedAt: { gte: startDate, lte: endDate },
+      deletedAt: null,
     },
     orderBy: { reportedAt: "asc" },
   });
+
 
   return calculateReportingCompliance(
     submissions,
@@ -576,9 +578,11 @@ export const getCategoryTimeSeriesStats = async (
     where: {
       indicatorId,
       reportedAt: { gte: startDate, lte: endDate },
+      deletedAt: null,
     },
     orderBy: { reportedAt: "asc" },
   });
+
 
   return getCategoryTimeSeries(
     submissions,
@@ -587,4 +591,55 @@ export const getCategoryTimeSeriesStats = async (
     endDate,
     groupBy,
   );
+};
+
+export const evaluateML = async (
+  indicatorId: number,
+  compareAll = false,
+) => {
+  const indicator = await indicatorRepo.getByIdWithSubmissions(indicatorId);
+  if (!indicator) {
+    throw new NotFoundError("INDICATOR_NOT_FOUND", "Indicator not found");
+  }
+
+  const submissions = indicator.submissions || [];
+  if (submissions.length < 5) {
+    throw new BadRequestError(
+      "INSUFFICIENT_DATA",
+      "At least 5 submissions are required for evaluation",
+    );
+  }
+
+  // Get values and labels (isAnomaly)
+  const numericSubmissions = submissions
+    .map((s) => ({ value: Number(s.value), isAnomaly: s.isAnomaly }))
+    .filter((s) => Number.isFinite(s.value));
+  
+  const values = numericSubmissions.map((s) => s.value);
+  const labels = numericSubmissions.map((s) => s.isAnomaly);
+
+  const anomalyConfig = (indicator.anomalyConfig as any) || {};
+  const mlConfig = anomalyConfig.ml || {};
+
+  const { evaluateModels } = await import("./mlService");
+
+  return evaluateModels({
+    indicatorId: indicator.id,
+    dataType: indicator.dataType,
+    values,
+    labels,
+    config: {
+      method: mlConfig.method || "ISOLATION_FOREST",
+      contamination: mlConfig.contamination || 0.05,
+      windowSize: mlConfig.windowSize || 50,
+      minPoints: mlConfig.minPoints || 10,
+      seed: mlConfig.seed || 42,
+    },
+    compareAll,
+  });
+};
+
+export const getMLAlgorithms = async () => {
+  const { getAlgorithms } = await import("./mlService");
+  return getAlgorithms();
 };

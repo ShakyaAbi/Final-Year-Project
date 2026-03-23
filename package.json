@@ -6,8 +6,9 @@
   ],
   "scripts": {
     "dev:web": "npm --workspace apps/web run dev",
-    "dev:api": "npm --workspace apps/api run dev",
-    "dev": "npx concurrently -n \"api,web\" -c \"bgBlue.bold,bgMagenta.bold\" \"npm run dev:api\" \"npm run dev:web\"",
+    "dev:ml": "cd apps/ml && uvicorn app:app --host 0.0.0.0 --port 8000",
+    "dev:api": "npx concurrently -n \"api,ml\" -c \"bgBlue.bold,bgGreen.bold\" \"npm --workspace apps/api run dev\" \"npm run dev:ml\"",
+    "dev": "npx concurrently -n \"api,web,ml\" -c \"bgBlue.bold,bgMagenta.bold,bgGreen.bold\" \"npm run dev:api\" \"npm run dev:web\"",
     "build:web": "npm --workspace apps/web run build",
     "build:api": "npm --workspace apps/api run build",
     "build": "npm run build:web && npm run build:api",
