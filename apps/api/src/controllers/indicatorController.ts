@@ -165,8 +165,8 @@ export const getReportingCompliance = asyncHandler(
 
 export const getCategoryTimeSeries = asyncHandler(
   async (req: Request, res: Response) => {
-    const { startDate, endDate, groupBy } = req.query;
-    
+    const { startDate, endDate, groupBy, disaggregationKey } = req.query;
+
     if (!startDate || !endDate) {
       res.status(400).json({
         error: {
@@ -179,7 +179,7 @@ export const getCategoryTimeSeries = asyncHandler(
 
     const validGroupBy = ['day', 'week', 'month', 'quarter', 'year'];
     const group = (groupBy as string) || 'month';
-    
+
     if (!validGroupBy.includes(group)) {
       res.status(400).json({
         error: {

@@ -8,6 +8,7 @@ import importRoutes from "./importRoutes";
 import exportRoutes from "./exportRoutes";
 import templateRoutes from "./templateRoutes";
 import healthRoutes from "./healthRoutes";
+import notificationRoutes from "./notificationRoutes";
 
 const router = Router();
 
@@ -20,5 +21,6 @@ router.use("/", importRoutes);
 router.use("/", exportRoutes);
 router.use("/", templateRoutes);
 router.use("/", healthRoutes);
+router.use("/", notificationRoutes);
 
 export default router;

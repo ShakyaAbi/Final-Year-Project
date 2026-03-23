@@ -209,7 +209,8 @@ export class ImportService {
   /**
    * Phase 3: Commit validated rows to database
    */
-  async commitToDatabase(jobId: number): Promise<void> {
+
+  async commitToDatabase(jobId: number, selectedRowNumbers?: number[]): Promise<void> {
     const job = await this.jobRepo.findById(jobId);
     if (!job) throw new Error("Import job not found");
 
@@ -218,12 +219,16 @@ export class ImportService {
 
     await this.jobRepo.updateStatus(jobId, "IMPORTING");
 
-    // Get only valid rows
+    // Get only valid rows, filter by selectedRowNumbers if provided
+    const where: any = {
+      jobId,
+      validationStatus: { in: ["VALID", "WARNING"] },
+    };
+    if (selectedRowNumbers && Array.isArray(selectedRowNumbers) && selectedRowNumbers.length > 0) {
+      where.rowNumber = { in: selectedRowNumbers };
+    }
     const validRows = await this.prisma.importJobRow.findMany({
-      where: {
-        jobId,
-        validationStatus: { in: ["VALID", "WARNING"] },
-      },
+      where,
       orderBy: { rowNumber: "asc" },
     });
 

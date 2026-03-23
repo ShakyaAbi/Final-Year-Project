@@ -16,9 +16,11 @@ import {
   AlertTriangle,
   CheckCircle,
   AlertCircle,
+  Clock,
 } from "lucide-react";
-import { ActivityLog } from "../types";
+import { AnomalyNotification, CurrentUser } from "../types";
 import Silk from "./ui/Silk";
+import { api } from "../services/api";
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -27,9 +29,12 @@ interface LayoutProps {
 export const Layout: React.FC<LayoutProps> = ({ children }) => {
   const [sidebarOpen, setSidebarOpen] = React.useState(false);
   const [isCollapsed, setIsCollapsed] = React.useState(false);
-  const [notifications, setNotifications] = useState<ActivityLog[]>([]);
+  const [notifications, setNotifications] = useState<AnomalyNotification[]>([]);
+  const [overdueNotifications, setOverdueNotifications] = useState<any[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [markingRead, setMarkingRead] = useState(false);
+  const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
 
   const location = useLocation();
   const navigate = useNavigate();
@@ -67,9 +72,27 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
     });
   }, [location.pathname]);
 
+  const fetchNotifications = () => {
+    Promise.all([
+      api.getAnomalyNotifications(),
+      api.getOverdueNotifications(),
+    ])
+      .then(([{ notifications, totalUnread }, overdue]) => {
+        setNotifications(notifications);
+        setOverdueNotifications(overdue || []);
+        setUnreadCount(totalUnread + (overdue?.length || 0));
+      })
+      .catch(() => {});
+  };
+
   useEffect(() => {
-    setNotifications([]);
-    setUnreadCount(0);
+    fetchNotifications();
+    api.me()
+      .then(user => setCurrentUser(user))
+      .catch(err => console.error("Could not load user profile", err));
+
+    const interval = setInterval(fetchNotifications, 60_000);
+    return () => clearInterval(interval);
   }, []);
 
   const navItems = [
@@ -78,7 +101,20 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
     { icon: Settings, label: "Settings", path: "/settings" },
   ];
 
+  const handleMarkAllRead = async () => {
+    if (markingRead) return;
+    setMarkingRead(true);
+    try {
+      await api.markAllAnomaliesRead();
+      setUnreadCount(0);
+      // Re-fetch to update statuses
+      fetchNotifications();
+    } catch {}
+    setMarkingRead(false);
+  };
+
   const handleLogout = () => {
+    localStorage.removeItem("merlin_token");
     navigate("/");
   };
 
@@ -89,22 +125,10 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
     setShowNotifications(!showNotifications);
   };
 
-  const getNotificationIcon = (type: string) => {
-    switch (type) {
-      case "warning":
-        return <AlertTriangle className="w-4 h-4 text-amber-500" />;
-      case "success":
-        return <CheckCircle className="w-4 h-4 text-green-500" />;
-      case "danger":
-        return <AlertCircle className="w-4 h-4 text-red-500" />;
-      default:
-        return <Info className="w-4 h-4 text-blue-500" />;
-    }
-  };
 
   return (
     <div className="h-screen w-full bg-blue-900 flex overflow-hidden font-sans p-2 lg:p-4 gap-4 relative">
-      <Silk speed={5} scale={1} color="#4d66ff" noiseIntensity={0.8} rotation={0} />
+      <Silk speed={5} scale={1} color="#4d66ff" noiseIntensity={0.8} rotation={0} paused={true} />
 
       {/* Mobile Sidebar Overlay */}
       {sidebarOpen && (
@@ -239,15 +263,15 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
             } w-full p-3 rounded-xl border border-white/10 bg-slate-900/50 hover:bg-slate-800/70 transition-colors group text-left`}
           >
             <div className="h-10 w-10 rounded-full bg-slate-100 text-slate-900 flex items-center justify-center font-semibold text-sm border border-slate-300/70 flex-shrink-0">
-              JD
+              {currentUser?.name ? currentUser.name.substring(0, 2).toUpperCase() : currentUser?.email?.substring(0, 2).toUpperCase() || "ME"}
             </div>
             {!isCollapsed && (
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-semibold text-slate-100 truncate">
-                  John Doe
+                  {currentUser?.name || currentUser?.email || "User"}
                 </p>
                 <p className="text-xs text-slate-400 truncate group-hover:text-slate-300">
-                  Program Manager
+                  {currentUser?.jobTitle || (currentUser?.role ? currentUser.role.charAt(0).toUpperCase() + currentUser.role.slice(1).toLowerCase() : "Role")}
                 </p>
               </div>
             )}
@@ -329,64 +353,106 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
                     className="fixed inset-0 z-10"
                     onClick={() => setShowNotifications(false)}
                   ></div>
-                  <div className="absolute right-0 mt-2 w-80 bg-white rounded-xl shadow-xl border border-slate-100 py-2 z-20 animate-in fade-in slide-in-from-top-2">
-                    <div className="px-4 py-3 border-b border-slate-50 flex justify-between items-center bg-slate-50/50">
-                      <h3 className="font-semibold text-sm text-slate-900">
-                        Notifications
-                      </h3>
-                      <button className="text-xs text-blue-600 hover:text-blue-700 font-medium">
-                        Mark all read
-                      </button>
-                    </div>
-                    <div className="max-h-[320px] overflow-y-auto">
-                      {notifications.length > 0 ? (
-                        notifications.map((n, idx) => (
-                          <div
-                            key={idx}
-                            className="px-4 py-3 hover:bg-slate-50 border-b border-slate-50 last:border-0 flex gap-3 transition-colors cursor-pointer group"
-                          >
-                            <div
-                              className={`mt-0.5 w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
-                                n.type === "warning"
-                                  ? "bg-amber-100"
-                                  : n.type === "danger"
-                                  ? "bg-red-100"
-                                  : n.type === "success"
-                                  ? "bg-green-100"
-                                  : "bg-blue-100"
-                              }`}
-                            >
-                              {getNotificationIcon(n.type)}
-                            </div>
-                            <div>
-                              <p className="text-sm text-slate-800 leading-snug">
-                                <span className="font-bold text-slate-900">
-                                  {n.user}
-                                </span>{" "}
-                                {n.action}{" "}
-                                <span className="font-medium text-slate-700">
-                                  {n.item}
-                                </span>
-                              </p>
-                              <p className="text-xs text-slate-400 mt-1 flex items-center gap-1 group-hover:text-blue-500 transition-colors">
-                                {n.date}
-                              </p>
-                            </div>
-                          </div>
-                        ))
-                      ) : (
-                        <div className="py-8 text-center text-slate-400 text-sm">
-                          No new notifications
-                        </div>
+                  <div className="absolute right-0 mt-2 w-96 bg-white rounded-xl shadow-xl border border-slate-100 py-2 z-20 animate-in fade-in slide-in-from-top-2">
+                    <div className="px-4 py-3 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+                      <div>
+                        <h3 className="font-semibold text-sm text-slate-900">Notifications</h3>
+                        <p className="text-xs text-slate-500 mt-0.5">
+                          {unreadCount > 0 ? `${unreadCount} alerts attention` : "All caught up"}
+                        </p>
+                      </div>
+                      {unreadCount > 0 && (
+                        <button
+                          onClick={handleMarkAllRead}
+                          disabled={markingRead}
+                          className="text-xs text-blue-600 hover:text-blue-700 font-medium disabled:opacity-50"
+                        >
+                          {markingRead ? "Marking..." : "Mark all read"}
+                        </button>
                       )}
                     </div>
-                    <div className="px-4 py-2 border-t border-slate-50 text-center bg-slate-50/30">
-                      <Link
-                        to="/settings"
-                        className="text-xs font-semibold text-slate-500 hover:text-blue-600 transition-colors"
-                      >
-                        View Activity Log
-                      </Link>
+                    <div className="max-h-[400px] overflow-y-auto divide-y divide-slate-50">
+                      {overdueNotifications.length > 0 &&
+                        overdueNotifications.map((n) => (
+                          <Link
+                            key={n.id}
+                            to={`/indicators/${n.indicatorId}`}
+                            onClick={() => setShowNotifications(false)}
+                            className="px-4 py-3 hover:bg-amber-50/60 flex gap-3 transition-colors cursor-pointer group block"
+                          >
+                            <div className="mt-0.5 w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center flex-shrink-0">
+                              <Clock className="w-4 h-4 text-amber-500" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-start justify-between gap-2">
+                                <p className="text-sm font-semibold text-slate-900 leading-tight group-hover:text-amber-700 truncate">
+                                  {n.indicatorName} Overdue
+                                </p>
+                                <span className="flex-shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 uppercase tracking-wide">
+                                  Overdue
+                                </span>
+                              </div>
+                              <p className="text-xs text-slate-500 mt-0.5 truncate">
+                                {n.projectName}
+                              </p>
+                              <p className="text-xs text-amber-600 mt-1 line-clamp-2">
+                                Last report was {n.daysOverdue} days ago. Expected {n.expectedFrequency.toLowerCase()}.
+                              </p>
+                            </div>
+                          </Link>
+                        ))}
+
+                      {notifications.length > 0 ? (
+                        notifications.map((n) => (
+                          <Link
+                            key={n.id}
+                            to={`/indicators/${n.indicatorId}`}
+                            onClick={() => setShowNotifications(false)}
+                            className="px-4 py-3 hover:bg-red-50/60 flex gap-3 transition-colors cursor-pointer group block"
+                          >
+                            <div className="mt-0.5 w-8 h-8 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0">
+                              <AlertTriangle className="w-4 h-4 text-red-500" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-start justify-between gap-2">
+                                <p className="text-sm font-semibold text-slate-900 leading-tight group-hover:text-red-700 truncate">
+                                  {n.indicatorName} anomaly
+                                </p>
+                                {n.anomalyStatus === "DETECTED" && (
+                                  <span className="flex-shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-red-100 text-red-700 uppercase tracking-wide">
+                                    New
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-xs text-slate-500 mt-0.5 truncate">
+                                {n.projectName}
+                              </p>
+                              {n.anomalyReason && (
+                                <p className="text-xs text-red-600 mt-1 line-clamp-2">
+                                  {n.anomalyReason}
+                                </p>
+                              )}
+                            </div>
+                          </Link>
+                        ))
+                      ) : (
+                        overdueNotifications.length === 0 && (
+                          <div className="py-10 text-center">
+                            <CheckCircle className="w-8 h-8 text-green-400 mx-auto mb-2" />
+                            <p className="text-sm text-slate-500 font-medium">
+                              Everything looks good!
+                            </p>
+                            <p className="text-xs text-slate-400 mt-1">
+                              No anomalies or late reports.
+                            </p>
+                          </div>
+                        )
+                      )}
+                    </div>
+                    <div className="px-4 py-2 border-t border-slate-100 text-center bg-slate-50/30">
+                      <span className="text-xs text-slate-400">
+                        Last 30 days · auto-refreshes every 60s
+                      </span>
                     </div>
                   </div>
                 </>

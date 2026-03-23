@@ -87,10 +87,11 @@ void main() {
 
 interface SilkPlaneProps {
   uniforms: SilkUniforms;
+  paused?: boolean;
 }
 
 const SilkPlane = forwardRef<Mesh, SilkPlaneProps>(function SilkPlane(
-  { uniforms },
+  { uniforms, paused = false },
   ref
 ) {
   const { viewport } = useThree();
@@ -103,6 +104,7 @@ const SilkPlane = forwardRef<Mesh, SilkPlaneProps>(function SilkPlane(
   }, [ref, viewport]);
 
   useFrame((_state: RootState, delta: number) => {
+    if (paused) return; // Stop animation if paused
     const mesh = ref as React.MutableRefObject<Mesh | null>;
     if (mesh.current) {
       const material = mesh.current.material as ShaderMaterial & {
@@ -131,6 +133,7 @@ export interface SilkProps {
   color?: string;
   noiseIntensity?: number;
   rotation?: number;
+  paused?: boolean;
 }
 
 const Silk: React.FC<SilkProps> = ({
@@ -139,6 +142,7 @@ const Silk: React.FC<SilkProps> = ({
   color = "#7B7481",
   noiseIntensity = 1.5,
   rotation = 0,
+  paused = false,
 }) => {
   const meshRef = useRef<Mesh>(null);
 
@@ -158,11 +162,11 @@ const Silk: React.FC<SilkProps> = ({
     <div className="absolute inset-0 w-full h-full">
       <Canvas
         dpr={[1, 2]}
-        frameloop="always"
+        frameloop={paused ? "demand" : "always"}
         className="absolute inset-0"
         style={{ width: "100%", height: "100%" }}
       >
-        <SilkPlane ref={meshRef} uniforms={uniforms} />
+        <SilkPlane ref={meshRef} uniforms={uniforms} paused={paused} />
       </Canvas>
     </div>
   );

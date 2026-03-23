@@ -50,6 +50,7 @@ export const ProjectDetail: React.FC = () => {
   const [indicators, setIndicators] = useState<Indicator[]>([]);
   const [stats, setStats] = useState<ProjectStats | null>(null);
   const [activities, setActivities] = useState<ActivityLog[]>([]);
+  const [alerts, setAlerts] = useState<any[]>([]);
   const [outcomeProgress, setOutcomeProgress] = useState<OutcomeProgressItem[]>(
     [],
   );
@@ -71,6 +72,7 @@ export const ProjectDetail: React.FC = () => {
     location: "",
     donor: "",
     budgetAmount: "",
+    budgetSpent: "",
     budgetCurrency: "",
   });
   const navigate = useNavigate();
@@ -107,12 +109,14 @@ export const ProjectDetail: React.FC = () => {
         api.getIndicators(id),
         api.getProjectStats(id),
         api.getProjectActivities(id),
+        api.getProjectAlerts(id),
       ])
-        .then(([projData, indData, statsData, actData]) => {
+        .then(([projData, indData, statsData, actData, alertsData]) => {
           setProject(projData ? { ...projData } : undefined);
           setIndicators(indData);
           setStats(statsData);
           setActivities(actData);
+          setAlerts(alertsData || []);
         })
         .catch((error) => {
           console.error("Failed to load project detail", error);
@@ -185,7 +189,7 @@ export const ProjectDetail: React.FC = () => {
     return parsed.toISOString().slice(0, 10);
   };
 
-  const openEditModal = () => {
+  const openEditModal = (focusField?: string) => {
     if (!project) return;
     setEditForm({
       name: project.name ?? "",
@@ -200,10 +204,21 @@ export const ProjectDetail: React.FC = () => {
         project.budgetAmount !== undefined && project.budgetAmount !== null
           ? String(project.budgetAmount)
           : "",
+      budgetSpent:
+        project.budgetSpent !== undefined && project.budgetSpent !== null
+          ? String(project.budgetSpent)
+          : "",
       budgetCurrency: project.budgetCurrency ?? "",
     });
     setEditError(null);
     setIsEditOpen(true);
+    
+    if (focusField) {
+      setTimeout(() => {
+        const el = document.querySelector(`[name="${focusField}"]`) as HTMLInputElement | HTMLTextAreaElement;
+        el?.focus();
+      }, 100);
+    }
   };
 
   const handleAddRootGoal = () => {
@@ -284,6 +299,14 @@ export const ProjectDetail: React.FC = () => {
         setEditError("Budget amount cannot be negative.");
         return;
       }
+      const budgetSpent =
+        editForm.budgetSpent.trim() === ""
+          ? undefined
+          : Number(editForm.budgetSpent.replace(/,/g, ""));
+      if (budgetSpent !== undefined && Number.isNaN(budgetSpent)) {
+        setEditError("Budget spent must be a number.");
+        return;
+      }
       const budgetCurrency = editForm.budgetCurrency.trim().toUpperCase();
       if (budgetAmount !== undefined && !budgetCurrency) {
         setEditError("Budget currency is required when budget amount is set.");
@@ -299,9 +322,21 @@ export const ProjectDetail: React.FC = () => {
         location: editForm.location.trim() || undefined,
         donor: editForm.donor.trim() || undefined,
         budgetAmount,
+        budgetSpent,
         budgetCurrency: budgetCurrency || undefined,
       });
+      
       setProject(updated);
+      
+      // Update stats manually to reflect budget changes immediately in KPI cards
+      if (stats) {
+        setStats({
+          ...stats,
+          budgetSpent: updated.budgetSpent ?? stats.budgetSpent,
+          budgetTotal: updated.budgetAmount ?? stats.budgetTotal,
+        });
+      }
+      
       setIsEditOpen(false);
     } catch (error) {
       console.error("Failed to update project", error);
@@ -476,7 +511,7 @@ export const ProjectDetail: React.FC = () => {
     parsedBudgetAmount !== undefined &&
     (Number.isNaN(parsedBudgetAmount) || parsedBudgetAmount < 0);
   const budgetCurrencyMissing =
-    parsedBudgetAmount !== undefined && editForm.budgetCurrency.trim() === "";
+    (parsedBudgetAmount !== undefined || (editForm.budgetSpent.trim() !== "" && !Number.isNaN(Number(editForm.budgetSpent)))) && editForm.budgetCurrency.trim() === "";
   const canSaveProject =
     !isSavingEdit &&
     !projectNameMissing &&
@@ -510,7 +545,7 @@ export const ProjectDetail: React.FC = () => {
                   <ClipboardCheck className="w-4 h-4 mr-2" /> Data Entry
                 </Button>
               </Link>
-              <Button variant="outline" onClick={openEditModal}>
+              <Button variant="outline" onClick={() => openEditModal()}>
                 Edit Project
               </Button>
               <Button
@@ -610,6 +645,7 @@ export const ProjectDetail: React.FC = () => {
                 </label>
                 <input
                   type="date"
+                  name="startDate"
                   value={editForm.startDate}
                   onChange={(e) =>
                     setEditForm((prev) => ({
@@ -720,13 +756,14 @@ export const ProjectDetail: React.FC = () => {
                 />
               </div>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">
-                  Budget Amount
+                  Budget Total
                 </label>
                 <input
                   type="number"
+                  name="budgetAmount"
                   min={0}
                   step="0.01"
                   value={editForm.budgetAmount}
@@ -739,17 +776,32 @@ export const ProjectDetail: React.FC = () => {
                   className={`w-full px-3 py-2.5 border rounded-xl bg-white text-slate-900 shadow-sm ${
                     budgetInvalid ? "border-red-300" : "border-slate-200"
                   }`}
-                  placeholder="50000"
+                  placeholder="Total Budget"
                 />
-                {budgetInvalid && (
-                  <p className="text-xs text-red-600 mt-1">
-                    Enter a valid non-negative number.
-                  </p>
-                )}
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">
-                  Budget Currency
+                  Budget Utilized (Actual)
+                </label>
+                <input
+                  type="number"
+                  name="budgetSpent"
+                  min={0}
+                  step="0.01"
+                  value={editForm.budgetSpent}
+                  onChange={(e) =>
+                    setEditForm((prev) => ({
+                      ...prev,
+                      budgetSpent: e.target.value,
+                    }))
+                  }
+                  className="w-full px-3 py-2.5 border border-slate-200 rounded-xl bg-white text-slate-900 shadow-sm"
+                  placeholder="Actual Spent"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">
+                  Currency
                 </label>
                 <input
                   type="text"
@@ -766,13 +818,22 @@ export const ProjectDetail: React.FC = () => {
                   }`}
                   placeholder="USD"
                 />
+              </div>
+            </div>
+            {(budgetInvalid || budgetCurrencyMissing) && (
+              <div className="space-y-1">
+                {budgetInvalid && (
+                  <p className="text-xs text-red-600">
+                    Enter valid non-negative numbers for budget.
+                  </p>
+                )}
                 {budgetCurrencyMissing && (
-                  <p className="text-xs text-red-600 mt-1">
-                    Currency is required when amount is provided.
+                  <p className="text-xs text-red-600">
+                    Currency is required when budget is provided.
                   </p>
                 )}
               </div>
-            </div>
+            )}
           </div>
 
           <div className="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between gap-3 pt-1">
@@ -831,12 +892,15 @@ export const ProjectDetail: React.FC = () => {
           <div className="space-y-6">
             {/* KPI Cards */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              <div className="bg-white p-5 rounded-2xl border border-slate-200/70 shadow-sm hover:shadow-md transition-shadow">
+              <div 
+                onClick={() => openEditModal("budgetSpent")}
+                className="bg-white p-5 rounded-2xl border border-slate-200/70 shadow-sm hover:shadow-md transition-all cursor-pointer group"
+              >
                 <div className="flex items-center justify-between mb-4">
-                  <span className="text-slate-500 text-xs font-semibold uppercase tracking-wider">
+                  <span className="text-slate-500 text-xs font-semibold uppercase tracking-wider group-hover:text-blue-600 transition-colors">
                     Budget Utilized
                   </span>
-                  <div className="p-2 bg-green-50 rounded-full text-green-600">
+                  <div className="p-2 bg-green-50 rounded-full text-green-600 group-hover:bg-green-100 transition-colors">
                     <DollarSign className="w-4 h-4" />
                   </div>
                 </div>
@@ -851,17 +915,21 @@ export const ProjectDetail: React.FC = () => {
                     }}
                   ></div>
                 </div>
-                <p className="text-xs text-slate-400 mt-2">
-                  of {formatCurrency(stats.budgetTotal)} total
+                <p className="text-xs text-slate-400 mt-2 flex justify-between">
+                  <span>of {formatCurrency(stats.budgetTotal)} total</span>
+                  <span className="text-blue-500 opacity-0 group-hover:opacity-100 text-[10px] font-bold">EDIT</span>
                 </p>
               </div>
 
-              <div className="bg-white p-5 rounded-2xl border border-slate-200/70 shadow-sm hover:shadow-md transition-shadow">
+              <div 
+                onClick={() => openEditModal("startDate")}
+                className="bg-white p-5 rounded-2xl border border-slate-200/70 shadow-sm hover:shadow-md transition-all cursor-pointer group"
+              >
                 <div className="flex items-center justify-between mb-4">
-                  <span className="text-slate-500 text-xs font-semibold uppercase tracking-wider">
+                  <span className="text-slate-500 text-xs font-semibold uppercase tracking-wider group-hover:text-blue-600 transition-colors">
                     Time Elapsed
                   </span>
-                  <div className="p-2 bg-blue-50 rounded-full text-blue-600">
+                  <div className="p-2 bg-blue-50 rounded-full text-blue-600 group-hover:bg-blue-100 transition-colors">
                     <Clock className="w-4 h-4" />
                   </div>
                 </div>
@@ -876,58 +944,62 @@ export const ProjectDetail: React.FC = () => {
                     }}
                   ></div>
                 </div>
-                <p className="text-xs text-slate-400 mt-2">
-                  {stats.daysElapsed} days of {stats.daysTotal} days
+                <p className="text-xs text-slate-400 mt-2 flex justify-between">
+                  <span>{stats.daysElapsed} days of {stats.daysTotal} days</span>
+                  <span className="text-blue-500 opacity-0 group-hover:opacity-100 text-[10px] font-bold">EDIT</span>
                 </p>
               </div>
 
-              <div className="bg-white p-5 rounded-2xl border border-slate-200/70 shadow-sm hover:shadow-md transition-shadow">
+              <div 
+                onClick={() => setActiveTab("indicators")}
+                className="bg-white p-5 rounded-2xl border border-slate-200/70 shadow-sm hover:shadow-md transition-all cursor-pointer group"
+              >
                 <div className="flex items-center justify-between mb-4">
-                  <span className="text-slate-500 text-xs font-semibold uppercase tracking-wider">
-                    Beneficiaries
+                  <span className="text-slate-500 text-xs font-semibold uppercase tracking-wider group-hover:text-blue-600 transition-colors">
+                    Reporting Status
                   </span>
-                  <div className="p-2 bg-purple-50 rounded-full text-purple-600">
-                    <Users className="w-4 h-4" />
+                  <div className="p-2 bg-purple-50 rounded-full text-purple-600 group-hover:bg-purple-100 transition-colors">
+                    <BarChart2 className="w-4 h-4" />
                   </div>
                 </div>
                 <p className="text-2xl font-bold text-slate-900">
-                  {stats.beneficiariesReached.toLocaleString()}
+                  {stats.indicatorsReporting} / {stats.indicatorsTotal}
                 </p>
                 <div className="mt-2 w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
                   <div
                     className="bg-purple-500 h-full"
                     style={{
-                      width: `${getPercent(stats.beneficiariesReached, stats.beneficiariesTarget)}%`,
+                      width: `${getPercent(stats.indicatorsReporting, stats.indicatorsTotal)}%`,
                     }}
                   ></div>
                 </div>
                 <p className="text-xs text-slate-400 mt-2">
-                  Target: {stats.beneficiariesTarget.toLocaleString()}
+                  Indicators with data reporting
                 </p>
               </div>
 
-              <div className="bg-white p-5 rounded-2xl border border-slate-200/70 shadow-sm hover:shadow-md transition-shadow">
+              <div 
+                onClick={() => navigate(`/data-entry?projectId=${project.id}`)}
+                className="bg-white p-5 rounded-2xl border border-slate-200/70 shadow-sm hover:shadow-md transition-all cursor-pointer group"
+              >
                 <div className="flex items-center justify-between mb-4">
-                  <span className="text-slate-500 text-xs font-semibold uppercase tracking-wider">
-                    Activities
+                  <span className="text-slate-500 text-xs font-semibold uppercase tracking-wider group-hover:text-blue-600 transition-colors">
+                    Data Entry Volume
                   </span>
-                  <div className="p-2 bg-amber-50 rounded-full text-amber-600">
-                    <CheckCircle className="w-4 h-4" />
+                  <div className="p-2 bg-amber-50 rounded-full text-amber-600 group-hover:bg-amber-100 transition-colors">
+                    <ClipboardCheck className="w-4 h-4" />
                   </div>
                 </div>
                 <p className="text-2xl font-bold text-slate-900">
-                  {stats.activitiesCompleted}
+                  {stats.submissionsCount.toLocaleString()}
                 </p>
                 <div className="mt-2 w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
                   <div
-                    className="bg-amber-500 h-full"
-                    style={{
-                      width: `${getPercent(stats.activitiesCompleted, stats.activitiesTotal)}%`,
-                    }}
+                    className="bg-amber-500 h-full w-full opacity-30"
                   ></div>
                 </div>
                 <p className="text-xs text-slate-400 mt-2">
-                  {stats.activitiesTotal - stats.activitiesCompleted} remaining
+                  Total data submissions recorded
                 </p>
               </div>
             </div>
@@ -1150,45 +1222,48 @@ export const ProjectDetail: React.FC = () => {
                   </div>
                 </Card>
 
-                {/* Key Alerts Section - Dummy Content */}
+                {/* Key Alerts Section - Actual Data Content */}
                 <div className="bg-white rounded-2xl border border-slate-200/70 overflow-hidden">
                   <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-gradient-to-r from-slate-50 to-white">
                     <h3 className="text-lg font-semibold text-slate-900">
                       Critical Attention Needed
                     </h3>
-                    <span className="bg-red-100 text-red-800 text-xs font-bold px-2 py-1 rounded-full">
-                      2 Active
+                    <span className={`text-xs font-bold px-2 py-1 rounded-full ${alerts.length > 0 ? "bg-red-100 text-red-800" : "bg-green-100 text-green-800"}`}>
+                      {alerts.length} {alerts.length === 1 ? "Issue" : "Issues"}
                     </span>
                   </div>
                   <div className="divide-y divide-slate-100">
-                    <div className="p-4 flex gap-4 hover:bg-slate-50 transition-colors cursor-pointer">
-                      <div className="p-2 bg-red-50 rounded-full h-fit text-red-600 mt-1">
-                        <AlertTriangle className="w-5 h-5" />
+                    {alerts.length === 0 ? (
+                      <div className="p-12 text-center text-slate-400">
+                        <CheckCircle className="w-8 h-8 mx-auto mb-2 opacity-20" />
+                        <p className="text-sm">No critical alerts found. All systems healthy.</p>
                       </div>
-                      <div>
-                        <h4 className="text-sm font-bold text-slate-900">
-                          Anomaly in Maternal Mortality Ratio
-                        </h4>
-                        <p className="text-sm text-slate-500 mt-1">
-                          Value spike detected on Oct 15. Deviation {">"} 2 std
-                          dev from baseline.
-                        </p>
-                      </div>
-                    </div>
-                    <div className="p-4 flex gap-4 hover:bg-slate-50 transition-colors cursor-pointer">
-                      <div className="p-2 bg-amber-50 rounded-full h-fit text-amber-600 mt-1">
-                        <Clock className="w-5 h-5" />
-                      </div>
-                      <div>
-                        <h4 className="text-sm font-bold text-slate-900">
-                          Quarterly Report Overdue
-                        </h4>
-                        <p className="text-sm text-slate-500 mt-1">
-                          Q3 2024 Progress Report was due 5 days ago. Please
-                          submit for review.
-                        </p>
-                      </div>
-                    </div>
+                    ) : (
+                      alerts.map((alert) => (
+                        <div 
+                          key={alert.id} 
+                          className="p-4 flex gap-4 hover:bg-slate-50 transition-colors cursor-pointer group"
+                          onClick={() => navigate(`/indicators/${alert.indicatorId}`)}
+                        >
+                          <div className={`p-2 rounded-full h-fit mt-1 ${alert.severity === 'danger' ? "bg-red-50 text-red-600" : "bg-amber-50 text-amber-600"}`}>
+                            {alert.type === 'anomaly' ? <AlertTriangle className="w-5 h-5" /> : <Clock className="w-5 h-5" />}
+                          </div>
+                          <div className="flex-1">
+                            <div className="flex justify-between items-start">
+                              <h4 className="text-sm font-bold text-slate-900 group-hover:text-blue-600 transition-colors">
+                                {alert.title}
+                              </h4>
+                              <span className="text-[10px] text-slate-400 font-medium">
+                                {new Date(alert.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                              </span>
+                            </div>
+                            <p className="text-sm text-slate-500 mt-1 line-clamp-2">
+                              {alert.message}
+                            </p>
+                          </div>
+                        </div>
+                      ))
+                    )}
                   </div>
                 </div>
               </div>
@@ -1196,39 +1271,49 @@ export const ProjectDetail: React.FC = () => {
               {/* Sidebar Column */}
               <div className="space-y-6">
                 <Card title="Recent Activity" className="h-full">
-                  <div className="relative pl-4 border-l-2 border-slate-100 space-y-6 py-2">
-                    {activities.map((activity, idx) => (
-                      <div key={activity.id} className="relative">
-                        <div
-                          className={`
-                                 absolute -left-[21px] top-0 w-3 h-3 rounded-full border-2 border-white
-                                 ${activity.type === "danger" ? "bg-red-500" : activity.type === "success" ? "bg-green-500" : activity.type === "warning" ? "bg-amber-500" : "bg-blue-400"}
-                              `}
-                        ></div>
-                        <div className="flex flex-col">
-                          <span className="text-xs text-slate-400 mb-0.5">
-                            {activity.date}
-                          </span>
-                          <p className="text-sm text-slate-800 font-medium">
-                            <span className="font-bold text-slate-900">
-                              {activity.user}
-                            </span>{" "}
-                            {activity.action}
-                          </p>
-                          <span className="text-xs text-slate-500 bg-slate-50 px-2 py-1 rounded border border-slate-100 mt-1 w-fit">
-                            {activity.item}
-                          </span>
+                  <div className="max-h-[600px] overflow-y-auto pr-2 custom-scrollbar">
+                    <div className="relative pl-4 border-l-2 border-slate-100 space-y-6 py-2 ml-1">
+                      {activities.map((activity) => (
+                        <div key={activity.id} className="relative">
+                          <div
+                            className={`
+                                   absolute -left-[21px] top-0 w-3 h-3 rounded-full border-2 border-white
+                                   ${activity.type === "danger" ? "bg-red-500" : activity.type === "success" ? "bg-green-500" : activity.type === "warning" ? "bg-amber-500" : "bg-blue-400"}
+                                `}
+                          ></div>
+                          <div className="flex flex-col">
+                            <span className="text-xs text-slate-400 mb-0.5">
+                              {activity.date}
+                            </span>
+                            <p className="text-sm text-slate-800 font-medium whitespace-normal break-words">
+                              <span className="font-bold text-slate-900">
+                                {activity.user}
+                              </span>{" "}
+                              {activity.action}
+                            </p>
+                            <span className="text-xs text-slate-500 bg-slate-50 px-2 py-1 rounded border border-slate-100 mt-1 w-fit">
+                              {activity.item}
+                            </span>
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      ))}
+                      {activities.length === 0 && (
+                        <div className="text-center py-8">
+                          <p className="text-sm text-slate-400">No recent activity</p>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="w-full mt-4 text-xs"
-                  >
-                    View All Activity
-                  </Button>
+                  <div className="mt-4 pt-4 border-t border-slate-50">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="w-full text-xs text-slate-500 hover:text-blue-600"
+                      onClick={() => navigate("/settings")}
+                    >
+                      View Full Audit Log
+                    </Button>
+                  </div>
                 </Card>
               </div>
             </div>

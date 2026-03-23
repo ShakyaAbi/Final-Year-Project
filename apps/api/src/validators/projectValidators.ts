@@ -16,6 +16,7 @@ export const createProjectSchema = {
     location: z.string().optional(),
     donor: z.string().optional(),
     budgetAmount: z.number().optional(),
+    budgetSpent: z.number().optional(),
     budgetCurrency: z.string().optional()
   })
 };
@@ -41,6 +42,7 @@ export const updateProjectSchema = {
     location: z.string().optional(),
     donor: z.string().optional(),
     budgetAmount: z.number().optional(),
+    budgetSpent: z.number().optional(),
     budgetCurrency: z.string().optional()
   })
 };

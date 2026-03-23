@@ -7,7 +7,7 @@
   "scripts": {
     "dev:web": "npm --workspace apps/web run dev",
     "dev:api": "npm --workspace apps/api run dev",
-    "dev": "npm run dev:web",
+    "dev": "npx concurrently -n \"api,web\" -c \"bgBlue.bold,bgMagenta.bold\" \"npm run dev:api\" \"npm run dev:web\"",
     "build:web": "npm --workspace apps/web run build",
     "build:api": "npm --workspace apps/api run build",
     "build": "npm run build:web && npm run build:api",

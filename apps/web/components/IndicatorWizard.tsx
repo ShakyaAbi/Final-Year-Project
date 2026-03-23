@@ -1196,6 +1196,10 @@ export const IndicatorWizard: React.FC<IndicatorWizardProps> = ({
                     value: "Weekly",
                     subtitle: "Data entry expected every week",
                   },
+                  {
+                    value: "Monthly",
+                    subtitle: "Data entry expected every month",
+                  },
                 ].map((item) => (
                   <button
                     type="button"
@@ -1221,7 +1225,63 @@ export const IndicatorWizard: React.FC<IndicatorWizardProps> = ({
               </div>
             </div>
 
-            <div>
+            {/* Reminder Configuration */}
+            <div className="border border-blue-200 bg-blue-50 rounded-lg p-4 mt-4">
+              <div className="flex items-center gap-2 mb-2">
+                <input
+                  type="checkbox"
+                  checked={!!formData.reminderEnabled}
+                  onChange={e => updateField("reminderEnabled", e.target.checked)}
+                  className="rounded border-blue-400"
+                  id="reminderEnabled"
+                />
+                <label htmlFor="reminderEnabled" className="text-sm font-medium text-blue-900">
+                  Enable Data Entry Reminders
+                </label>
+              </div>
+              {formData.reminderEnabled && (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-2">
+                  <div>
+                    <label className="block text-xs font-medium text-blue-700 mb-1">
+                      Days Before Due
+                    </label>
+                    <input
+                      type="number"
+                      min={0}
+                      value={formData.reminderDaysBeforeDue ?? 3}
+                      onChange={e => updateField("reminderDaysBeforeDue", parseInt(e.target.value, 10))}
+                      className="w-full px-3 py-2 border border-blue-300 rounded-md bg-white text-blue-900 text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-blue-700 mb-1">
+                      Days After Due
+                    </label>
+                    <input
+                      type="number"
+                      min={0}
+                      value={formData.reminderDaysAfterDue ?? 2}
+                      onChange={e => updateField("reminderDaysAfterDue", parseInt(e.target.value, 10))}
+                      className="w-full px-3 py-2 border border-blue-300 rounded-md bg-white text-blue-900 text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-blue-700 mb-1">
+                      Recipients (comma-separated emails)
+                    </label>
+                    <input
+                      type="text"
+                      value={(formData.reminderRecipients || []).join(", ")}
+                      onChange={e => updateField("reminderRecipients", e.target.value.split(",").map(s => s.trim()).filter(Boolean))}
+                      className="w-full px-3 py-2 border border-blue-300 rounded-md bg-white text-blue-900 text-sm"
+                      placeholder="user1@email.com, user2@email.com"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="mt-6">
               <label className="block text-sm font-medium text-slate-700 mb-1">
                 Start Date (First Submission)
               </label>

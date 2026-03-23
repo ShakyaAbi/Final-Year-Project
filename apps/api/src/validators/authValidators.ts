@@ -5,7 +5,7 @@ export const registerSchema = {
   body: z.object({
     email: z.string().email(),
     password: z.string().min(8),
-    role: z.nativeEnum(Role)
+    role: z.nativeEnum(Role).optional()
   })
 };
 

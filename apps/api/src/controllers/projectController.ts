@@ -74,3 +74,8 @@ export const getProjectActivities = asyncHandler(async (req: Request, res: Respo
   });
   res.json(response);
 });
+
+export const getProjectAlerts = asyncHandler(async (req: Request, res: Response) => {
+  const alerts = await projectService.getProjectAlerts(Number(req.params.id));
+  res.json(alerts);
+});

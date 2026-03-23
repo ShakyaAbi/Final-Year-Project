@@ -13,6 +13,7 @@ import {
   restoreSubmissionSchema,
   submissionIdParamsSchema,
 } from "../validators/submissionValidators";
+import { uploadVerification } from "../middleware/upload";
 import {
   createSubmission,
   listSubmissions,
@@ -30,6 +31,7 @@ const router = Router();
 router.post(
   "/indicators/:indicatorId/submissions",
   authenticate,
+  uploadVerification,
   validate({ ...indicatorSubmissionsParamsSchema, ...createSubmissionSchema }),
   createSubmission
 );

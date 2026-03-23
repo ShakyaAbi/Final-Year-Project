@@ -19,6 +19,7 @@ export const createProject = async (data: {
   location?: string;
   donor?: string;
   budgetAmount?: number;
+  budgetSpent?: number;
   budgetCurrency?: string;
 }) => {
   return projectRepo.createProject({
@@ -31,6 +32,7 @@ export const createProject = async (data: {
     location: data.location ?? null,
     donor: data.donor ?? null,
     budgetAmount: data.budgetAmount ?? null,
+    budgetSpent: data.budgetSpent ?? null,
     budgetCurrency: data.budgetCurrency ?? null
   });
 };
@@ -57,6 +59,7 @@ export const updateProject = async (
     location: string;
     donor: string;
     budgetAmount: number;
+    budgetSpent: number;
     budgetCurrency: string;
   }>
 ) => {
@@ -71,6 +74,7 @@ export const updateProject = async (
     location: data.location,
     donor: data.donor,
     budgetAmount: data.budgetAmount,
+    budgetSpent: data.budgetSpent,
     budgetCurrency: data.budgetCurrency
   });
 };
@@ -90,11 +94,8 @@ export const getProjectStats = async (id: number) => {
   const daysElapsed =
     project.startDate ? diffDays(project.startDate, endCap) : 0;
 
-  const activityIndicators = await prisma.indicator.findMany({
-    where: {
-      projectId: project.id,
-      logframeNode: { type: NodeType.ACTIVITY }
-    },
+  const indicators = await prisma.indicator.findMany({
+    where: { projectId: project.id },
     select: {
       id: true,
       submissions: {
@@ -103,21 +104,101 @@ export const getProjectStats = async (id: number) => {
       }
     }
   });
-  const activitiesTotal = activityIndicators.length;
-  const activitiesCompleted = activityIndicators.filter(
-    (indicator) => indicator.submissions.length > 0
+
+  const indicatorsTotal = indicators.length;
+  const indicatorsReporting = indicators.filter(
+    (ind) => ind.submissions.length > 0
   ).length;
+
+  const submissionsCount = await prisma.submission.count({
+    where: { indicator: { projectId: id } }
+  });
 
   return {
     budgetTotal: project.budgetAmount ?? 0,
-    budgetSpent: 0,
+    budgetSpent: (project as any).budgetSpent ?? 0,
     daysTotal,
     daysElapsed,
-    beneficiariesTarget: 0,
-    beneficiariesReached: 0,
-    activitiesTotal,
-    activitiesCompleted
+    indicatorsTotal,
+    indicatorsReporting,
+    submissionsCount
   };
+};
+
+export const getProjectAlerts = async (id: number) => {
+  const project = await getProject(id);
+  const now = new Date();
+
+  // Get all indicators with their last 10 submissions to check for alerts
+  const indicators = await prisma.indicator.findMany({
+    where: { projectId: id },
+    include: {
+      submissions: {
+        where: { deletedAt: null },
+        orderBy: { reportedAt: 'desc' },
+        take: 10
+      }
+    }
+  });
+
+  const alerts: any[] = [];
+
+  for (const indicator of indicators) {
+    // 1. Check for recent anomalies (within last 30 days)
+    const thirtyDaysAgo = new Date(now.getTime() - 30 * MS_PER_DAY);
+    const recentAnomalies = indicator.submissions.filter(
+      (s) => s.isAnomaly && s.reportedAt >= thirtyDaysAgo
+    );
+
+    for (const anomaly of recentAnomalies) {
+      alerts.push({
+        id: `anomaly-${anomaly.id}`,
+        type: 'anomaly',
+        indicatorId: indicator.id,
+        indicatorName: indicator.name,
+        title: `Anomaly in ${indicator.name}`,
+        message: anomaly.anomalyReason || `Value spike detected on ${anomaly.reportedAt.toISOString().split('T')[0]}.`,
+        date: anomaly.reportedAt.toISOString(),
+        severity: 'danger'
+      });
+    }
+
+    // 2. Check for overdue reporting
+    // Try to get frequency from validationConfig or indicator.frequency (if it were to exist in DB)
+    const freq = (indicator.validationConfig as any)?.reportingFrequency || 'WEEKLY';
+    const lastSubmission = indicator.submissions[0];
+    
+    let expectedDays = 7;
+    if (freq === 'DAILY') expectedDays = 1;
+    if (freq === 'MONTHLY') expectedDays = 30;
+    if (freq === 'QUARTERLY') expectedDays = 90;
+
+    const threshold = expectedDays * 1.5;
+    
+    // Reference date is either the last report or the project start date
+    const refDate = lastSubmission ? lastSubmission.reportedAt : project.startDate;
+    
+    if (refDate) {
+      const daysSince = diffDays(refDate, now);
+      if (daysSince > threshold) {
+        alerts.push({
+          id: `overdue-${indicator.id}`,
+          type: 'overdue',
+          indicatorId: indicator.id,
+          indicatorName: indicator.name,
+          title: `${freq.charAt(0) + freq.slice(1).toLowerCase()} Report Overdue`,
+          message: lastSubmission 
+            ? `${indicator.name} was last reported ${daysSince} days ago.` 
+            : `${indicator.name} has no data yet. Expected every ${expectedDays} days.`,
+          date: refDate.toISOString(),
+          severity: 'warning'
+        });
+      }
+    }
+  }
+
+  // Sort by date descending
+  return alerts.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 };
 
 export const getProjectActivities = async (id: number) => {

@@ -80,7 +80,7 @@ const categoryConfigSchema = z
   .nullable();
 
 const reportingFrequencySchema = z
-  .enum(["DAILY", "WEEKLY"])
+  .enum(["DAILY", "WEEKLY", "MONTHLY", "QUARTERLY", "YEARLY"])
   .optional();
 
 export const projectIndicatorParamsSchema = {
@@ -111,6 +111,11 @@ export const createIndicatorSchema = {
     reportingFrequency: reportingFrequencySchema,
     categories: z.array(categoryDefinitionSchema).optional().nullable(),
     categoryConfig: categoryConfigSchema,
+    // Reminder fields
+    reminderEnabled: z.boolean().optional(),
+    reminderDaysBeforeDue: z.number().int().optional().nullable(),
+    reminderDaysAfterDue: z.number().int().optional().nullable(),
+    reminderRecipients: z.array(z.string()).optional().nullable(),
   }),
 };
 
@@ -132,5 +137,10 @@ export const updateIndicatorSchema = {
     reportingFrequency: reportingFrequencySchema,
     categories: z.array(categoryDefinitionSchema).optional().nullable(),
     categoryConfig: categoryConfigSchema,
+    // Reminder fields
+    reminderEnabled: z.boolean().optional(),
+    reminderDaysBeforeDue: z.number().int().optional().nullable(),
+    reminderDaysAfterDue: z.number().int().optional().nullable(),
+    reminderRecipients: z.array(z.string()).optional().nullable(),
   }),
 };
