@@ -2,12 +2,13 @@ import React, { useState, useEffect } from "react";
 import { api } from "../services/api";
 import { Button } from "./ui/Button";
 import { Modal } from "./ui/Modal";
+import { Trash2 } from "lucide-react";
 
 interface Template {
   id: number;
   name: string;
   description?: string;
-  columnMappings: Record<string, string>;
+  columnMapping: any;
   isDefault: boolean;
   createdAt: string;
   updatedAt: string;
@@ -15,7 +16,6 @@ interface Template {
 
 interface TemplateManagerProps {
   indicatorId: string;
-  type: "import" | "export";
   isOpen: boolean;
   onClose: () => void;
   onSelectTemplate?: (template: Template) => void;
@@ -23,7 +23,6 @@ interface TemplateManagerProps {
 
 export const TemplateManager: React.FC<TemplateManagerProps> = ({
   indicatorId,
-  type,
   isOpen,
   onClose,
   onSelectTemplate,
@@ -32,14 +31,21 @@ export const TemplateManager: React.FC<TemplateManagerProps> = ({
   const [loading, setLoading] = useState(true);
   const [showBuilder, setShowBuilder] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<Template | null>(null);
+  const [indicator, setIndicator] = useState<any>(null);
+
+  const loadIndicator = async () => {
+    try {
+      const data = await api.getIndicator(indicatorId);
+      setIndicator(data);
+    } catch (error) {
+      console.error("Failed to load indicator:", error);
+    }
+  };
 
   const loadTemplates = async () => {
     try {
       setLoading(true);
-      const data =
-        type === "import"
-          ? await api.getImportTemplates(indicatorId)
-          : await api.getExportTemplates(indicatorId);
+      const data = await api.getImportTemplates(indicatorId);
       setTemplates(data);
     } catch (error) {
       console.error("Failed to load templates:", error);
@@ -50,17 +56,14 @@ export const TemplateManager: React.FC<TemplateManagerProps> = ({
 
   useEffect(() => {
     loadTemplates();
-  }, [indicatorId, type]);
+    loadIndicator();
+  }, [indicatorId]);
 
   const handleDelete = async (templateId: number) => {
     if (!confirm("Are you sure you want to delete this template?")) return;
 
     try {
-      if (type === "import") {
-        await api.deleteImportTemplate(templateId);
-      } else {
-        await api.deleteExportTemplate(templateId);
-      }
+      await api.deleteImportTemplate(templateId);
       loadTemplates();
     } catch (error) {
       console.error("Failed to delete template:", error);
@@ -76,15 +79,11 @@ export const TemplateManager: React.FC<TemplateManagerProps> = ({
       const templateData = {
         name: template.name,
         description: template.description,
-        columnMappings: template.columnMappings,
+        columnMapping: template.columnMapping,
         isDefault: true,
       };
 
-      if (type === "import") {
-        await api.updateImportTemplate(templateId, templateData);
-      } else {
-        await api.updateExportTemplate(templateId, templateData);
-      }
+      await api.updateImportTemplate(templateId, templateData);
       loadTemplates();
     } catch (error) {
       console.error("Failed to set default template:", error);
@@ -96,15 +95,11 @@ export const TemplateManager: React.FC<TemplateManagerProps> = ({
       const clonedData = {
         name: `${template.name} (Copy)`,
         description: template.description,
-        columnMappings: template.columnMappings,
+        columnMapping: template.columnMapping,
         isDefault: false,
       };
 
-      if (type === "import") {
-        await api.createImportTemplate(indicatorId, clonedData);
-      } else {
-        await api.createExportTemplate(indicatorId, clonedData);
-      }
+      await api.createImportTemplate(indicatorId, clonedData);
       loadTemplates();
     } catch (error) {
       console.error("Failed to clone template:", error);
@@ -118,7 +113,7 @@ export const TemplateManager: React.FC<TemplateManagerProps> = ({
       <Modal
         isOpen={isOpen && !showBuilder}
         onClose={onClose}
-        title={`${type === "import" ? "Import" : "Export"} Templates`}
+        title="Import Templates"
       >
         {loading ? (
           <div className="flex items-center justify-center p-12">
@@ -128,7 +123,7 @@ export const TemplateManager: React.FC<TemplateManagerProps> = ({
           <div className="space-y-5">
             <div className="flex items-center justify-between">
               <p className="text-sm text-gray-600">
-                Manage your CSV {type} templates for consistent data formatting
+                Manage your CSV mapping templates for faster data entry
               </p>
               <Button
                 onClick={() => {
@@ -162,8 +157,7 @@ export const TemplateManager: React.FC<TemplateManagerProps> = ({
                   No templates yet
                 </p>
                 <p className="text-sm text-gray-500 max-w-sm mx-auto">
-                  Create your first template to standardize CSV {type}{" "}
-                  formatting and save time on future data operations
+                  Create your first template to standardize CSV import mapping and save time on future data operations
                 </p>
               </div>
             ) : (
@@ -191,13 +185,13 @@ export const TemplateManager: React.FC<TemplateManagerProps> = ({
                           </p>
                         )}
                         <div className="flex flex-wrap gap-1 mt-2">
-                          {Object.values(template.columnMappings).map(
-                            (col, idx) => (
+                          {(template.columnMapping?.columns || []).map(
+                            (col: any, idx: number) => (
                               <span
                                 key={idx}
-                                className="px-2 py-0.5 text-xs bg-gray-100 text-gray-700 rounded border border-gray-200"
+                                className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-blue-50 text-blue-600 rounded border border-blue-100"
                               >
-                                {col}
+                                {col.csvHeader}
                               </span>
                             ),
                           )}
@@ -248,9 +242,10 @@ export const TemplateManager: React.FC<TemplateManagerProps> = ({
                         </button>
                         <button
                           onClick={() => handleDelete(template.id)}
-                          className="text-sm text-red-600 hover:text-red-800"
+                          className="text-red-600 hover:text-red-800 p-1 rounded-md hover:bg-red-50 transition-colors"
+                          title="Delete template"
                         >
-                          Delete
+                          <Trash2 className="w-4 h-4" />
                         </button>
                       </div>
                     </div>
@@ -271,7 +266,7 @@ export const TemplateManager: React.FC<TemplateManagerProps> = ({
       {showBuilder && (
         <TemplateBuilderDialog
           indicatorId={indicatorId}
-          type={type}
+          indicator={indicator}
           template={editingTemplate}
           isOpen={showBuilder}
           onClose={() => {
@@ -291,7 +286,7 @@ export const TemplateManager: React.FC<TemplateManagerProps> = ({
 
 interface TemplateBuilderDialogProps {
   indicatorId: string;
-  type: "import" | "export";
+  indicator: any;
   template: Template | null;
   isOpen: boolean;
   onClose: () => void;
@@ -300,7 +295,7 @@ interface TemplateBuilderDialogProps {
 
 const TemplateBuilderDialog: React.FC<TemplateBuilderDialogProps> = ({
   indicatorId,
-  type,
+  indicator,
   template,
   isOpen,
   onClose,
@@ -309,12 +304,19 @@ const TemplateBuilderDialog: React.FC<TemplateBuilderDialogProps> = ({
   const [name, setName] = useState(template?.name || "");
   const [description, setDescription] = useState(template?.description || "");
   const [isDefault, setIsDefault] = useState(template?.isDefault || false);
-  const [columnMappings, setColumnMappings] = useState<Record<string, string>>(
-    template?.columnMappings || {
+  const [columnMapping, setColumnMapping] = useState<Record<string, string>>(() => {
+    if (template?.columnMapping && Array.isArray(template.columnMapping.columns)) {
+      const flat: Record<string, string> = {};
+      template.columnMapping.columns.forEach((col: any) => {
+        flat[col.fieldName] = col.csvHeader;
+      });
+      return flat;
+    }
+    return {
       reportedAt: "Date",
       value: "Value",
-    },
-  );
+    };
+  });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -371,7 +373,7 @@ const TemplateBuilderDialog: React.FC<TemplateBuilderDialogProps> = ({
   const optionalFields = fieldDefinitions.optional;
 
   const handleAddMapping = (field: string, defaultValue: string) => {
-    setColumnMappings((prev) => ({
+    setColumnMapping((prev) => ({
       ...prev,
       [field]: defaultValue,
     }));
@@ -380,13 +382,13 @@ const TemplateBuilderDialog: React.FC<TemplateBuilderDialogProps> = ({
   const handleRemoveMapping = (field: string) => {
     const isRequired = fieldDefinitions.required.some((f) => f.key === field);
     if (isRequired) return;
-    const newMappings = { ...columnMappings };
+    const newMappings = { ...columnMapping };
     delete newMappings[field];
-    setColumnMappings(newMappings);
+    setColumnMapping(newMappings);
   };
 
   const handleUpdateMapping = (field: string, csvColumn: string) => {
-    setColumnMappings((prev) => ({
+    setColumnMapping((prev) => ({
       ...prev,
       [field]: csvColumn,
     }));
@@ -400,7 +402,7 @@ const TemplateBuilderDialog: React.FC<TemplateBuilderDialogProps> = ({
 
     // Validate required fields
     for (const field of requiredFields) {
-      if (!columnMappings[field.key] || !columnMappings[field.key].trim()) {
+      if (!columnMapping[field.key] || !columnMapping[field.key].trim()) {
         setError(
           `Required field "${field.label}" must have a CSV column mapping`,
         );
@@ -412,27 +414,36 @@ const TemplateBuilderDialog: React.FC<TemplateBuilderDialogProps> = ({
     setError(null);
 
     try {
+      // Transform flat mapping to backend structure
+      const columns = Object.entries(columnMapping).map(([fieldName, csvHeader]) => {
+        const fieldDef = [...fieldDefinitions.required, ...fieldDefinitions.optional]
+          .find(f => f.key === fieldName);
+        
+        return {
+          csvHeader,
+          fieldName,
+          dataType: fieldName === 'reportedAt' ? 'date' : 
+                    fieldName === 'value' ? (indicator?.dataType?.toLowerCase() || 'text') : 'text',
+          required: fieldDef?.key === 'reportedAt' || fieldDef?.key === 'value',
+          transform: {
+            trim: true
+          }
+        };
+      });
+
       const templateData = {
         name: name.trim(),
         description: description.trim() || undefined,
         isDefault,
-        columnMappings,
+        columnMapping: { columns },
       };
 
       if (template) {
         // Update existing template
-        if (type === "import") {
-          await api.updateImportTemplate(template.id, templateData);
-        } else {
-          await api.updateExportTemplate(template.id, templateData);
-        }
+        await api.updateImportTemplate(template.id, templateData);
       } else {
         // Create new template
-        if (type === "import") {
-          await api.createImportTemplate(indicatorId, templateData);
-        } else {
-          await api.createExportTemplate(indicatorId, templateData);
-        }
+        await api.createImportTemplate(indicatorId, templateData);
       }
 
       onSave();
@@ -447,7 +458,7 @@ const TemplateBuilderDialog: React.FC<TemplateBuilderDialogProps> = ({
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title={`${template ? "Edit" : "Create"} ${type === "import" ? "Import" : "Export"} Template`}
+      title={`${template ? "Edit" : "Create"} Import Template`}
     >
       <div className="space-y-6">
         {error && (
@@ -542,7 +553,7 @@ const TemplateBuilderDialog: React.FC<TemplateBuilderDialogProps> = ({
                     </div>
                     <input
                       type="text"
-                      value={columnMappings[field.key] || ""}
+                      value={columnMapping[field.key] || ""}
                       onChange={(e) =>
                         handleUpdateMapping(field.key, e.target.value)
                       }
@@ -566,7 +577,7 @@ const TemplateBuilderDialog: React.FC<TemplateBuilderDialogProps> = ({
               </div>
               <div className="space-y-3">
                 {optionalFields.map((field) =>
-                  columnMappings[field.key] !== undefined ? (
+                  columnMapping[field.key] !== undefined ? (
                     <div
                       key={field.key}
                       className="bg-white rounded-lg border border-gray-200 p-3.5 shadow-sm hover:shadow-md transition-shadow"
@@ -592,7 +603,7 @@ const TemplateBuilderDialog: React.FC<TemplateBuilderDialogProps> = ({
                       </div>
                       <input
                         type="text"
-                        value={columnMappings[field.key] || ""}
+                        value={columnMapping[field.key] || ""}
                         onChange={(e) =>
                           handleUpdateMapping(field.key, e.target.value)
                         }
@@ -605,11 +616,11 @@ const TemplateBuilderDialog: React.FC<TemplateBuilderDialogProps> = ({
 
                 {/* Add field buttons */}
                 {optionalFields.some(
-                  (field) => columnMappings[field.key] === undefined,
+                  (field) => columnMapping[field.key] === undefined,
                 ) && (
                   <div className="flex flex-wrap gap-2 pt-2">
                     {optionalFields.map((field) =>
-                      columnMappings[field.key] === undefined ? (
+                      columnMapping[field.key] === undefined ? (
                         <button
                           key={field.key}
                           onClick={() =>
@@ -658,7 +669,7 @@ const TemplateBuilderDialog: React.FC<TemplateBuilderDialogProps> = ({
           </div>
           <div className="bg-white rounded-md border border-blue-200 p-3 shadow-inner">
             <div className="text-sm font-mono text-gray-800 overflow-x-auto whitespace-nowrap">
-              {Object.values(columnMappings)
+              {Object.values(columnMapping)
                 .filter((v) => v)
                 .join(", ") || "<No columns mapped yet>"}
             </div>

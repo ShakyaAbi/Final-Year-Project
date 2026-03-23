@@ -2,7 +2,6 @@ import React, { useState, useEffect } from "react";
 import { Modal } from "./ui/Modal";
 import { Button } from "./ui/Button";
 import { api } from "../services/api";
-import { TemplateManager } from "./TemplateManager";
 
 interface ExportDialogProps {
   indicatorId: string;
@@ -11,13 +10,6 @@ interface ExportDialogProps {
   categories?: Array<{ id: string; label: string }>;
 }
 
-interface Template {
-  id: number;
-  name: string;
-  description?: string;
-  columnMappings: Record<string, string>;
-  isDefault: boolean;
-}
 
 export const ExportDialog: React.FC<ExportDialogProps> = ({
   indicatorId,
@@ -31,31 +23,13 @@ export const ExportDialog: React.FC<ExportDialogProps> = ({
   const [includeAnomalies, setIncludeAnomalies] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [templates, setTemplates] = useState<Template[]>([]);
-  const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(
-    null,
-  );
-  const [showTemplateManager, setShowTemplateManager] = useState(false);
 
   useEffect(() => {
+    // Reset state when opening
     if (isOpen) {
-      loadTemplates();
+      handleReset();
     }
   }, [isOpen, indicatorId]);
-
-  const loadTemplates = async () => {
-    try {
-      const data = await api.getExportTemplates(indicatorId);
-      setTemplates(data);
-      // Auto-select default template
-      const defaultTemplate = data.find((t: Template) => t.isDefault);
-      if (defaultTemplate) {
-        setSelectedTemplate(defaultTemplate);
-      }
-    } catch (err) {
-      console.error("Failed to load templates:", err);
-    }
-  };
 
   const handleCategoryToggle = (categoryId: string) => {
     setSelectedCategories((prev) =>
@@ -77,7 +51,6 @@ export const ExportDialog: React.FC<ExportDialogProps> = ({
       if (selectedCategories.length > 0)
         filters.categories = selectedCategories;
       if (!includeAnomalies) filters.excludeAnomalies = true;
-      if (selectedTemplate) filters.templateId = selectedTemplate.id;
 
       const blob = await api.exportIndicatorCSV(indicatorId, filters);
 
@@ -85,8 +58,7 @@ export const ExportDialog: React.FC<ExportDialogProps> = ({
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      const templateName =
-        selectedTemplate?.name.replace(/\s+/g, "_") || "export";
+      const templateName = "export";
       a.download = `${templateName}_${indicatorId}_${new Date().toISOString().split("T")[0]}.csv`;
       document.body.appendChild(a);
       a.click();
@@ -106,9 +78,6 @@ export const ExportDialog: React.FC<ExportDialogProps> = ({
     setDateTo("");
     setSelectedCategories([]);
     setIncludeAnomalies(true);
-    // Reset to default template
-    const defaultTemplate = templates.find((t: Template) => t.isDefault);
-    setSelectedTemplate(defaultTemplate || null);
     setError(null);
   };
 
@@ -122,42 +91,6 @@ export const ExportDialog: React.FC<ExportDialogProps> = ({
             </div>
           )}
 
-          {/* Template selection */}
-          <div>
-            <div className="flex items-center justify-between mb-3">
-              <label className="block text-sm font-medium text-gray-700">
-                Export Template
-              </label>
-              <button
-                onClick={() => setShowTemplateManager(true)}
-                className="text-sm text-blue-600 hover:text-blue-800 font-medium"
-              >
-                Manage Templates
-              </button>
-            </div>
-            <select
-              value={selectedTemplate?.id || ""}
-              onChange={(e) => {
-                const template = templates.find(
-                  (t) => t.id === Number(e.target.value),
-                );
-                setSelectedTemplate(template || null);
-              }}
-              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
-            >
-              <option value="">Standard export (all fields)</option>
-              {templates.map((template) => (
-                <option key={template.id} value={template.id}>
-                  {template.name} {template.isDefault ? "(Default)" : ""}
-                </option>
-              ))}
-            </select>
-            {selectedTemplate?.description && (
-              <p className="text-xs text-gray-600 mt-2 ml-1">
-                {selectedTemplate.description}
-              </p>
-            )}
-          </div>
 
           {/* Date range filters */}
           <div>
@@ -263,22 +196,6 @@ export const ExportDialog: React.FC<ExportDialogProps> = ({
         </div>
       </Modal>
 
-      {showTemplateManager && (
-        <TemplateManager
-          indicatorId={indicatorId}
-          type="export"
-          isOpen={showTemplateManager}
-          onClose={() => {
-            setShowTemplateManager(false);
-            loadTemplates();
-          }}
-          onSelectTemplate={(template) => {
-            setSelectedTemplate(template);
-            setShowTemplateManager(false);
-            loadTemplates();
-          }}
-        />
-      )}
     </>
   );
 };

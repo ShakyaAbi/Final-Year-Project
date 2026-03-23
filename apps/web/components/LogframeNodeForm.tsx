@@ -24,7 +24,6 @@ export const LogframeNodeForm: React.FC<LogframeNodeFormProps> = ({
     type: NodeType.GOAL,
     assumptions: '',
     risks: '',
-    verificationMethod: '',
     ...initialData
   });
 
@@ -64,7 +63,7 @@ export const LogframeNodeForm: React.FC<LogframeNodeFormProps> = ({
             type="text" 
             disabled 
             value={formData.type} 
-            className="w-full bg-slate-100 border border-slate-300 rounded-md px-3 py-2 text-sm text-slate-500"
+            className="w-full bg-slate-100 border border-slate-300 rounded-lg px-3 py-2.5 text-sm text-slate-600 font-semibold"
           />
         </div>
 
@@ -76,7 +75,7 @@ export const LogframeNodeForm: React.FC<LogframeNodeFormProps> = ({
             value={formData.title || ''} 
             onChange={(e) => handleChange('title', e.target.value)}
             placeholder={`e.g. ${allowedType === NodeType.ACTIVITY ? 'Train 50 staff' : 'Improved health outcomes'}`}
-            className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white text-slate-900"
+            className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white text-slate-900 shadow-sm font-medium"
           />
         </div>
 
@@ -86,31 +85,22 @@ export const LogframeNodeForm: React.FC<LogframeNodeFormProps> = ({
             rows={3}
             value={formData.description || ''}
             onChange={(e) => handleChange('description', e.target.value)}
-            className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white text-slate-900"
+            className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white text-slate-900 shadow-sm"
           />
         </div>
 
-        <div>
-          <label className="block text-sm font-medium text-slate-700 mb-1">Verification Method</label>
-          <textarea 
-            rows={2}
-            placeholder="Source of data or evidence"
-            value={formData.verificationMethod || ''}
-            onChange={(e) => handleChange('verificationMethod', e.target.value)}
-            className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white text-slate-900"
-          />
-        </div>
-
-        <div>
+        <div className="md:col-span-2">
           <label className="block text-sm font-medium text-slate-700 mb-1">Risks</label>
           <textarea 
             rows={2}
             placeholder="Potential external risks"
             value={formData.risks || ''}
             onChange={(e) => handleChange('risks', e.target.value)}
-            className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white text-slate-900"
+            className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white text-slate-900 shadow-sm"
           />
         </div>
+
+
 
         <div className="md:col-span-2">
           <label className="block text-sm font-medium text-slate-700 mb-1">Assumptions</label>
@@ -119,7 +109,7 @@ export const LogframeNodeForm: React.FC<LogframeNodeFormProps> = ({
             placeholder="Conditions necessary for success"
             value={formData.assumptions || ''}
             onChange={(e) => handleChange('assumptions', e.target.value)}
-            className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white text-slate-900"
+            className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white text-slate-900 shadow-sm"
           />
         </div>
       </div>
