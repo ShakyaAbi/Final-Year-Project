@@ -1,14 +1,10 @@
 import { PrismaClient, Indicator } from "@prisma/client";
 import { ImportTemplateRepository } from "../repositories/importTemplateRepository";
-import { ExportTemplateRepository } from "../repositories/exportTemplateRepository";
 
 export class TemplateService {
   private importTemplateRepo: ImportTemplateRepository;
-  private exportTemplateRepo: ExportTemplateRepository;
-
   constructor(private prisma: PrismaClient) {
     this.importTemplateRepo = new ImportTemplateRepository(prisma);
-    this.exportTemplateRepo = new ExportTemplateRepository(prisma);
   }
 
   /**
@@ -33,27 +29,6 @@ export class TemplateService {
     });
   }
 
-  /**
-   * Create default export template for an indicator
-   */
-  async createDefaultExportTemplate(indicatorId: number, userId: number) {
-    const indicator = await this.prisma.indicator.findUnique({
-      where: { id: indicatorId },
-    });
-
-    if (!indicator) throw new Error("Indicator not found");
-
-    const columnConfig = this.generateDefaultExportConfig(indicator);
-
-    return this.exportTemplateRepo.create({
-      name: "Default Export Template",
-      description: "Auto-generated default template",
-      isDefault: true,
-      columnConfig,
-      indicator: { connect: { id: indicatorId } },
-      createdBy: { connect: { id: userId } },
-    });
-  }
 
   /**
    * Generate default import column mapping based on indicator type
@@ -205,94 +180,6 @@ export class TemplateService {
     return { columns };
   }
 
-  /**
-   * Generate default export column configuration
-   */
-  private generateDefaultExportConfig(indicator: Indicator): any {
-    const columns = [
-      {
-        field: "reportedAt",
-        header: "Date",
-        format: "yyyy-MM-dd",
-        width: 15,
-      },
-    ];
-
-    // Add value column based on indicator type
-    switch (indicator.dataType) {
-      case "CATEGORICAL":
-        columns.push(
-          {
-            field: "value",
-            header: "Value",
-            format: "2",
-            width: 10,
-          } as any,
-          {
-            field: "categoryValue",
-            header: "Category",
-            showLabel: true,
-            showCategoryLabel: true,
-            width: 20,
-          } as any,
-        );
-        break;
-
-      case "BOOLEAN":
-        columns.push({
-          field: "value",
-          header: "Value",
-          format: "Yes/No",
-          width: 10,
-        } as any);
-        break;
-
-      case "PERCENT":
-        columns.push({
-          field: "value",
-          header: "Value",
-          format: "2",
-          suffix: "%",
-          width: 10,
-        } as any);
-        break;
-
-      case "NUMBER":
-        columns.push({
-          field: "value",
-          header: "Value",
-          format: "2",
-          width: 10,
-        } as any);
-        break;
-
-      case "TEXT":
-      default:
-        columns.push({
-          field: "value",
-          header: "Value",
-          format: "",
-          width: 30,
-        } as any);
-    }
-
-    columns.push(
-      {
-        field: "evidence",
-        header: "Evidence",
-        format: "",
-        width: 50,
-      } as any,
-      {
-        field: "isAnomaly",
-        header: "Anomaly",
-        format: "Yes/No",
-        width: 10,
-      },
-    );
-
-    return { columns };
-  }
 
   /**
    * Validate template configuration

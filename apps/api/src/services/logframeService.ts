@@ -49,7 +49,7 @@ const buildTree = (nodes: LogframeNode[]) => {
 
 export const createNode = async (
   projectId: number,
-  data: { type: NodeType; title: string; description?: string; parentId?: number | null; sortOrder?: number }
+  data: { type: NodeType; title: string; description?: string; assumptions?: string; risks?: string; parentId?: number | null; sortOrder?: number }
 ) => {
   await ensureProject(projectId);
   let parent: LogframeNode | null = null;
@@ -68,6 +68,8 @@ export const createNode = async (
     type: data.type,
     title: data.title,
     description: data.description ?? null,
+    assumptions: data.assumptions ?? null,
+    risks: data.risks ?? null,
     parentId: data.parentId ?? null,
     sortOrder: data.sortOrder ?? 0
   });
@@ -81,7 +83,7 @@ export const getTree = async (projectId: number) => {
 
 export const updateNode = async (
   id: number,
-  data: Partial<{ title: string; description: string; parentId: number | null; sortOrder: number; type: NodeType }>
+  data: Partial<{ title: string; description: string; assumptions: string; risks: string; parentId: number | null; sortOrder: number; type: NodeType }>
 ) => {
   const existing = await logframeRepo.getById(id);
   if (!existing) throw new NotFoundError('NODE_NOT_FOUND', 'Logframe node not found');
@@ -106,6 +108,8 @@ export const updateNode = async (
   return logframeRepo.updateNode(id, {
     title: data.title,
     description: data.description,
+    assumptions: data.assumptions,
+    risks: data.risks,
     parentId: data.parentId === undefined ? existing.parentId : data.parentId,
     sortOrder: data.sortOrder,
     type: data.type

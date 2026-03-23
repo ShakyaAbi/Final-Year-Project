@@ -199,3 +199,32 @@ export const getCategoryTimeSeries = asyncHandler(
     res.json(timeSeries);
   }
 );
+
+export const getMLAlgorithms = asyncHandler(
+  async (_req: Request, res: Response) => {
+    const algorithms = await indicatorService.getMLAlgorithms();
+    res.json(algorithms);
+  },
+);
+
+export const evaluateML = asyncHandler(
+  async (req: Request, res: Response) => {
+    try {
+      const indicatorId = Number(req.params.id);
+      const compareAll = req.query.compareAll === "true";
+      const results = await indicatorService.evaluateML(indicatorId, compareAll);
+      res.json(results);
+    } catch (error: any) {
+      if (error.type === "NETWORK" || error.type === "CONNECTION") {
+        res.status(503).json({
+          error: {
+            code: "ML_SERVICE_UNAVAILABLE",
+            message: "The ML service is currently offline. Please start it using 'cd apps/ml && uvicorn app:app --port 8000'",
+          },
+        });
+        return;
+      }
+      throw error;
+    }
+  },
+);

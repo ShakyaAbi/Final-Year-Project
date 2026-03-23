@@ -15,7 +15,14 @@ export const createProject = (data: {
   budgetCurrency: string | null;
 }) => prisma.project.create({ data });
 
-export const getProjects = () => prisma.project.findMany({ orderBy: { createdAt: 'desc' } });
+export const getProjects = () => prisma.project.findMany({ 
+  include: {
+    _count: {
+      select: { indicators: true }
+    }
+  },
+  orderBy: { createdAt: 'desc' } 
+});
 
 export const getProjectById = (id: number) => prisma.project.findUnique({ where: { id } });
 

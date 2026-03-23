@@ -29,6 +29,7 @@ interface DisaggregationComparisonProps {
   dimensionLabel?: string;
   onSelectDisaggregation?: (key: string | null) => void;
   selectedKey?: string | null;
+  refreshCounter?: number;
 }
 
 const formatDate = (value: string | null) => {
@@ -51,6 +52,7 @@ export const DisaggregationComparison: React.FC<
   dimensionLabel = "Entity",
   onSelectDisaggregation,
   selectedKey,
+  refreshCounter,
 }) => {
   const [rows, setRows] = useState<DisaggregatedRow[]>([]);
   const [totalSubmissions, setTotalSubmissions] = useState(0);
@@ -75,7 +77,7 @@ export const DisaggregationComparison: React.FC<
     };
 
     fetchStats();
-  }, [indicatorId]);
+  }, [indicatorId, refreshCounter]);
 
   if (loading) {
     return (

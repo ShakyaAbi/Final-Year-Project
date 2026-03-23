@@ -40,6 +40,13 @@ export const createIndicator = (data: {
 export const getIndicatorsByProject = (projectId: number) =>
   prisma.indicator.findMany({
     where: { projectId },
+    include: {
+      submissions: {
+        where: { deletedAt: null },
+        orderBy: { reportedAt: 'desc' },
+        take: 50
+      }
+    },
     orderBy: { createdAt: "desc" },
   });
 
@@ -49,7 +56,12 @@ export const getById = (id: number) =>
 export const getByIdWithSubmissions = (id: number) =>
   prisma.indicator.findUnique({
     where: { id },
-    include: { submissions: { orderBy: { reportedAt: "desc" } } },
+    include: {
+      submissions: {
+        where: { deletedAt: null },
+        orderBy: { reportedAt: "desc" },
+      },
+    },
   });
 
 export const updateIndicator = (

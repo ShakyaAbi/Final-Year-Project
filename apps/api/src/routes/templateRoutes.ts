@@ -8,11 +8,6 @@ import {
   deleteImportTemplate,
   cloneImportTemplate,
   downloadImportTemplateSample,
-  createExportTemplate,
-  getExportTemplates,
-  getExportTemplate,
-  updateExportTemplate,
-  deleteExportTemplate,
 } from "../controllers/templateController";
 
 const router = Router();
@@ -33,10 +28,6 @@ router.delete("/import-templates/:templateId", deleteImportTemplate);
 router.post("/import-templates/:templateId/clone", cloneImportTemplate);
 
 // Export template routes
-router.post("/indicators/:indicatorId/export-templates", createExportTemplate);
-router.get("/indicators/:indicatorId/export-templates", getExportTemplates);
-router.get("/export-templates/:templateId", getExportTemplate);
-router.put("/export-templates/:templateId", updateExportTemplate);
-router.delete("/export-templates/:templateId", deleteExportTemplate);
+// Removed as part of template simplification
 
 export default router;

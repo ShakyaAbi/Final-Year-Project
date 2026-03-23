@@ -22,11 +22,12 @@ interface TimeSeriesPoint {
 interface CategoryTimeSeriesChartProps {
   indicatorId: string;
   categories: CategoryDefinition[];
+  refreshCounter?: number;
 }
 
 export const CategoryTimeSeriesChart: React.FC<
   CategoryTimeSeriesChartProps
-> = ({ indicatorId, categories }) => {
+> = ({ indicatorId, categories, refreshCounter }) => {
   const [selectedGroupBy, setSelectedGroupBy] = useState<"month" | "week">("month");
   const [selectedRange, setSelectedRange] = useState<string>("6");
   
@@ -76,7 +77,7 @@ export const CategoryTimeSeriesChart: React.FC<
       }
     };
     fetchTimeSeries();
-  }, [indicatorId, selectedGroupBy, selectedRange]);
+  }, [indicatorId, selectedGroupBy, selectedRange, refreshCounter]);
 
   if (loading) {
     return (

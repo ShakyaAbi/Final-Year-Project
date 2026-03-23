@@ -6,6 +6,8 @@ export const createNode = (data: {
   type: NodeType;
   title: string;
   description: string | null;
+  assumptions: string | null;
+  risks: string | null;
   parentId: number | null;
   sortOrder: number;
 }) => prisma.logframeNode.create({ data });
@@ -20,6 +22,8 @@ export const updateNode = (
   data: Partial<{
     title: string;
     description: string | null;
+    assumptions: string | null;
+    risks: string | null;
     parentId: number | null;
     sortOrder: number;
     type: NodeType;

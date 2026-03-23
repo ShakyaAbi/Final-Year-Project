@@ -22,6 +22,8 @@ import {
   getDisaggregatedCategoryStats,
   getReportingCompliance,
   getCategoryTimeSeries,
+  getMLAlgorithms,
+  evaluateML,
 } from "../controllers/indicatorController";
 
 const router = Router();
@@ -94,6 +96,19 @@ router.get(
   authenticate,
   validate(indicatorIdParamsSchema),
   getCategoryTimeSeries,
+);
+
+router.get(
+  "/ml/algorithms",
+  authenticate,
+  getMLAlgorithms,
+);
+
+router.post(
+  "/indicators/:id/ml-evaluate",
+  authenticate,
+  validate(indicatorIdParamsSchema),
+  evaluateML,
 );
 router.patch(
   "/indicators/:id",

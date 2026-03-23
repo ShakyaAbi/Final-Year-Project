@@ -98,18 +98,29 @@ export const normalizeSubmissionByIndicator = ({
       );
     }
 
-    const rawCategory = payload.value ?? payload.categoryValue ?? "";
+    // Identify which input contains the category selection. 
+    // New clients send 'categoryValue'. Old clients/imports might send category ID in 'value'.
+    const rawCategoryInput = payload.categoryValue ?? payload.value ?? "";
     const selectedIds = validateCategoricalValue(
-      String(rawCategory ?? ""),
+      String(rawCategoryInput),
       categories,
       config,
     );
-    const canonicalValue =
-      selectedIds.length > 0 ? formatCategoricalValue(selectedIds) : "";
+    const canonicalCategoryValue =
+      selectedIds.length > 0 ? formatCategoricalValue(selectedIds) : null;
+
+    // Determine the normalized 'value' (Headcount/Amount).
+    // If 'categoryValue' was explicitly provided, then 'value' is definitely the headcount.
+    // If 'categoryValue' was missing but matches a category ID, then 'value' was the category, 
+    // and we should store the canonical ID in both columns for compatibility.
+    let normalizedValue = String(payload.value ?? "");
+    if (!payload.categoryValue && canonicalCategoryValue) {
+      normalizedValue = canonicalCategoryValue;
+    }
 
     return {
-      normalizedValue: canonicalValue,
-      normalizedCategoryValue: canonicalValue || null,
+      normalizedValue,
+      normalizedCategoryValue: canonicalCategoryValue,
     };
   }
 

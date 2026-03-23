@@ -7,11 +7,35 @@ export type ScoreRequest = {
   values: number[];
   newValue: number;
   config: {
-    method: "ISOLATION_FOREST";
+    method: string;
     contamination: number;
     windowSize: number;
     minPoints: number;
     seed?: number;
+    zscore_threshold?: number;
+  };
+};
+
+export type EvaluationRequest = {
+  indicatorId: number;
+  dataType: IndicatorDataType;
+  values: number[];
+  labels: boolean[];
+  config: ScoreRequest["config"];
+  compareAll?: boolean;
+};
+
+export type EvaluationResult = {
+  method: string;
+  precision: number;
+  recall: number;
+  f1: number;
+  accuracy: number;
+  confusionMatrix: {
+    tp: number;
+    fp: number;
+    tn: number;
+    fn: number;
   };
 };
 
@@ -164,4 +188,36 @@ export const healthCheck = async (): Promise<MlHealthStatus> => {
       lastError: error?.message || "ML health check failed",
     };
   }
+};
+
+export const evaluateModels = async (
+  payload: EvaluationRequest,
+): Promise<{ results: EvaluationResult[] }> => {
+  const res = await callMlEndpoint("/evaluate", payload);
+
+  if (!res.ok) {
+    const message = await res.text().catch(() => res.statusText);
+    throw new MlServiceError(
+      "HTTP",
+      `ML service error: ${message || res.statusText}`,
+      res.status,
+    );
+  }
+
+  return (await res.json()) as { results: EvaluationResult[] };
+};
+
+export const getAlgorithms = async (): Promise<{ algorithms: any[] }> => {
+  const res = await callMlEndpoint("/algorithms", {});
+
+  if (!res.ok) {
+    const message = await res.text().catch(() => res.statusText);
+    throw new MlServiceError(
+      "HTTP",
+      `ML service error: ${message || res.statusText}`,
+      res.status,
+    );
+  }
+
+  return (await res.json()) as { algorithms: any[] };
 };

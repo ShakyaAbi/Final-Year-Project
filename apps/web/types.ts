@@ -41,6 +41,9 @@ export interface Project {
   budgetSpent?: number;
   budgetCurrency?: string;
   logframe: LogframeNode[]; // Root nodes (usually Goals)
+  _count?: {
+    indicators: number;
+  };
 }
 
 export interface IndicatorValue {
@@ -85,16 +88,31 @@ export interface AnomalyConfig {
     windowSize?: number;
   };
   ml?: {
-    method?: "ISOLATION_FOREST";
+    method?: "ISOLATION_FOREST" | "Z_SCORE" | "LOF" | "DBSCAN";
     contamination?: number;
     windowSize?: number;
     minPoints?: number;
     seed?: number;
+    zscore_threshold?: number;
   };
   fallback?: {
     useRangeChecks?: boolean;
     useRulesWhenInsufficientData?: boolean;
     useRulesOnServiceError?: boolean;
+  };
+}
+
+export interface MLEvaluationResult {
+  method: string;
+  precision: number;
+  recall: number;
+  f1: number;
+  accuracy: number;
+  confusionMatrix: {
+    tp: number;
+    fp: number;
+    tn: number;
+    fn: number;
   };
 }
 
