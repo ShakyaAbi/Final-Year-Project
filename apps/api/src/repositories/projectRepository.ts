@@ -11,6 +11,7 @@ export const createProject = (data: {
   location: string | null;
   donor: string | null;
   budgetAmount: number | null;
+  budgetSpent: number | null;
   budgetCurrency: string | null;
 }) => prisma.project.create({ data });
 
@@ -30,6 +31,7 @@ export const updateProject = (
     location: string | null;
     donor: string | null;
     budgetAmount: number | null;
+    budgetSpent: number | null;
     budgetCurrency: string | null;
   }>
 ) => prisma.project.update({ where: { id }, data });

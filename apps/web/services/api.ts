@@ -1,5 +1,6 @@
 import {
   ActivityLog,
+  AnomalyNotification,
   Indicator,
   IndicatorType,
   IndicatorValue,
@@ -33,16 +34,37 @@ const request = async <T>(
   const token = getToken();
   if (token) headers.Authorization = `Bearer ${token}`;
 
+  const isFormData = options.body instanceof FormData;
+  if (isFormData) {
+    // Let the browser set the boundary for multipart/form-data
+    delete headers["Content-Type"];
+  }
+
   const res = await fetch(`${API_BASE}${path}`, {
     method: options.method || "GET",
     headers,
-    body: options.body ? JSON.stringify(options.body) : undefined,
+    body: isFormData ? options.body : (options.body ? JSON.stringify(options.body) : undefined),
   });
 
   if (!res.ok) {
+    if (res.status === 401) {
+      if (path === "/auth/me") {
+        localStorage.removeItem(tokenKey);
+        window.location.hash = "/";
+      }
+    } else if (res.status === 404 && path === "/auth/me") {
+      // Keep existing behavior for missing /auth/me (treat as logged-out)
+      localStorage.removeItem(tokenKey);
+      window.location.hash = "/";
+    }
+
     const data = await res.json().catch(() => ({}));
     const message = data?.error?.message || res.statusText;
     throw new Error(message);
+  }
+
+  if (res.status === 204) {
+    return {} as T;
   }
 
   return res.json() as Promise<T>;
@@ -104,6 +126,7 @@ const mapProject = (p: any, logframe: LogframeNode[] = []): Project => ({
   location: p.location ?? undefined,
   donor: p.donor ?? undefined,
   budgetAmount: p.budgetAmount ?? undefined,
+  budgetSpent: p.budgetSpent ?? undefined,
   budgetCurrency: p.budgetCurrency ?? undefined,
   logframe,
 });
@@ -161,6 +184,7 @@ const mapIndicatorValue = (v: any, type: IndicatorType): IndicatorValue => {
     deletedByUserId: v.deletedByUserId ? String(v.deletedByUserId) : undefined,
     updatedAt: v.updatedAt ? new Date(v.updatedAt).toISOString() : undefined,
     updatedByUserId: v.updatedByUserId ? String(v.updatedByUserId) : undefined,
+    disaggregationKey: v.disaggregationKey ?? undefined,
   };
 };
 
@@ -208,6 +232,11 @@ const mapIndicator = (
     currentVersion: indicator.currentVersion ?? 1,
     versions: Array.isArray(indicator.versions) ? indicator.versions : [],
     values,
+    // Reminder fields
+    reminderEnabled: indicator.reminderEnabled ?? false,
+    reminderDaysBeforeDue: indicator.reminderDaysBeforeDue ?? undefined,
+    reminderDaysAfterDue: indicator.reminderDaysAfterDue ?? undefined,
+    reminderRecipients: indicator.reminderRecipients ?? undefined,
   };
 };
 
@@ -218,10 +247,23 @@ const mapCurrentUser = (user: any): CurrentUser => ({
   createdAt: user.createdAt
     ? new Date(user.createdAt).toISOString()
     : undefined,
+  name: user.name ?? null,
+  jobTitle: user.jobTitle ?? null,
+  organization: user.organization ?? null,
+  avatar: user.avatar ?? null,
 });
 
-const toReportingFrequency = (value?: Indicator["frequency"]) =>
-  value === "Daily" ? "DAILY" : "WEEKLY";
+const toReportingFrequency = (value?: Indicator["frequency"]) => {
+  if (!value) return undefined;
+  switch (value) {
+    case "Daily": return "DAILY";
+    case "Weekly": return "WEEKLY";
+    case "Monthly": return "MONTHLY";
+    case "Quarterly": return "QUARTERLY";
+    case "Yearly": return "YEARLY";
+    default: return "WEEKLY";
+  }
+};
 
 const normalizeDisaggregationDimensionKey = (value: any, fallbackLabel?: any) => {
   const raw = String(value ?? "").trim() || String(fallbackLabel ?? "").trim();
@@ -309,6 +351,7 @@ export const api = {
         location: payload.location,
         donor: payload.donor,
         budgetAmount: payload.budgetAmount,
+        budgetSpent: payload.budgetSpent,
         budgetCurrency: payload.budgetCurrency,
       },
     });
@@ -330,6 +373,7 @@ export const api = {
         location: payload.location,
         donor: payload.donor,
         budgetAmount: payload.budgetAmount,
+        budgetSpent: payload.budgetSpent,
         budgetCurrency: payload.budgetCurrency,
       },
     });
@@ -422,6 +466,11 @@ export const api = {
         reportingFrequency: toReportingFrequency(payload.frequency),
         categories: payload.categories ?? null,
         categoryConfig: normalizeCategoryConfigForApi(payload.categoryConfig),
+        // Reminder fields
+        reminderEnabled: payload.reminderEnabled ?? false,
+        reminderDaysBeforeDue: payload.reminderDaysBeforeDue ?? null,
+        reminderDaysAfterDue: payload.reminderDaysAfterDue ?? null,
+        reminderRecipients: payload.reminderRecipients ?? null,
       },
     });
     return mapIndicator(created);
@@ -430,64 +479,68 @@ export const api = {
     indicatorId: string,
     payload: Partial<Indicator>,
   ): Promise<Indicator> => {
-    const dataType =
-      payload.type === IndicatorType.PERCENTAGE
-        ? "PERCENT"
-        : payload.type === IndicatorType.BOOLEAN
-          ? "BOOLEAN"
-          : payload.type === IndicatorType.TEXT
-            ? "TEXT"
-            : payload.type === IndicatorType.CATEGORICAL
-              ? "CATEGORICAL"
-              : "NUMBER";
-    const isNumeric =
-      payload.type === IndicatorType.NUMBER ||
-      payload.type === IndicatorType.PERCENTAGE ||
-      payload.type === IndicatorType.CURRENCY;
-    const isCategorical = payload.type === IndicatorType.CATEGORICAL;
-    const unit =
-      payload.unit ||
-      (payload.type === IndicatorType.BOOLEAN
-        ? "yes/no"
-        : payload.type === IndicatorType.TEXT
-          ? "text"
-          : payload.type === IndicatorType.CATEGORICAL
-            ? "category"
-            : "unit");
+    const body: any = {
+      logframeNodeId: payload.nodeId ? Number(payload.nodeId) : undefined,
+      name: payload.name,
+    };
 
-    const baselineValue =
-      isNumeric && payload.baseline !== undefined
-        ? Number(payload.baseline)
-        : null;
-    const targetValue =
-      isNumeric && payload.target !== undefined ? Number(payload.target) : null;
-    const baselineCategory =
-      isCategorical && payload.baseline !== undefined
-        ? String(payload.baseline)
-        : null;
-    const targetCategory =
-      isCategorical && payload.target !== undefined
-        ? String(payload.target)
-        : null;
+    if (payload.type !== undefined) {
+      body.dataType =
+        payload.type === IndicatorType.PERCENTAGE
+          ? "PERCENT"
+          : payload.type === IndicatorType.BOOLEAN
+            ? "BOOLEAN"
+            : payload.type === IndicatorType.TEXT
+              ? "TEXT"
+              : payload.type === IndicatorType.CATEGORICAL
+                ? "CATEGORICAL"
+                : "NUMBER";
+    }
+
+    if (payload.unit !== undefined) {
+      body.unit = payload.unit;
+    } else if (payload.type !== undefined) {
+      body.unit =
+        payload.type === IndicatorType.BOOLEAN
+          ? "yes/no"
+          : payload.type === IndicatorType.TEXT
+            ? "text"
+            : payload.type === IndicatorType.CATEGORICAL
+              ? "category"
+              : "unit";
+    }
+
+    const type = payload.type; 
+    const isNumeric = type === IndicatorType.NUMBER || type === IndicatorType.PERCENTAGE || type === IndicatorType.CURRENCY;
+    const isCategorical = type === IndicatorType.CATEGORICAL;
+
+    if (payload.baseline !== undefined) {
+      if (isNumeric) body.baselineValue = Number(payload.baseline);
+      else if (isCategorical) body.baselineCategory = String(payload.baseline);
+      else body.baselineValue = null; // for text/boolean if we want to clear
+    }
+    if (payload.target !== undefined) {
+      if (isNumeric) body.targetValue = Number(payload.target);
+      else if (isCategorical) body.targetCategory = String(payload.target);
+      else body.targetValue = null;
+    }
+
+    if (payload.minExpected !== undefined) body.minValue = payload.minExpected;
+    if (payload.maxExpected !== undefined) body.maxValue = payload.maxExpected;
+    if (payload.anomalyConfig !== undefined) body.anomalyConfig = payload.anomalyConfig;
+    if (payload.frequency !== undefined) body.reportingFrequency = toReportingFrequency(payload.frequency);
+    if (payload.categories !== undefined) body.categories = payload.categories;
+    if (payload.categoryConfig !== undefined) body.categoryConfig = normalizeCategoryConfigForApi(payload.categoryConfig);
+    
+    // Reminder fields
+    if (payload.reminderEnabled !== undefined) body.reminderEnabled = payload.reminderEnabled;
+    if (payload.reminderDaysBeforeDue !== undefined) body.reminderDaysBeforeDue = payload.reminderDaysBeforeDue;
+    if (payload.reminderDaysAfterDue !== undefined) body.reminderDaysAfterDue = payload.reminderDaysAfterDue;
+    if (payload.reminderRecipients !== undefined) body.reminderRecipients = payload.reminderRecipients;
 
     const updated = await request<any>(`/indicators/${indicatorId}`, {
       method: "PATCH",
-      body: {
-        logframeNodeId: payload.nodeId ? Number(payload.nodeId) : undefined,
-        name: payload.name,
-        unit,
-        baselineValue,
-        targetValue,
-        baselineCategory,
-        targetCategory,
-        dataType,
-        minValue: payload.minExpected ?? null,
-        maxValue: payload.maxExpected ?? null,
-        anomalyConfig: payload.anomalyConfig ?? null,
-        reportingFrequency: toReportingFrequency(payload.frequency),
-        categories: payload.categories ?? null,
-        categoryConfig: normalizeCategoryConfigForApi(payload.categoryConfig),
-      },
+      body,
     });
     return mapIndicator(updated);
   },
@@ -501,12 +554,31 @@ export const api = {
     payload: {
       reportedAt: string;
       value: any;
-      evidence?: string;
-      categoryValue?: string;
-      disaggregationKey?: string;
+      evidence?: string | null;
+      categoryValue?: string | null;
+      disaggregationKey?: string | null;
     },
-  ) =>
-    request(`/indicators/${indicatorId}/submissions`, {
+    file?: File | null,
+  ): Promise<IndicatorValue> => {
+    if (file) {
+      const formData = new FormData();
+      formData.append("reportedAt", payload.reportedAt);
+      formData.append("value", String(payload.value));
+      if (payload.categoryValue)
+        formData.append("categoryValue", payload.categoryValue);
+      if (payload.disaggregationKey)
+        formData.append("disaggregationKey", payload.disaggregationKey);
+      formData.append("file", file);
+      return request<IndicatorValue>(
+        `/indicators/${indicatorId}/submissions`,
+        {
+          method: "POST",
+          body: formData,
+        },
+      );
+    }
+
+    return request<IndicatorValue>(`/indicators/${indicatorId}/submissions`, {
       method: "POST",
       body: {
         reportedAt: payload.reportedAt,
@@ -515,7 +587,8 @@ export const api = {
         categoryValue: payload.categoryValue ?? null,
         disaggregationKey: payload.disaggregationKey ?? null,
       },
-    }),
+    });
+  },
   updateSubmission: async (
     submissionId: string,
     payload: {
@@ -582,6 +655,8 @@ export const api = {
     request(`/projects/${projectId}/stats`),
   getProjectActivities: async (projectId: string): Promise<ActivityLog[]> =>
     request(`/projects/${projectId}/activities`),
+  getProjectAlerts: async (projectId: string): Promise<any[]> =>
+    request(`/projects/${projectId}/alerts`),
   getCategoryDistribution: async (indicatorId: string): Promise<any> =>
     request(`/indicators/${indicatorId}/category-distribution`),
   deleteIndicator: async (id: string): Promise<void> =>
@@ -619,8 +694,11 @@ export const api = {
     return response.json();
   },
 
-  executeImport: async (jobId: number): Promise<void> =>
-    request(`/import-jobs/${jobId}/process`, { method: "POST" }),
+  executeImport: async (jobId: number, selectedRowNumbers?: number[]): Promise<void> =>
+    request(`/import-jobs/${jobId}/process`, {
+      method: "POST",
+      body: selectedRowNumbers ? { selectedRowNumbers } : undefined,
+    }),
 
   getImportJobStatus: async (jobId: number): Promise<any> =>
     request(`/import-jobs/${jobId}`),
@@ -751,6 +829,17 @@ export const api = {
 
   delete: async <T = any>(path: string): Promise<T> =>
     request<T>(path, { method: "DELETE" }),
+
+  getAnomalyNotifications: async (): Promise<{
+    notifications: AnomalyNotification[];
+    totalUnread: number;
+  }> => request("/notifications/anomalies"),
+
+  getOverdueNotifications: async (): Promise<any[]> =>
+    request("/notifications/overdue"),
+
+  markAllAnomaliesRead: async (): Promise<void> =>
+    request("/notifications/anomalies/mark-read", { method: "POST" }),
 };
 
 export const authStorage = { getToken, setToken };

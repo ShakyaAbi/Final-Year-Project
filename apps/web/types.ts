@@ -38,6 +38,7 @@ export interface Project {
   location?: string;
   donor?: string;
   budgetAmount?: number;
+  budgetSpent?: number;
   budgetCurrency?: string;
   logframe: LogframeNode[]; // Root nodes (usually Goals)
 }
@@ -48,6 +49,7 @@ export interface IndicatorValue {
   date: string;
   value: number | string;
   categoryValue?: string; // Optional compatibility mirror of categorical value
+  disaggregationKey?: string; // Added for dimensional filtering
   isAnomaly: boolean;
   anomalyReason?: string;
   anomalyScore?: number;
@@ -153,10 +155,16 @@ export interface Indicator {
   categories?: CategoryDefinition[]; // For Categorical
   categoryConfig?: CategoryConfig; // For Categorical
 
-  frequency: "Daily" | "Weekly" | "Monthly";
+  frequency: "Daily" | "Weekly" | "Monthly" | "Quarterly" | "Yearly";
   currentVersion: number;
   versions: IndicatorVersion[];
   values: IndicatorValue[];
+
+  // Reminder fields
+  reminderEnabled?: boolean;
+  reminderDaysBeforeDue?: number | null;
+  reminderDaysAfterDue?: number | null;
+  reminderRecipients?: string[] | null;
 }
 
 export interface ActivityLog {
@@ -174,10 +182,10 @@ export interface ProjectStats {
   budgetSpent: number;
   daysTotal: number;
   daysElapsed: number;
-  beneficiariesTarget: number;
-  beneficiariesReached: number;
-  activitiesTotal: number;
-  activitiesCompleted: number;
+  indicatorsTotal: number;
+  indicatorsReporting: number;
+  submissionsCount: number;
+  submissionsTarget?: number; // Optional for now
 }
 
 export interface CurrentUser {
@@ -185,4 +193,21 @@ export interface CurrentUser {
   email: string;
   role: string;
   createdAt?: string;
+  name?: string | null;
+  jobTitle?: string | null;
+  organization?: string | null;
+  avatar?: string | null;
+}
+
+export interface AnomalyNotification {
+  id: string;
+  submissionId: number;
+  indicatorId: number;
+  indicatorName: string;
+  projectId: number;
+  projectName: string;
+  anomalyReason: string | null;
+  anomalyStatus: string | null;
+  value: string;
+  reportedAt: string;
 }

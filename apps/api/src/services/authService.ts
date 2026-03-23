@@ -17,13 +17,17 @@ const sanitizeUser = (user: any) => ({
   createdAt: user.createdAt
 });
 
-export const register = async (input: { email: string; password: string; role: Role }) => {
+export const register = async (input: { email: string; password: string; role?: Role }) => {
   const existing = await userRepo.findByEmail(input.email);
   if (existing) {
     throw new BadRequestError('EMAIL_TAKEN', 'Email already registered');
   }
   const passwordHash = await hashPassword(input.password);
-  const user = await userRepo.create({ email: input.email, passwordHash, role: input.role });
+  const user = await userRepo.create({
+    email: input.email,
+    passwordHash,
+    role: input.role || Role.DATA_ENTRY
+  });
   return sanitizeUser(user);
 };
 
@@ -41,7 +45,8 @@ export const login = async (input: { email: string; password: string }) => {
 };
 
 export const getCurrentUser = async (id: number) => {
-  const user = await userRepo.findById(id);
+  const numericId = typeof id === 'string' ? Number(id) : id;
+  const user = await userRepo.findById(numericId as number);
   if (!user) {
     throw new NotFoundError('USER_NOT_FOUND', 'User not found');
   }

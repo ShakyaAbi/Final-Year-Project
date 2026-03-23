@@ -17,7 +17,7 @@ export const config = {
   rateLimitEnabled: (process.env.RATE_LIMIT_ENABLED ?? "true") === "true",
   rateLimitWindowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS ?? "900000", 10),
   rateLimitMax: parseInt(process.env.RATE_LIMIT_MAX ?? "100", 10),
-  authDisabled: (process.env.AUTH_DISABLED ?? "true") === "true",
+  authDisabled: (process.env.AUTH_DISABLED ?? "false") === "true",
   mlServiceUrl: process.env.ML_SERVICE_URL ?? "",
   mlServiceTimeoutMs: parseInt(
     process.env.ML_SERVICE_TIMEOUT_MS ?? "5000",
@@ -28,6 +28,13 @@ export const config = {
     process.env.ANOMALY_BACKFILL_BATCH_SIZE ?? "100",
     10,
   ),
+  smtp: {
+    host: process.env.SMTP_HOST ?? "",
+    port: parseInt(process.env.SMTP_PORT ?? "587", 10),
+    user: process.env.SMTP_USER ?? "",
+    pass: process.env.SMTP_PASS ?? "",
+    from: process.env.SMTP_FROM ?? "noreply@merlin.local",
+  },
 };
 
 export const adminSeed = {

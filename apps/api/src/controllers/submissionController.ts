@@ -5,6 +5,13 @@ import { asyncHandler } from "../utils/asyncHandler";
 export const createSubmission = asyncHandler(
   async (req: Request, res: Response) => {
     const indicatorId = Number(req.params.indicatorId);
+
+    // If a file was uploaded, set the evidence to the file URL
+    if (req.file) {
+      const baseUrl = `${req.protocol}://${req.get('host')}`;
+      req.body.evidence = `${baseUrl}/uploads/${req.file.filename}`;
+    }
+
     const submission = await submissionService.createSubmission(
       indicatorId,
       req.body,

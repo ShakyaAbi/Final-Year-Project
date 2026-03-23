@@ -8,7 +8,7 @@ import { register, login, me, updateMe } from '../controllers/authController';
 
 const router = Router();
 
-router.post('/register', authenticate, requireRoles(Role.ADMIN), validate(registerSchema), register);
+router.post('/register', validate(registerSchema), register);
 router.post('/login', validate(loginSchema), login);
 router.get('/me', authenticate, me);
 router.patch('/me', authenticate, validate(updateMeSchema), updateMe);

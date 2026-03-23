@@ -103,6 +103,7 @@ model Project {
   location       String?
   donor          String?
   budgetAmount   Float?
+  budgetSpent    Float?
   budgetCurrency String?
   createdAt      DateTime       @default(now())
   nodes          LogframeNode[]
@@ -151,6 +152,12 @@ model Indicator {
   importTemplates ImportTemplate[]
   importJobs     ImportJob[]
   exportTemplates ExportTemplate[]
+
+  // Reminder fields for data entry
+  reminderEnabled      Boolean   @default(false)
+  reminderDaysBeforeDue Int?    // Days before due date to send reminder
+  reminderDaysAfterDue  Int?    // Days after due date to send overdue reminder
+  reminderRecipients    Json?   // Array of user IDs or emails to notify
 
   @@index([projectId])
   @@index([logframeNodeId])

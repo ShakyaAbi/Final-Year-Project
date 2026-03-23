@@ -17,8 +17,10 @@ describe("ML Anomaly Detection", () => {
     process.env.ML_SERVICE_TIMEOUT_MS = "2000";
 
     fetchSpy = jest
-      .spyOn(global as any, "fetch")
-      .mockImplementation(async (url: string, init: any) => {
+      .spyOn(global, "fetch")
+      .mockImplementation(async (url: any, init: any) => {
+        // Mock ML service delay
+        await new Promise((resolve) => setTimeout(resolve, 50));
         if (url.endsWith("/score")) {
           const payload = JSON.parse(init?.body || "{}");
           const newValue = Number(payload.newValue ?? 0);

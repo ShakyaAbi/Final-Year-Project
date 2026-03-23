@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { Eye, EyeOff, Mail } from "lucide-react";
 import { api } from "../services/api";
 import Silk from "../components/ui/Silk";
@@ -74,10 +74,10 @@ export const Login: React.FC = () => {
                 <GoogleIcon />
                 Continue with Google
               </button>
-              <button className="w-full flex items-center justify-center gap-3 px-4 py-2.5 border border-slate-300 rounded-full text-slate-600 font-medium hover:bg-slate-50 transition-colors text-sm bg-white">
+              <Link to="/register" className="w-full flex items-center justify-center gap-3 px-4 py-2.5 border border-slate-300 rounded-full text-slate-600 font-medium hover:bg-slate-100 transition-all text-sm bg-white shadow-sm active:scale-95">
                 <Mail className="w-5 h-5 text-slate-600" />
                 Sign up with email
-              </button>
+              </Link>
             </div>
 
             <p className="text-[10px] text-slate-400 text-center mt-6 max-w-xs leading-relaxed">

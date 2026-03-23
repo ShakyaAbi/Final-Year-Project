@@ -36,6 +36,8 @@ export const ImportWizard: React.FC<ImportWizardProps> = ({
   onClose,
   onSuccess,
 }) => {
+  // Selection state: store selected row indices (or rowNumbers if unique)
+  const [selectedRows, setSelectedRows] = useState<number[]>([]);
   const [step, setStep] = useState<Step>("upload");
   const [file, setFile] = useState<File | null>(null);
   const [jobId, setJobId] = useState<number | null>(null);
@@ -75,6 +77,34 @@ export const ImportWizard: React.FC<ImportWizardProps> = ({
   const previewHasEvidence = preview.some((row) =>
     String(row?.data?.evidence || "").trim(),
   );
+
+  // Select all valid/warning rows by default when preview changes
+  useEffect(() => {
+    if (preview.length > 0) {
+      const defaultSelected = preview
+        .map((row, idx) => (row.valid ? idx : (row.warnings?.length ? idx : null)))
+        .filter((idx) => idx !== null) as number[];
+      setSelectedRows(defaultSelected);
+    }
+  }, [preview]);
+
+  // Selection handlers
+  const isRowSelectable = (row: any) => row.valid || (row.warnings && row.warnings.length > 0);
+  const isRowSelected = (idx: number) => selectedRows.includes(idx);
+  const handleRowSelect = (idx: number) => {
+    setSelectedRows((prev) =>
+      prev.includes(idx) ? prev.filter((i) => i !== idx) : [...prev, idx]
+    );
+  };
+  const handleSelectAll = () => {
+    const selectable = preview
+      .map((row, idx) => (isRowSelectable(row) ? idx : null))
+      .filter((idx) => idx !== null) as number[];
+    setSelectedRows(selectable);
+  };
+  const handleDeselectAll = () => setSelectedRows([]);
+  const allSelectable = preview.filter(isRowSelectable).length;
+  const allSelected = selectedRows.length === allSelectable && allSelectable > 0;
 
   const disaggregationDimensions =
     indicator?.categoryConfig?.disaggregationDimensions || [];
@@ -166,19 +196,17 @@ export const ImportWizard: React.FC<ImportWizardProps> = ({
 
   const handleConfirmImport = async () => {
     if (!jobId) return;
-
     setLoading(true);
     setError(null);
     setStep("processing");
-
     try {
-      await api.executeImport(jobId);
-
+      // Only send selected rows (by index or rowNumber)
+      const selectedRowNumbers = selectedRows.map(idx => preview[idx]?.rowNumber).filter(Boolean);
+      await api.executeImport(jobId, selectedRowNumbers);
       // Poll for job completion
       const pollInterval = setInterval(async () => {
         try {
           const status = await api.getImportJobStatus(jobId);
-
           if (status.status === "COMPLETED") {
             clearInterval(pollInterval);
             setStep("complete");
@@ -391,6 +419,33 @@ export const ImportWizard: React.FC<ImportWizardProps> = ({
                 </div>
               )}
 
+              {/* Only show selection summary and bulk actions in validate step */}
+              {step === "validate" && (
+                <div className="flex items-center justify-between mt-2 mb-2 bg-slate-50 border border-slate-200 rounded-lg p-3">
+                  <div className="text-sm">
+                    <span className="font-medium">Selected rows:</span> {selectedRows.length} / {allSelectable}
+                    {selectedRows.length > 0 && (
+                      <>
+                        {(() => {
+                          const warningCount = selectedRows.filter(idx => preview[idx]?.warnings?.length > 0 && preview[idx].valid).length;
+                          return warningCount > 0 ? (
+                            <span className="ml-3 text-amber-700">⚠ {warningCount} with warnings</span>
+                          ) : null;
+                        })()}
+                      </>
+                    )}
+                  </div>
+                  <div className="space-x-2">
+                    <Button size="sm" variant="outline" onClick={handleSelectAll} disabled={allSelected}>
+                      Select All
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={handleDeselectAll} disabled={selectedRows.length === 0}>
+                      Deselect All
+                    </Button>
+                  </div>
+                </div>
+              )}
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-3">
                   Select CSV File
@@ -477,6 +532,14 @@ export const ImportWizard: React.FC<ImportWizardProps> = ({
                     <table className="min-w-full text-sm">
                       <thead className="bg-gray-50">
                         <tr>
+                          <th className="px-2 py-2 text-left">
+                            <input
+                              type="checkbox"
+                              checked={allSelected}
+                              onChange={allSelected ? handleDeselectAll : handleSelectAll}
+                              aria-label={allSelected ? "Deselect all" : "Select all"}
+                            />
+                          </th>
                           <th className="px-3 py-2 text-left">Row</th>
                           <th className="px-3 py-2 text-left">Date</th>
                           <th className="px-3 py-2 text-left">Value</th>
@@ -496,73 +559,83 @@ export const ImportWizard: React.FC<ImportWizardProps> = ({
                         </tr>
                       </thead>
                       <tbody>
-                        {preview.map((row, idx) => (
-                          <tr
-                            key={idx}
-                            className={row.valid ? "" : "bg-red-50"}
-                          >
-                            <td className="px-3 py-2 border-t">
-                              {row.rowNumber}
-                            </td>
-                            <td className="px-3 py-2 border-t">
-                              {row.data?.reportedAt || "-"}
-                            </td>
-                            <td className="px-3 py-2 border-t">
-                              {row.data?.value || "-"}
-                            </td>
-                            {previewHasCategory && (
-                              <td className="px-3 py-2 border-t">
-                                {row.data?.categoryValue || "-"}
+                        {preview.map((row, idx) => {
+                          const selectable = isRowSelectable(row);
+                          const selected = isRowSelected(idx);
+                          return (
+                            <tr
+                              key={idx}
+                              className={
+                                !selectable
+                                  ? "bg-red-50 opacity-60"
+                                  : !selected
+                                  ? "bg-gray-50 opacity-70"
+                                  : ""
+                              }
+                            >
+                              <td className="px-2 py-2 border-t">
+                                <input
+                                  type="checkbox"
+                                  checked={selected}
+                                  disabled={!selectable}
+                                  onChange={() => handleRowSelect(idx)}
+                                  aria-label={
+                                    selectable
+                                      ? selected
+                                        ? "Deselect row"
+                                        : "Select row"
+                                      : "Row not selectable"
+                                  }
+                                />
                               </td>
-                            )}
-                            {previewHasDisaggregation && (
+                              <td className="px-3 py-2 border-t">{row.rowNumber}</td>
+                              <td className="px-3 py-2 border-t">{row.data?.reportedAt || "-"}</td>
+                              <td className="px-3 py-2 border-t">{row.data?.value || "-"}</td>
+                              {previewHasCategory && (
+                                <td className="px-3 py-2 border-t">{row.data?.categoryValue || "-"}</td>
+                              )}
+                              {previewHasDisaggregation && (
+                                <td className="px-3 py-2 border-t">{row.data?.disaggregationKey || "-"}</td>
+                              )}
+                              {previewHasEvidence && (
+                                <td className="px-3 py-2 border-t">{row.data?.evidence || "-"}</td>
+                              )}
                               <td className="px-3 py-2 border-t">
-                                {row.data?.disaggregationKey || "-"}
-                              </td>
-                            )}
-                            {previewHasEvidence && (
-                              <td className="px-3 py-2 border-t">
-                                {row.data?.evidence || "-"}
-                              </td>
-                            )}
-                            <td className="px-3 py-2 border-t">
-                              {row.valid ? (
-                                (row.warnings?.length || 0) > 0 ? (
-                                  <span className="text-amber-600">
-                                    ⚠ Warning
-                                  </span>
+                                {row.valid ? (
+                                  (row.warnings?.length || 0) > 0 ? (
+                                    <span className="text-amber-600">⚠ Warning</span>
+                                  ) : (
+                                    <span className="text-green-600">✓ Valid</span>
+                                  )
                                 ) : (
-                                  <span className="text-green-600">✓ Valid</span>
-                                )
-                              ) : (
-                                <span className="text-red-600">✗ Invalid</span>
-                              )}
-                            </td>
-                            <td className="px-3 py-2 border-t max-w-xs">
-                              {row.valid &&
-                              (!row.warnings || row.warnings.length === 0) ? (
-                                <span className="text-slate-400">-</span>
-                              ) : (
-                                <div className="space-y-1">
-                                  {[...(row.errors || []), ...(row.warnings || [])]
-                                    .slice(0, 2)
-                                    .map((issue: any, issueIdx: number) => (
-                                      <p
-                                        key={issueIdx}
-                                        className={
-                                          issue.severity === "warning"
-                                            ? "text-amber-700 text-xs"
-                                            : "text-red-700 text-xs"
-                                        }
-                                      >
-                                        {issue.field}: {issue.message}
-                                      </p>
-                                    ))}
-                                </div>
-                              )}
-                            </td>
-                          </tr>
-                        ))}
+                                  <span className="text-red-600">✗ Invalid</span>
+                                )}
+                              </td>
+                              <td className="px-3 py-2 border-t max-w-xs">
+                                {row.valid && (!row.warnings || row.warnings.length === 0) ? (
+                                  <span className="text-slate-400">-</span>
+                                ) : (
+                                  <div className="space-y-1">
+                                    {[...(row.errors || []), ...(row.warnings || [])]
+                                      .slice(0, 2)
+                                      .map((issue: any, issueIdx: number) => (
+                                        <p
+                                          key={issueIdx}
+                                          className={
+                                            issue.severity === "warning"
+                                              ? "text-amber-700 text-xs"
+                                              : "text-red-700 text-xs"
+                                          }
+                                        >
+                                          {issue.field}: {issue.message}
+                                        </p>
+                                      ))}
+                                  </div>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
                       </tbody>
                     </table>
                   </div>

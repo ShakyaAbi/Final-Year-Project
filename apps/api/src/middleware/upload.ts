@@ -1,22 +1,24 @@
 import multer from "multer";
 import path from "path";
+import fs from "fs";
 import { Request } from "express";
 
 // Configure multer for memory storage (files stored in buffer)
 const storage = multer.memoryStorage();
 
-// File filter - only accept CSV files
+// File filter - accept CSV, TXT and PDF files
 const fileFilter = (
   req: Request,
   file: Express.Multer.File,
   cb: multer.FileFilterCallback,
 ) => {
-  const allowedExtensions = [".csv", ".txt"];
+  const allowedExtensions = [".csv", ".txt", ".pdf"];
   const allowedMimeTypes = [
     "text/csv",
     "text/plain",
     "application/csv",
     "application/vnd.ms-excel",
+    "application/pdf",
   ];
 
   const ext = path.extname(file.originalname).toLowerCase();
@@ -26,11 +28,25 @@ const fileFilter = (
   if (allowedExtensions.includes(ext) && allowedMimeTypes.includes(mimeType)) {
     cb(null, true);
   } else {
-    cb(new Error("Only CSV files are allowed (invalid file type)"));
+    cb(new Error("Invalid file type. Only CSV, TXT and PDF are allowed."));
   }
 };
 
 // Create multer upload instance
+const storageDisk = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const uploadPath = path.join(process.cwd(), "uploads");
+    if (!fs.existsSync(uploadPath)) {
+      fs.mkdirSync(uploadPath, { recursive: true });
+    }
+    cb(null, uploadPath);
+  },
+  filename: (req, file, cb) => {
+    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
+    cb(null, file.fieldname + "-" + uniqueSuffix + path.extname(file.originalname));
+  },
+});
+
 export const upload = multer({
   storage,
   fileFilter,
@@ -39,5 +55,14 @@ export const upload = multer({
   },
 });
 
+export const uploadToDisk = multer({
+  storage: storageDisk,
+  fileFilter,
+  limits: {
+    fileSize: 10 * 1024 * 1024, // 10MB max file size
+  },
+});
+
 // Export middleware for single file upload
 export const uploadCSV = upload.single("file");
+export const uploadVerification = uploadToDisk.single("file");

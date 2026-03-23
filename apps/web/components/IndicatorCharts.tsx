@@ -142,57 +142,104 @@ const CustomTooltip = ({ active, payload }: any) => {
 };
 
 // Simple Linear Regression to predict next values
-const generateForecast = (historicalData: any[], periods = 4) => {
+type ForecastMethod = "LINEAR_REGRESSION" | "EXPONENTIAL_SMOOTHING";
+
+interface ForecastOptions {
+  periods?: number;
+  method?: ForecastMethod;
+  alpha?: number; // For exponential smoothing
+  frequency?: "Daily" | "Weekly" | "Monthly"; // For dynamic date steps
+}
+
+const generateForecast = (
+  historicalData: any[],
+  options: ForecastOptions = {},
+) => {
+  const {
+    periods = 4,
+    method = "LINEAR_REGRESSION",
+    alpha = 0.2, // Default smoothing factor for Exponential Smoothing
+    frequency = "Weekly",
+  } = options;
+
   if (historicalData.length < 2) return [];
 
-  // Filter valid numbers
   const validData = historicalData.filter((d) =>
     Number.isFinite(parseNumericValue(d.value)),
   );
   if (validData.length < 2) return [];
 
-  const n = validData.length;
-  let sumX = 0,
-    sumY = 0,
-    sumXY = 0,
-    sumXX = 0;
-
-  validData.forEach((point, i) => {
-    const val = parseNumericValue(point.value) ?? 0;
-    sumX += i;
-    sumY += val;
-    sumXY += i * val;
-    sumXX += i * i;
-  });
-
-  const slope = (n * sumXY - sumX * sumY) / (n * sumXX - sumX * sumX);
-  const intercept = (sumY - slope * sumX) / n;
-
-  const lastDate = new Date(historicalData[historicalData.length - 1].date);
   const forecast = [];
-
-  // Start from the last actual point to connect the lines
   const lastActual = historicalData[historicalData.length - 1];
+
   forecast.push({
     ...lastActual,
     value: parseNumericValue(lastActual.value),
-    forecast: parseNumericValue(lastActual.value), // Connect lines
+    forecast: parseNumericValue(lastActual.value),
     isForecast: false,
   });
 
-  for (let i = 1; i <= periods; i++) {
-    const nextDate = new Date(lastDate);
-    nextDate.setDate(lastDate.getDate() + i * 7); // Weekly steps
+  let predictedValues: number[] = [];
 
-    const x = n - 1 + i; // x index for regression
-    const predictedValue = slope * x + intercept;
+  if (method === "LINEAR_REGRESSION") {
+    const n = validData.length;
+    let sumX = 0,
+      sumY = 0,
+      sumXY = 0,
+      sumXX = 0;
+
+    validData.forEach((point, i) => {
+      const val = parseNumericValue(point.value) ?? 0;
+      sumX += i;
+      sumY += val;
+      sumXY += i * val;
+      sumXX += i * i;
+    });
+
+    const slope = (n * sumXY - sumX * sumY) / (n * sumXX - sumX * sumX);
+    const intercept = (sumY - slope * sumX) / n;
+
+    for (let i = 1; i <= periods; i++) {
+      const x = n - 1 + i;
+      predictedValues.push(slope * x + intercept);
+    }
+  } else if (method === "EXPONENTIAL_SMOOTHING") {
+    let s: number[] = [];
+    // Initialize S1 (S[0]) with the first actual value
+    s[0] = parseNumericValue(validData[0].value) ?? 0;
+
+    // Calculate S for historical data
+    for (let i = 1; i < validData.length; i++) {
+      const actualValue = parseNumericValue(validData[i].value) ?? 0;
+      s[i] = alpha * actualValue + (1 - alpha) * s[i - 1];
+    }
+
+    // Forecast future values
+    for (let i = 0; i < periods; i++) {
+      // The forecast for h steps ahead is the last smoothed value
+      predictedValues.push(s[s.length - 1]);
+    }
+  }
+
+  let lastDate = new Date(historicalData[historicalData.length - 1].date);
+
+  for (let i = 0; i < periods; i++) {
+    const nextDate = new Date(lastDate);
+    if (frequency === "Daily") {
+      nextDate.setDate(lastDate.getDate() + 1);
+    } else if (frequency === "Weekly") {
+      nextDate.setDate(lastDate.getDate() + 7);
+    } else if (frequency === "Monthly") {
+      nextDate.setMonth(lastDate.getMonth() + 1);
+    }
 
     forecast.push({
       date: nextDate.toISOString().split("T")[0],
-      forecast: parseFloat(predictedValue.toFixed(2)),
-      value: null, // No actual value
+      forecast: parseFloat(predictedValues[i].toFixed(2)),
+      value: null,
       isForecast: true,
     });
+    lastDate = nextDate; // Update lastDate for the next iteration
   }
 
   return forecast;
@@ -203,22 +250,22 @@ const CustomAnomalyShape = (props: any) => {
   if (!cx || !cy) return null;
 
   return (
-    <g className="drop-shadow-sm hover:drop-shadow-md cursor-pointer group">
+    <g className="drop-shadow-lg hover:drop-shadow-xl cursor-pointer group">
       <path
-        d={`M${cx} ${cy - 14} L${cx + 12} ${cy + 10} L${cx - 12} ${cy + 10} Z`}
+        d={`M${cx} ${cy - 28} L${cx + 24} ${cy + 18} L${cx - 24} ${cy + 18} Z`}
         fill="#ef4444"
         stroke="#fff"
-        strokeWidth="2"
+        strokeWidth="3"
         strokeLinejoin="round"
         className="transition-transform duration-200 group-hover:scale-110 origin-center"
       />
       <text
         x={cx}
-        y={cy + 5}
+        y={cy + 10}
         textAnchor="middle"
         fill="white"
-        fontSize="11"
-        fontWeight="800"
+        fontSize="22"
+        fontWeight="900"
         className="pointer-events-none"
       >
         !
@@ -564,18 +611,35 @@ export const IndicatorCharts: React.FC<IndicatorChartsProps> = ({
     const combinedData = [
       ...sortedValues.map((v) => ({ ...v, forecast: null })),
     ];
-    const predictions = generateForecast(sortedValues);
+    const predictions = generateForecast(sortedValues, { frequency: indicator.frequency, method: "EXPONENTIAL_SMOOTHING", periods: 6 });
+    console.log("Raw predictions from generateForecast:", predictions);
+
     const hasForecast = predictions.length > 1;
 
     if (combinedData.length > 0) {
       const lastIdx = combinedData.length - 1;
-      combinedData[lastIdx].forecast = combinedData[lastIdx].value;
+      // Ensure the last actual point has its value mirrored to start the forecast line
+      if (combinedData[lastIdx] && typeof combinedData[lastIdx].value === 'number') {
+        combinedData[lastIdx].forecast = combinedData[lastIdx].value;
+      } else {
+        // If the last actual value is null, find the last valid actual value to connect the forecast
+        let lastValidActualValue = null;
+        for (let i = sortedValues.length - 1; i >= 0; i--) {
+          if (typeof sortedValues[i].value === 'number') {
+            lastValidActualValue = sortedValues[i].value;
+            break;
+          }
+        }
+        if (lastValidActualValue !== null) {
+          combinedData[lastIdx].forecast = lastValidActualValue;
+        }
+      }
+
       if (hasForecast) {
         for (let i = 1; i < predictions.length; i++) {
-          combinedData.push({
-            ...predictions[i],
-            value: null,
-          } as any);
+          const forecastPoint = { ...predictions[i], value: null } as any;
+          combinedData.push(forecastPoint);
+          console.log("Adding forecast point to combinedData:", forecastPoint);
         }
       }
     }
@@ -599,7 +663,7 @@ export const IndicatorCharts: React.FC<IndicatorChartsProps> = ({
       .map((d) => Number(d.value));
 
     const domainValues =
-      nonAnomalyValues.length > 1 ? nonAnomalyValues : allValues;
+      allValues;
 
     const maxDataVal = Math.max(...domainValues);
     const minDataVal = Math.min(...domainValues);
@@ -786,7 +850,35 @@ export const IndicatorCharts: React.FC<IndicatorChartsProps> = ({
                 fill="url(#colorValue)"
                 name="Actual Value"
                 connectNulls={false}
-                dot={{ r: 3, fill: "#4d66ff", stroke: "#4d66ff" }}
+                dot={(props: any) => {
+                  const { cx, cy, payload } = props;
+                  if (payload.isAnomaly) {
+                    return (
+                      <g className="drop-shadow-sm hover:drop-shadow-md cursor-pointer group">
+                        <path
+                          d={`M${cx} ${cy - 7} L${cx + 6} ${cy + 5} L${cx - 6} ${cy + 5} Z`}
+                          fill="#ef4444"
+                          stroke="#fff"
+                          strokeWidth="2"
+                          strokeLinejoin="round"
+                          className="transition-transform duration-200 group-hover:scale-110 origin-center"
+                        />
+                        <text
+                          x={cx}
+                          y={cy + 2}
+                          textAnchor="middle"
+                          fill="white"
+                          fontSize="8"
+                          fontWeight="800"
+                          className="pointer-events-none"
+                        >
+                          !
+                        </text>
+                      </g>
+                    );
+                  }
+                  return <circle cx={cx} cy={cy} r={3} fill="#4d66ff" stroke="#4d66ff" />;
+                }}
               />
 
               {/* Forecast Line */}
@@ -804,16 +896,7 @@ export const IndicatorCharts: React.FC<IndicatorChartsProps> = ({
               )}
 
               {/* Anomaly Custom Shape */}
-              {anomalyData.length > 0 && (
-                <Scatter
-                  name="Anomaly"
-                  data={anomalyData}
-                  dataKey="value"
-                  shape={<CustomAnomalyShape />}
-                  legendType="triangle"
-                  zAxisId={0}
-                />
-              )}
+
             </ComposedChart>
           </ResponsiveContainer>
         </div>

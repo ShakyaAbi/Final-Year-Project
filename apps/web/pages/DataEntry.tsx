@@ -19,8 +19,10 @@ import {
   Link as LinkIcon,
   UploadCloud,
   X,
+  FileBox,
 } from "lucide-react";
 import { Link, useSearchParams } from "react-router-dom";
+import { extractTextFromPDF, parseDataFromText } from "../utils/pdfParser";
 
 export const DataEntry: React.FC = () => {
   const [projects, setProjects] = useState<Project[]>([]);
@@ -76,6 +78,8 @@ export const DataEntry: React.FC = () => {
       }
     >
   >({});
+
+  const [parsingPdfId, setParsingPdfId] = useState<string | null>(null);
 
   const isNumericInputType = (type: IndicatorType) =>
     type === IndicatorType.NUMBER ||
@@ -149,12 +153,42 @@ export const DataEntry: React.FC = () => {
       setIndicators(indData);
 
       const initialEntries: Record<string, any> = {};
-      const today = new Date().toISOString().split("T")[0];
+      const getSuggestedDate = (ind: Indicator) => {
+        const today = new Date();
+        const maxOffset = ind.frequency === "Daily" ? 7 : 4;
+        
+        // Find the latest one that is NOT reported
+        for (let offset = 0; offset < maxOffset; offset++) {
+          let dateStr = "";
+          const d = new Date(today);
+          if (ind.frequency === "Daily") {
+            dateStr = new Date(d.getFullYear(), d.getMonth(), d.getDate() - offset).toISOString().split("T")[0];
+          } else if (ind.frequency === "Weekly") {
+            const diff = d.getDate() - d.getDay() - (offset * 7);
+            dateStr = new Date(d.getFullYear(), d.getMonth(), diff).toISOString().split("T")[0];
+          } else if (ind.frequency === "Monthly") {
+            dateStr = new Date(d.getFullYear(), d.getMonth() - offset, 0).toISOString().split("T")[0];
+          }
+          
+          const isDone = ind.values.some(v => v.date.startsWith(dateStr));
+          if (!isDone) return dateStr;
+        }
+        
+        // Fallback to most recent boundary
+        if (ind.frequency === "Weekly") {
+          const diff = today.getDate() - today.getDay();
+          return new Date(today.getFullYear(), today.getMonth(), diff).toISOString().split("T")[0];
+        } else if (ind.frequency === "Monthly") {
+          return new Date(today.getFullYear(), today.getMonth(), 0).toISOString().split("T")[0];
+        }
+        return today.toISOString().split("T")[0];
+      };
+
       indData.forEach((ind) => {
         initialEntries[ind.id] = {
           value: "",
           selectedCategories: [],
-          date: today,
+          date: getSuggestedDate(ind),
           evidence: "",
           file: null,
           status: "idle",
@@ -305,6 +339,38 @@ export const DataEntry: React.FC = () => {
       ...prev,
       [id]: { ...prev[id], file: null },
     }));
+  };
+
+  const handleAutoFillPdf = async (id: string, file: File) => {
+    if (file.type !== "application/pdf") {
+      alert("Please upload a valid PDF file.");
+      return;
+    }
+    setParsingPdfId(id);
+    try {
+      const text = await extractTextFromPDF(file);
+      const parsed = parseDataFromText(text);
+
+      setEntries((prev) => {
+        const current = prev[id];
+        return {
+          ...prev,
+          [id]: {
+            ...current,
+            // Keep first 5000 chars as evidence to avoid extreme payloads
+            evidence: parsed.text.substring(0, 5000) + (parsed.text.length > 5000 ? "..." : ""),
+            date: parsed.suggestedDate || current.date,
+            value: parsed.suggestedValue || current.value,
+            file: file,
+          },
+        };
+      });
+    } catch (err) {
+      console.error(err);
+      alert("Failed to parse PDF data.");
+    } finally {
+      setParsingPdfId(null);
+    }
   };
 
   const handleSubmit = async (id: string) => {
@@ -659,6 +725,9 @@ export const DataEntry: React.FC = () => {
                       <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-700 uppercase">
                         {indicator.type}
                       </span>
+                      <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-700 uppercase flex items-center gap-1">
+                        <Calendar className="w-3 h-3" /> {indicator.frequency || "Daily"}
+                      </span>
                     </div>
                     <Link
                       to={`/indicators/${indicator.id}`}
@@ -716,6 +785,58 @@ export const DataEntry: React.FC = () => {
                           )
                         }
                       />
+                      {/* Scheduled Points suggestions */}
+                      {indicator.frequency && (
+                        <div className="mt-2 flex flex-wrap gap-1.5">
+                          {[0, 1, 2, 3, 4, 5, 6].map((offset) => {
+                            // Only show 4 periods for Monthly/Weekly, but 7 for Daily
+                            if (offset >= 4 && indicator.frequency !== "Daily") return null;
+
+                            const d = new Date();
+                            let label = "";
+                            let dateStr = "";
+                            
+                            if (indicator.frequency === "Daily") {
+                              const target = new Date(d.getFullYear(), d.getMonth(), d.getDate() - offset);
+                              dateStr = target.toISOString().split("T")[0];
+                              label = offset === 0 ? "Today" : offset === 1 ? "Yesterday" : target.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric' });
+                            } else if (indicator.frequency === "Weekly") {
+                              const diff = d.getDate() - d.getDay() - (offset * 7);
+                              const target = new Date(d.getFullYear(), d.getMonth(), diff);
+                              dateStr = target.toISOString().split("T")[0];
+                              label = `Wk of ${target.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`;
+                            } else if (indicator.frequency === "Monthly") {
+                              const target = new Date(d.getFullYear(), d.getMonth() - offset, 0);
+                              dateStr = target.toISOString().split("T")[0];
+                              label = target.toLocaleString('default', { month: 'short', year: '2-digit' });
+                            }
+                            
+                            if (!dateStr) return null;
+                            const isSelected = entry.date === dateStr;
+                            const isDone = indicator.values.some(v => v.date.startsWith(dateStr));
+                            
+                            return (
+                              <button
+                                key={offset}
+                                type="button"
+                                onClick={() => handleEntryChange(indicator.id, "date", dateStr)}
+                                title={isDone ? "Already reported" : "Pending report"}
+                                className={`text-[10px] px-2.5 py-1 rounded-md border transition-all flex items-center gap-1.5 ${
+                                  isSelected 
+                                    ? "bg-blue-600 border-blue-600 text-white shadow-sm scale-105 z-10" 
+                                    : isDone
+                                      ? "bg-slate-50 border-slate-200 text-slate-400 opacity-60"
+                                      : "bg-amber-50 border-amber-200 text-amber-700 hover:border-amber-400"
+                                }`}
+                              >
+                                {isDone && <Check className="w-2.5 h-2.5" />}
+                                {label}
+                                {!isDone && !isSelected && <div className="w-1 h-1 rounded-full bg-amber-500 animate-pulse" />}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
                     </div>
 
                     {/* Value input */}
@@ -812,9 +933,32 @@ export const DataEntry: React.FC = () => {
 
                     {/* Verification Evidence (Drag & Drop) */}
                     <div className="md:col-span-6">
-                      <label className="block text-xs font-semibold text-slate-500 mb-1.5 flex items-center gap-1">
-                        <LinkIcon className="w-3 h-3" /> Verification Source
-                      </label>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <label className="text-xs font-semibold text-slate-500 flex items-center gap-1">
+                          <LinkIcon className="w-3 h-3" /> Verification Source
+                        </label>
+                        <div className="flex items-center gap-2">
+                          {parsingPdfId === indicator.id ? (
+                            <span className="text-xs text-blue-500 animate-pulse flex items-center gap-1">
+                              Parsing...
+                            </span>
+                          ) : (
+                            <label className="cursor-pointer flex items-center gap-1 text-[10px] uppercase font-bold text-blue-600 bg-blue-50 hover:bg-blue-100 border border-blue-200 px-2 py-0.5 rounded transition-colors">
+                              <FileBox className="w-3 h-3" />
+                              Auto-Fill from PDF
+                              <input
+                                type="file"
+                                accept=".pdf"
+                                className="hidden"
+                                onChange={(e) =>
+                                  e.target.files?.[0] &&
+                                  handleAutoFillPdf(indicator.id, e.target.files[0])
+                                }
+                              />
+                            </label>
+                          )}
+                        </div>
+                      </div>
 
                       {entry.file ? (
                         <div className="w-full px-3 py-2.5 border border-blue-200 bg-blue-50 rounded-lg flex items-center justify-between animate-in fade-in">
