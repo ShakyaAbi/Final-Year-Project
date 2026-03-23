@@ -31,6 +31,24 @@ import {
   ChevronRight,
 } from "lucide-react";
 
+// Components
+import { AnomalyReviewPanel } from "../components/indicator/AnomalyReviewPanel";
+import { MLEvaluationPanel } from "../components/indicator/MLEvaluationPanel";
+import { ReportingHealthCard } from "../components/indicator/ReportingHealthCard";
+import { ReminderSettingsCard } from "../components/indicator/ReminderSettingsCard";
+import { SubmissionHistoryTable } from "../components/indicator/SubmissionHistoryTable";
+import { IndicatorDataEntryForm } from "../components/indicator/IndicatorDataEntryForm";
+import { IndicatorMetadataSummary } from "../components/indicator/IndicatorMetadataSummary";
+
+// Utilities
+import {
+  formatDate,
+  formatCategoryValue,
+  formatCategoricalDisplay,
+  inferAnomalyReason,
+  isNumericInputType,
+} from "../services/indicatorUtils";
+
 export const IndicatorDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const [indicator, setIndicator] = useState<Indicator | undefined>(undefined);
@@ -89,11 +107,8 @@ export const IndicatorDetail: React.FC = () => {
   });
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
+  const [refreshCounter, setRefreshCounter] = useState(0);
 
-  const isNumericInputType = (type: IndicatorType) =>
-    type === IndicatorType.NUMBER ||
-    type === IndicatorType.PERCENTAGE ||
-    type === IndicatorType.CURRENCY;
 
   const buildSubmissionValue = (
     type: IndicatorType,
@@ -101,13 +116,17 @@ export const IndicatorDetail: React.FC = () => {
     categoryValue?: string,
   ) => {
     if (type === IndicatorType.CATEGORICAL) {
-      return categoryValue ?? rawValue;
+      // For categorical, rawValue is usually a number/count, 
+      // categoryValue stores the actual category IDs.
+      // We return rawValue here so it saves to the 'value' field.
+      return rawValue || categoryValue || "";
     }
     if (isNumericInputType(type)) {
       return Number(rawValue);
     }
     return rawValue;
   };
+
 
   const reloadIndicator = async (includeDeleted = showDeleted) => {
     if (!id) return;
@@ -127,7 +146,9 @@ export const IndicatorDetail: React.FC = () => {
       setIndicator(undefined);
     } finally {
       setLoading(false);
+      setRefreshCounter((prev) => prev + 1);
     }
+
   };
 
   useEffect(() => {
@@ -284,9 +305,6 @@ export const IndicatorDetail: React.FC = () => {
     const categoryRequired = indicator.categoryConfig?.required === true;
     const disaggregationDimensions =
       indicator.categoryConfig?.disaggregationDimensions || [];
-    const primaryDisaggregationDimension =
-      disaggregationDimensions.find((d) => d.required) ||
-      (disaggregationDimensions.length > 0 ? disaggregationDimensions[0] : null);
 
     if (entryValue === "") return;
     if (
@@ -307,12 +325,28 @@ export const IndicatorDetail: React.FC = () => {
       );
       return;
     }
-    const primaryDisaggregationKey = primaryDisaggregationDimension
-      ? selectedDisaggregationValues[
-          primaryDisaggregationDimension.key ||
-            primaryDisaggregationDimension.label
-        ] || ""
-      : "";
+
+    // Build composite disaggregation key from ALL dimensions that have values
+    let compositeDisaggregationKey = "";
+    if (disaggregationDimensions.length > 0) {
+      const parts = disaggregationDimensions
+        .map((dim) => {
+          const dimKey = dim.key || dim.label;
+          const value = selectedDisaggregationValues[dimKey]?.trim() || "";
+          return value ? { dimKey, value } : null;
+        })
+        .filter(Boolean) as { dimKey: string; value: string }[];
+
+      if (parts.length === 1) {
+        // Single dimension: keep simple value for backward compatibility
+        compositeDisaggregationKey = parts[0].value;
+      } else if (parts.length > 1) {
+        // Multiple dimensions: use composite format
+        compositeDisaggregationKey = parts
+          .map((p) => `${p.dimKey}:${p.value}`)
+          .join("|");
+      }
+    }
 
     setSaving(true);
     setError(null);
@@ -338,7 +372,7 @@ export const IndicatorDetail: React.FC = () => {
         value: valuePayload,
         evidence: finalEvidence,
         categoryValue: categoryValuePayload,
-        disaggregationKey: primaryDisaggregationKey || undefined,
+        disaggregationKey: compositeDisaggregationKey || undefined,
       }, attachedFile);
       await reloadIndicator(showDeleted);
     } catch (err: any) {
@@ -580,95 +614,6 @@ export const IndicatorDetail: React.FC = () => {
   const anomalies = indicator.values.filter((v) => v.isAnomaly);
   const missedEntryCount = reportingGaps.length;
 
-  const formatDate = (value: string) => {
-    const parsed = new Date(value);
-    if (Number.isNaN(parsed.getTime())) return value;
-    return parsed.toLocaleDateString("en-US", {
-      year: "numeric",
-      month: "short",
-      day: "2-digit",
-      timeZone: "UTC",
-    });
-  };
-
-  // Helper to format category values for display
-  const formatCategoryValue = (value: string | number | undefined): string => {
-    if (!indicator.categories || indicator.categories.length === 0) {
-      return String(value ?? "");
-    }
-
-    if (value === undefined || value === null || value === "") return "";
-
-    const categoryIds = String(value).split(",");
-    const labels = categoryIds
-      .map((id) => {
-        const cat = indicator.categories?.find((c) => c.id === id.trim());
-        return cat?.label || id;
-      })
-      .filter(Boolean);
-
-    return labels.length > 0 ? labels.join(", ") : String(value);
-  };
-
-  const formatCategoricalDisplay = (
-    value: string | number | undefined,
-    categoryValue?: string,
-  ): string => {
-    // For categorical indicators, prefer showing only the human-readable label
-    if (categoryValue) {
-      const label = formatCategoryValue(categoryValue);
-      if (label) return label;
-    }
-    // If there's no categoryValue, the value field itself may hold the category ID
-    if (isCategorical && value !== undefined && value !== null && value !== "") {
-      const label = formatCategoryValue(String(value));
-      if (label && label !== String(value)) return label;
-    }
-    return String(value ?? "N/A");
-  };
-
-  const inferAnomalyReason = (
-    value: number | string,
-    existing?: string,
-    isAnomaly?: boolean,
-    score?: number,
-    threshold?: number,
-  ) => {
-    if (!isAnomaly) return "";
-    const suffix =
-      score !== undefined && threshold !== undefined
-        ? ` (score: ${score.toFixed(3)}, threshold: ${threshold.toFixed(3)})`
-        : "";
-    if (existing && existing.trim()) return `${existing}${suffix}`;
-    const numericValue = Number(value);
-    if (!Number.isFinite(numericValue)) return `Anomaly detected${suffix}`;
-    if (indicator.type === IndicatorType.PERCENTAGE) {
-      const lower = indicator.minExpected ?? 0;
-      const upper = indicator.maxExpected ?? 100;
-      if (numericValue < lower)
-        return `Percent must be between ${lower} and ${upper}${suffix}`;
-      if (numericValue > upper)
-        return `Percent must be between ${lower} and ${upper}${suffix}`;
-    }
-    if (
-      indicator.type === IndicatorType.NUMBER ||
-      indicator.type === IndicatorType.CURRENCY
-    ) {
-      if (
-        indicator.minExpected !== undefined &&
-        numericValue < indicator.minExpected
-      ) {
-        return `Value below expected minimum (${indicator.minExpected})${suffix}`;
-      }
-      if (
-        indicator.maxExpected !== undefined &&
-        numericValue > indicator.maxExpected
-      ) {
-        return `Value exceeds expected maximum (${indicator.maxExpected})${suffix}`;
-      }
-    }
-    return `Anomaly detected${suffix}`;
-  };
 
   return (
     <Layout>
@@ -685,9 +630,6 @@ export const IndicatorDetail: React.FC = () => {
             <div className="flex items-center gap-2 mb-2">
               <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-100 text-blue-800">
                 {indicator.type}
-              </span>
-              <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-800">
-                v{indicator.currentVersion}
               </span>
             </div>
             <h1 className="text-2xl font-bold text-slate-900">
@@ -711,10 +653,6 @@ export const IndicatorDetail: React.FC = () => {
               <Download className="w-4 h-4 mr-2" />
               Export CSV
             </Button>
-            <Button variant="outline" size="sm">
-              <History className="w-4 h-4 mr-2" />
-              Definition History
-            </Button>
           </div>
         </div>
       </div>
@@ -724,8 +662,12 @@ export const IndicatorDetail: React.FC = () => {
         <div className="lg:col-span-2 space-y-8">
           {/* Charts Section */}
           {(isNumeric || isCategorical) && (
-            <IndicatorCharts indicator={filteredIndicator!} />
+            <IndicatorCharts 
+              indicator={filteredIndicator!} 
+              refreshCounter={refreshCounter}
+            />
           )}
+
 
           {/* Time-Series Chart for Categorical Indicators */}
           {indicator.type === IndicatorType.CATEGORICAL &&
@@ -734,7 +676,9 @@ export const IndicatorDetail: React.FC = () => {
               <CategoryTimeSeriesChart
                 indicatorId={indicator.id}
                 categories={indicator.categories}
+                refreshCounter={refreshCounter}
               />
+
             )}
 
           {indicator.type === IndicatorType.CATEGORICAL &&
@@ -744,14 +688,16 @@ export const IndicatorDetail: React.FC = () => {
             indicator.categoryConfig.disaggregationDimensions.length > 0 && (
               <DisaggregationComparison
                 indicatorId={indicator.id}
-                categories={indicator.categories}
+                categories={indicator.categories as any}
                 dimensionLabel={
                   indicator.categoryConfig.disaggregationDimensions[0].label ||
                   "Entity"
                 }
                 onSelectDisaggregation={setFilterDisaggregation}
                 selectedKey={filterDisaggregation}
+                refreshCounter={refreshCounter}
               />
+
             )}
 
           {filterDisaggregation && (
@@ -777,1115 +723,98 @@ export const IndicatorDetail: React.FC = () => {
             </div>
           )}
 
-          {/* Anomaly Summary Block */}
-          {anomalies.length > 0 && (
-            <div className="bg-red-50 border border-red-100 rounded-lg p-6">
-              <div className="flex items-center mb-4 text-red-800">
-                <AlertTriangle className="w-5 h-5 mr-2" />
-                <h3 className="font-semibold">
-                  Detected Anomalies ({anomalies.length})
-                </h3>
-              </div>
-              <div className="space-y-3">
-                {anomalies
-                  .slice(-3)
-                  .reverse()
-                  .map((a) => (
-                    <div
-                      key={a.id}
-                      className="bg-white p-3 rounded border border-red-100 text-sm shadow-sm"
-                    >
-                      <div className="flex justify-between items-start gap-4">
-                        <div>
-                          <span className="font-medium text-slate-900 mr-2">
-                            {formatDate(a.date)}
-                          </span>
-                          <span className="text-slate-500">
-                            Category:{" "}
-                            {formatCategoricalDisplay(
-                              a.value,
-                              a.categoryValue ?? undefined,
-                            )}
-                          </span>
-                        </div>
-                        <span className="text-red-600 font-medium text-xs bg-red-50 px-2 py-1 rounded-full border border-red-100">
-                          Anomaly
-                        </span>
-                      </div>
-                      <div className="text-xs text-red-700 mt-2">
-                        {inferAnomalyReason(
-                          a.value,
-                          a.anomalyReason,
-                          a.isAnomaly,
-                          a.anomalyScore,
-                          a.anomalyThreshold,
-                        )}
-                      </div>
-                    </div>
-                  ))}
-              </div>
-            </div>
-          )}
+            <MLEvaluationPanel indicator={indicator} />
 
-          <div className="bg-white rounded-lg border border-slate-200 shadow-sm p-5 overflow-hidden relative">
-            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
-              <h3 className="text-base font-semibold text-slate-900 flex items-center gap-2">
-                <CalendarClock className="w-4 h-4 text-blue-600" />
-                Reporting Health
-              </h3>
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-slate-500">View as:</span>
-                <select
-                  value={reportingFrequency}
-                  onChange={(e) =>
-                    setReportingFrequency(e.target.value as any)
-                  }
-                  className="text-xs border border-slate-300 rounded px-2 py-1 bg-white focus:ring-1 focus:ring-blue-500 outline-none"
-                >
-                  <option value="DAILY">Daily</option>
-                  <option value="WEEKLY">Weekly</option>
-                  <option value="MONTHLY">Monthly</option>
-                </select>
-              </div>
-            </div>
+          <AnomalyReviewPanel indicator={indicator} anomalies={anomalies} />
 
-            {(() => {
-              // Calculate compliance
-              const submissionsTotal = indicator.values.length;
-              let expectedSoFar = 1; // Minimum 1 expected
-              
-              if (project?.startDate) {
-                const start = new Date(project.startDate);
-                const end = new Date(); // now
-                const diffMs = Math.max(0, end.getTime() - start.getTime());
-                const diffDays = diffMs / (1000 * 60 * 60 * 24);
-                
-                if (reportingFrequency === "DAILY") expectedSoFar = Math.ceil(diffDays);
-                else if (reportingFrequency === "WEEKLY") expectedSoFar = Math.ceil(diffDays / 7);
-                else expectedSoFar = Math.ceil(diffDays / 30);
-              }
-              
-              const complianceRate = Math.min(100, Math.round((submissionsTotal / Math.max(1, expectedSoFar)) * 100));
-              const healthStatus = complianceRate >= 80 ? "Healthy" : complianceRate >= 50 ? "Needs Attention" : "Critical";
-              const healthColor = complianceRate >= 80 ? "text-green-600" : complianceRate >= 50 ? "text-amber-600" : "text-red-600";
-              const healthBg = complianceRate >= 80 ? "bg-green-50" : complianceRate >= 50 ? "bg-amber-50" : "bg-red-50";
+          <ReportingHealthCard
+            indicator={indicator}
+            project={project}
+            reportingFrequency={reportingFrequency}
+            setReportingFrequency={setReportingFrequency}
+            reportingGaps={reportingGaps}
+            anomalies={anomalies}
+          />
 
-              return (
-                <div className="space-y-4">
-                  <div className={`p-4 rounded-xl border flex items-center justify-between ${healthBg} border-current border-opacity-10`}>
-                    <div>
-                      <div className={`text-xs font-bold uppercase tracking-wider mb-1 ${healthColor}`}>
-                        Compliance Status
-                      </div>
-                      <div className="text-xl font-black text-slate-900 flex items-baseline gap-2">
-                        {complianceRate}%
-                        <span className="text-xs font-medium text-slate-500">
-                          ({submissionsTotal} / {expectedSoFar} entries)
-                        </span>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <div className={`text-sm font-bold ${healthColor}`}>
-                        {healthStatus}
-                      </div>
-                      <div className="text-[10px] text-slate-400 font-medium">
-                        Based on project timeline
-                      </div>
-                    </div>
-                  </div>
+          <ReminderSettingsCard
+            indicator={indicator}
+            isEditingSettings={isEditingSettings}
+            setIsEditingSettings={setIsEditingSettings}
+            settingsForm={settingsForm}
+            setSettingsForm={setSettingsForm}
+            handleUpdateSettings={handleUpdateSettings}
+            saving={saving}
+          />
 
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="p-3 bg-slate-50 rounded-lg border border-slate-100">
-                      <div className="text-[10px] font-bold text-slate-400 uppercase mb-1">Missed Gaps</div>
-                      <div className="text-lg font-bold text-slate-700">{reportingGaps.length}</div>
-                    </div>
-                    <div className="p-3 bg-slate-50 rounded-lg border border-slate-100">
-                      <div className="text-[10px] font-bold text-slate-400 uppercase mb-1">Flagged Anomalies</div>
-                      <div className="text-lg font-bold text-slate-700">{anomalies.length}</div>
-                    </div>
-                  </div>
-
-                  {reportingGaps.length > 0 && (
-                    <div className="space-y-2">
-                      <div className="text-[10px] font-bold text-slate-400 uppercase flex items-center gap-2">
-                        <AlertTriangle className="w-3 h-3 text-amber-500" /> Major Reporting Gaps
-                      </div>
-                      {reportingGaps.slice(0, 2).map((gap, idx) => (
-                        <div
-                          key={`${gap.from}-${idx}`}
-                          className="text-[11px] text-slate-600 bg-white border border-slate-100 rounded px-3 py-2 flex items-center justify-between"
-                        >
-                          <div className="flex items-center gap-2">
-                            <CalendarClock className="w-3 h-3 text-slate-400" />
-                            <span>{formatDate(gap.from)} — {formatDate(gap.to)}</span>
-                          </div>
-                          <span className="font-bold text-amber-600">
-                            {gap.expectedSubmissions} periods missed
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              );
-            })()}
-          </div>
-
-          {/* Reminder Settings Card */}
-          <div className="bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden">
-            <div className="px-5 py-3 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
-              <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-                <BellRing className="w-4 h-4 text-blue-600" />
-                Reminder Settings
-              </h3>
-              {!isEditingSettings && (
-                <button 
-                  onClick={() => setIsEditingSettings(true)}
-                  className="text-[10px] font-bold text-blue-600 hover:text-blue-800 uppercase tracking-wider"
-                >
-                  Configure
-                </button>
-              )}
-            </div>
-            
-            <div className="p-5">
-              {!isEditingSettings ? (
-                <div className="space-y-4">
-                  <div className="flex justify-between items-center text-sm">
-                    <span className="text-slate-500">Frequency:</span>
-                    <span className="font-semibold text-slate-700">{indicator.frequency}</span>
-                  </div>
-                  <div className="flex justify-between items-center text-sm">
-                    <span className="text-slate-500">Automatic Reminders:</span>
-                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${indicator.reminderEnabled ? "bg-green-100 text-green-700" : "bg-slate-100 text-slate-500"}`}>
-                      {indicator.reminderEnabled ? "ENABLED" : "DISABLED"}
-                    </span>
-                  </div>
-                  {indicator.reminderEnabled && (
-                    <div className="grid grid-cols-2 gap-4 pt-2 border-t border-slate-50">
-                      <div>
-                        <div className="text-[10px] font-bold text-slate-400 uppercase">Pre-reminder</div>
-                        <div className="text-sm font-medium text-slate-700">{indicator.reminderDaysBeforeDue || 0} days before</div>
-                      </div>
-                      <div>
-                        <div className="text-[10px] font-bold text-slate-400 uppercase">Overdue Alert</div>
-                        <div className="text-sm font-medium text-slate-700">{indicator.reminderDaysAfterDue || 0} days after</div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <div className="space-y-4 animate-in fade-in slide-in-from-top-2">
-                  <div>
-                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Reporting Frequency</label>
-                    <select 
-                      value={settingsForm.frequency}
-                      onChange={(e) => setSettingsForm({...settingsForm, frequency: e.target.value as any})}
-                      className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                    >
-                      <option value="Daily">Daily</option>
-                      <option value="Weekly">Weekly</option>
-                      <option value="Monthly">Monthly</option>
-                      <option value="Quarterly">Quarterly</option>
-                      <option value="Yearly">Yearly</option>
-                    </select>
-                  </div>
-                  
-                  <div className="flex items-center justify-between p-3 bg-blue-50 rounded-lg">
-                    <div className="flex items-center gap-3">
-                      <div className={`p-2 rounded-lg ${settingsForm.reminderEnabled ? "bg-blue-600 text-white" : "bg-slate-200 text-slate-400"}`}>
-                        <BellRing className="w-4 h-4" />
-                      </div>
-                      <div>
-                        <h4 className="text-sm font-bold text-slate-900">Enable Reminders</h4>
-                        <p className="text-[10px] text-slate-500">Notify assigned users when data is due</p>
-                      </div>
-                    </div>
-                    <label className="relative inline-flex items-center cursor-pointer">
-                      <input 
-                        type="checkbox" 
-                        className="sr-only peer" 
-                        checked={settingsForm.reminderEnabled}
-                        onChange={(e) => setSettingsForm({...settingsForm, reminderEnabled: e.target.checked})}
-                      />
-                      <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-                    </label>
-                  </div>
-
-                  {settingsForm.reminderEnabled && (
-                    <div className="grid grid-cols-2 gap-4 animate-in zoom-in-95 duration-200">
-                      <div>
-                        <label className="block text-xs font-bold text-slate-500 mb-1">Days Before Due</label>
-                        <input 
-                          type="number" 
-                          min={0}
-                          value={settingsForm.reminderDaysBeforeDue}
-                          onChange={(e) => setSettingsForm({...settingsForm, reminderDaysBeforeDue: parseInt(e.target.value)})}
-                          className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-bold text-slate-500 mb-1">Days After Due</label>
-                        <input 
-                          type="number"
-                          min={0}
-                          value={settingsForm.reminderDaysAfterDue}
-                          onChange={(e) => setSettingsForm({...settingsForm, reminderDaysAfterDue: parseInt(e.target.value)})}
-                          className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                        />
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="flex gap-2 pt-2">
-                    <Button 
-                      className="flex-1" 
-                      size="sm" 
-                      onClick={handleUpdateSettings}
-                      disabled={saving}
-                    >
-                      {saving ? "Saving..." : "Save Settings"}
-                    </Button>
-                    <Button 
-                      variant="outline" 
-                      className="flex-1" 
-                      size="sm" 
-                      onClick={() => setIsEditingSettings(false)}
-                      disabled={saving}
-                    >
-                      Cancel
-                    </Button>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Data History Table */}
-          <div className="space-y-4">
-            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-              <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-                <TableIcon className="w-5 h-5 text-slate-400" />
-                Data History
-              </h3>
-              <div className="flex flex-wrap gap-2">
-                <label className="inline-flex items-center gap-2 px-3 py-1.5 text-xs rounded border border-slate-200 bg-white text-slate-600">
-                  <input
-                    type="checkbox"
-                    checked={showDeleted}
-                    onChange={(e) => setShowDeleted(e.target.checked)}
-                  />
-                  Show Deleted
-                </label>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleBatchDelete}
-                  disabled={selectedRows.size === 0}
-                >
-                  <Trash2 className="w-4 h-4 mr-2" /> Delete Selected
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleBatchRestore}
-                  disabled={selectedRows.size === 0}
-                >
-                  <RotateCcw className="w-4 h-4 mr-2" /> Restore Selected
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleDownloadCsvTemplate}
-                >
-                  <Download className="w-4 h-4 mr-2" /> CSV Template
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setShowImportWizard(true)}
-                >
-                  <UploadCloud className="w-4 h-4 mr-2" /> Import CSV
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setShowExportDialog(true)}
-                >
-                  <Download className="w-4 h-4 mr-2" /> Export CSV
-                </Button>
-              </div>
-            </div>
-
-            <div className="bg-white rounded-lg border border-slate-200 overflow-hidden shadow-sm">
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm text-left">
-                  <thead className="bg-slate-50 text-slate-500 font-semibold border-b border-slate-200">
-                    <tr>
-                      <th className="px-4 py-3">
-                        <input
-                          type="checkbox"
-                          checked={
-                            pagedValues.length > 0 &&
-                            pagedValues.every((row) => selectedRows.has(row.id))
-                          }
-                          onChange={(e) =>
-                            toggleSelectAll(e.target.checked, pagedValues)
-                          }
-                        />
-                      </th>
-                      <th
-                        className="px-6 py-3 cursor-pointer hover:bg-slate-100 transition-colors"
-                        onClick={() => handleSort("date")}
-                      >
-                        <div className="flex items-center gap-1">
-                          Reporting Date
-                          <ArrowUpDown
-                            className={`w-3 h-3 ${sortField === "date" ? "text-blue-600" : "text-slate-400"}`}
-                          />
-                        </div>
-                      </th>
-                      <th className="px-6 py-3">Value</th>
-                      <th className="px-6 py-3">Disaggregation</th>
-                      <th className="px-6 py-3">Status</th>
-                      <th className="px-6 py-3">Anomaly Reason</th>
-                      <th className="px-6 py-3">Verification</th>
-                      <th className="px-6 py-3 sticky right-0 bg-slate-50 z-10">
-                        Actions
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {tableValues.length === 0 ? (
-                      <tr>
-                        <td
-                          colSpan={8}
-                          className="px-6 py-12 text-center"
-                        >
-                          <div className="flex flex-col items-center justify-center text-slate-400">
-                            <History className="w-8 h-8 mb-2 opacity-20" />
-                            <p className="text-sm italic">
-                              {filterDisaggregation 
-                                ? `No individual data points found for "${filterDisaggregation}"`
-                                : "No data entries recorded yet."}
-                            </p>
-                            {filterDisaggregation && (
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="mt-3"
-                                onClick={() => setFilterDisaggregation(null)}
-                              >
-                                Clear filter
-                              </Button>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    ) : (
-                      pagedValues.map((row) => {
-                        const edit = editingRows[row.id];
-                        const editable = canModifyRow(row);
-                        return (
-                        <tr
-                          key={row.id}
-                          className={`hover:bg-slate-50 transition-colors ${row.isAnomaly ? "bg-red-50/30" : ""} ${row.deletedAt ? "opacity-60" : ""}`}
-                        >
-                          <td className="px-4 py-4">
-                            <input
-                              type="checkbox"
-                              checked={selectedRows.has(row.id)}
-                              onChange={(e) =>
-                                toggleRowSelected(row.id, e.target.checked)
-                              }
-                            />
-                          </td>
-                          <td className="px-6 py-4 font-medium text-slate-900 whitespace-nowrap">
-                            {edit ? (
-                              <input
-                                type="date"
-                                value={edit.reportedAt}
-                                onChange={(e) =>
-                                  setEditingRows((prev) => ({
-                                    ...prev,
-                                    [row.id]: {
-                                      ...prev[row.id],
-                                      reportedAt: e.target.value,
-                                    },
-                                  }))
-                                }
-                                className="px-2 py-1 border border-slate-300 rounded"
-                              />
-                            ) : (
-                              formatDate(row.date)
-                            )}
-                          </td>
-                          <td className="px-6 py-4 font-mono text-slate-700">
-                            {edit ? (
-                              <input
-                                type="text"
-                                value={edit.value}
-                                onChange={(e) =>
-                                  setEditingRows((prev) => ({
-                                    ...prev,
-                                    [row.id]: {
-                                      ...prev[row.id],
-                                      value: e.target.value,
-                                    },
-                                  }))
-                                }
-                                className="px-2 py-1 border border-slate-300 rounded w-28"
-                              />
-                            ) : (
-                              <>
-                                {formatCategoricalDisplay(
-                                  row.value,
-                                  row.categoryValue ?? undefined,
-                                )}
-                                <span className="text-xs text-slate-400 ml-1">
-                                  {indicator.unit}
-                                </span>
-                              </>
-                            )}
-                          </td>
-                          <td className="px-6 py-4">
-                            <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-slate-100 text-slate-700">
-                              {row.disaggregationKey || "None"}
-                            </span>
-                          </td>
-                          <td className="px-6 py-4">
-                            {row.isAnomaly ? (
-                              <div
-                                className="flex items-center gap-2 text-red-600"
-                                title={inferAnomalyReason(
-                                  row.value,
-                                  row.anomalyReason,
-                                  row.isAnomaly,
-                                  row.anomalyScore,
-                                  row.anomalyThreshold,
-                                )}
-                              >
-                                <AlertTriangle className="w-4 h-4" />
-                                <span className="text-xs font-semibold">
-                                  Anomaly
-                                </span>
-                              </div>
-                            ) : (
-                              <div className="flex items-center gap-2 text-green-600">
-                                <CheckCircle className="w-4 h-4" />
-                                <span className="text-xs font-semibold">
-                                  Verified
-                                </span>
-                              </div>
-                            )}
-                          </td>
-                          <td className="px-6 py-4">
-                            {row.isAnomaly ? (
-                              <span
-                                className="text-xs text-red-600 block max-w-[260px] whitespace-normal break-words"
-                                title={inferAnomalyReason(
-                                  row.value,
-                                  row.anomalyReason,
-                                  row.isAnomaly,
-                                  row.anomalyScore,
-                                  row.anomalyThreshold,
-                                )}
-                              >
-                                {inferAnomalyReason(
-                                  row.value,
-                                  row.anomalyReason,
-                                  row.isAnomaly,
-                                  row.anomalyScore,
-                                  row.anomalyThreshold,
-                                )}
-                              </span>
-                            ) : (
-                              <span className="text-xs text-slate-300">-</span>
-                            )}
-                          </td>
-                          <td className="px-6 py-4">
-                            {edit ? (
-                              <div className="space-y-2">
-                                <input
-                                  type="text"
-                                  value={edit.evidence}
-                                  onChange={(e) =>
-                                    setEditingRows((prev) => ({
-                                      ...prev,
-                                      [row.id]: {
-                                        ...prev[row.id],
-                                        evidence: e.target.value,
-                                      },
-                                    }))
-                                  }
-                                  className="px-2 py-1 border border-slate-300 rounded w-48"
-                                />
-                                <div className="flex items-center gap-2 md:hidden">
-                                  <button
-                                    className="text-xs px-2 py-1 border rounded text-green-700 border-green-200 bg-green-50"
-                                    onClick={() => saveRowEdit(row.id)}
-                                  >
-                                    Save
-                                  </button>
-                                  <button
-                                    className="text-xs px-2 py-1 border rounded text-slate-700 border-slate-200"
-                                    onClick={() => cancelRowEdit(row.id)}
-                                  >
-                                    Cancel
-                                  </button>
-                                </div>
-                              </div>
-                            ) : row.evidence ? (
-                              row.evidence.startsWith("http") ? (
-                                <a
-                                  href={row.evidence}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="flex items-center gap-2 text-blue-600 hover:text-blue-800 bg-blue-50 px-2 py-1 rounded border border-blue-100 w-fit transition-colors"
-                                >
-                                  <LinkIcon className="w-3 h-3" />
-                                  <span className="text-xs font-medium">
-                                    View Verification
-                                  </span>
-                                </a>
-                              ) : row.evidence.startsWith("[Attached]") ? (
-                                <div className="flex items-center gap-2 text-blue-600 bg-blue-50 px-2 py-1 rounded border border-blue-100 w-fit">
-                                  <FileText className="w-3 h-3" />
-                                  <span className="text-xs truncate max-w-[150px]">
-                                    {row.evidence.replace("[Attached] ", "")}
-                                  </span>
-                                </div>
-                              ) : (
-                                <span
-                                  className="text-xs text-slate-600 italic block max-w-[200px] truncate"
-                                  title={row.evidence}
-                                >
-                                  {row.evidence}
-                                </span>
-                              )
-                            ) : (
-                              <span className="text-xs text-slate-300">-</span>
-                            )}
-                          </td>
-                          <td className="px-6 py-4 sticky right-0 bg-white z-10 shadow-[-8px_0_8px_-8px_rgba(15,23,42,0.15)]">
-                            <div className="flex items-center gap-2">
-                              {edit ? (
-                                <>
-                                  <button
-                                    className="text-xs px-2 py-1 border rounded text-green-700 border-green-200 bg-green-50"
-                                    onClick={() => saveRowEdit(row.id)}
-                                  >
-                                    Save
-                                  </button>
-                                  <button
-                                    className="text-xs px-2 py-1 border rounded text-slate-700 border-slate-200"
-                                    onClick={() => cancelRowEdit(row.id)}
-                                  >
-                                    Cancel
-                                  </button>
-                                </>
-                              ) : (
-                                <>
-                                  {!row.deletedAt && (
-                                    <button
-                                      className="text-xs px-2 py-1 border rounded text-blue-700 border-blue-200 disabled:opacity-40"
-                                      disabled={!editable}
-                                      onClick={() => startRowEdit(row)}
-                                      title={
-                                        editable
-                                          ? "Edit"
-                                          : "You cannot edit this submission"
-                                      }
-                                    >
-                                      <Pencil className="w-3 h-3" />
-                                    </button>
-                                  )}
-                                  {!row.deletedAt ? (
-                                    <button
-                                      className="text-xs px-2 py-1 border rounded text-red-700 border-red-200 disabled:opacity-40"
-                                      disabled={!editable}
-                                      onClick={() => deleteRow(row.id)}
-                                      title={
-                                        editable
-                                          ? "Delete"
-                                          : "You cannot delete this submission"
-                                      }
-                                    >
-                                      <Trash2 className="w-3 h-3" />
-                                    </button>
-                                  ) : (
-                                    <button
-                                      className="text-xs px-2 py-1 border rounded text-amber-700 border-amber-200"
-                                      onClick={() => restoreRow(row.id)}
-                                      title="Restore"
-                                    >
-                                      <RotateCcw className="w-3 h-3" />
-                                    </button>
-                                  )}
-                                </>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                      )})
-                    )}
-                  </tbody>
-                </table>
-              </div>
-              <div className="border-t border-slate-200 px-4 py-3 bg-slate-50/60">
-                <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                  <div className="flex flex-wrap items-center gap-3 text-xs text-slate-600">
-                    <span>
-                      Showing <span className="font-semibold">{showingFrom}</span>
-                      {" - "}
-                      <span className="font-semibold">{showingTo}</span> of{" "}
-                      <span className="font-semibold">{totalRows}</span> entries
-                    </span>
-                    <span>
-                      Selected:{" "}
-                      <span className="font-semibold">{selectedRows.size}</span>
-                    </span>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <label className="text-xs text-slate-600">Rows</label>
-                    <select
-                      value={pageSize}
-                      onChange={(e) => {
-                        setPageSize(Number(e.target.value));
-                        setCurrentPage(1);
-                      }}
-                      className="text-xs border border-slate-300 rounded px-2 py-1 bg-white"
-                    >
-                      <option value={10}>10</option>
-                      <option value={25}>25</option>
-                      <option value={50}>50</option>
-                    </select>
-                    <button
-                      type="button"
-                      className="inline-flex items-center gap-1 px-2 py-1 text-xs border border-slate-300 rounded bg-white disabled:opacity-40"
-                      onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                      disabled={safeCurrentPage <= 1}
-                    >
-                      <ChevronLeft className="w-3 h-3" />
-                      Prev
-                    </button>
-                    {safeCurrentPage > 3 && (
-                      <>
-                        <button
-                          type="button"
-                          className="px-2 py-1 text-xs border border-slate-300 rounded bg-white"
-                          onClick={() => setCurrentPage(1)}
-                        >
-                          1
-                        </button>
-                        <span className="px-1 text-xs text-slate-400">...</span>
-                      </>
-                    )}
-                    {pageNumbers.map((page) => (
-                      <button
-                        key={page}
-                        type="button"
-                        className={`px-2 py-1 text-xs border rounded ${
-                          page === safeCurrentPage
-                            ? "border-blue-300 bg-blue-50 text-blue-700"
-                            : "border-slate-300 bg-white"
-                        }`}
-                        onClick={() => setCurrentPage(page)}
-                      >
-                        {page}
-                      </button>
-                    ))}
-                    {safeCurrentPage < totalPages - 2 && (
-                      <>
-                        <span className="px-1 text-xs text-slate-400">...</span>
-                        <button
-                          type="button"
-                          className="px-2 py-1 text-xs border border-slate-300 rounded bg-white"
-                          onClick={() => setCurrentPage(totalPages)}
-                        >
-                          {totalPages}
-                        </button>
-                      </>
-                    )}
-                    <button
-                      type="button"
-                      className="inline-flex items-center gap-1 px-2 py-1 text-xs border border-slate-300 rounded bg-white disabled:opacity-40"
-                      onClick={() =>
-                        setCurrentPage((p) => Math.min(totalPages, p + 1))
-                      }
-                      disabled={safeCurrentPage >= totalPages}
-                    >
-                      Next
-                      <ChevronRight className="w-3 h-3" />
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
+          <SubmissionHistoryTable
+            indicator={indicator}
+            tableValues={tableValues}
+            pagedValues={pagedValues}
+            totalRows={totalRows}
+            totalPages={totalPages}
+            currentPage={currentPage}
+            pageSize={pageSize}
+            showingFrom={showingFrom}
+            showingTo={showingTo}
+            pageNumbers={pageNumbers}
+            sortField={sortField}
+            sortOrder={sortOrder}
+            selectedRows={selectedRows}
+            editingRows={editingRows}
+            showDeleted={showDeleted}
+            filterDisaggregation={filterDisaggregation}
+            canModifyRow={canModifyRow}
+            handleSort={handleSort}
+            toggleSelectAll={toggleSelectAll}
+            toggleRowSelected={toggleRowSelected}
+            setEditingRows={setEditingRows}
+            startRowEdit={startRowEdit}
+            cancelRowEdit={cancelRowEdit}
+            saveRowEdit={saveRowEdit}
+            deleteRow={deleteRow}
+            restoreRow={restoreRow}
+            setCurrentPage={setCurrentPage}
+            setPageSize={setPageSize}
+            safeCurrentPage={safeCurrentPage}
+            setFilterDisaggregation={setFilterDisaggregation}
+            setShowDeleted={setShowDeleted}
+            handleBatchDelete={handleBatchDelete}
+            handleBatchRestore={handleBatchRestore}
+            setShowImportWizard={setShowImportWizard}
+            handleDownloadCsvTemplate={handleDownloadCsvTemplate}
+            setShowExportDialog={setShowExportDialog}
+          />
         </div>
 
-        {/* Sidebar: Data Entry */}
-        <div className="space-y-6">
-          <div className="bg-white p-6 rounded-lg border border-slate-200 shadow-lg shadow-slate-200/50 sticky top-6">
-            <h3 className="text-lg font-bold text-slate-900 mb-4">
-              Weekly Data Entry
-            </h3>
-            <form onSubmit={handleSave} className="space-y-4">
-              {error && (
-                <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg p-3">
-                  {error}
-                </div>
-              )}
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">
-                  Reporting Date
-                </label>
-                <input
-                  type="date"
-                  value={entryDate}
-                  onChange={(e) => setEntryDate(e.target.value)}
-                  className="w-full rounded-md border-slate-300 border p-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white text-slate-900"
-                />
+        {/* Sidebar */}
+        <div className="lg:col-span-1 space-y-8">
+          <IndicatorDataEntryForm
+            indicator={indicator}
+            entryDate={entryDate}
+            setEntryDate={setEntryDate}
+            entryValue={entryValue}
+            setEntryValue={setEntryValue}
+            evidence={evidence}
+            setEvidence={setEvidence}
+            attachedFile={attachedFile}
+            setAttachedFile={setAttachedFile}
+            selectedCategories={selectedCategories}
+            handleCategoryToggle={handleCategoryToggle}
+            selectedDisaggregationValues={selectedDisaggregationValues}
+            setSelectedDisaggregationValues={setSelectedDisaggregationValues}
+            handleSave={handleSave}
+            saving={saving}
+            error={error}
+            isDragging={isDragging}
+            handleDragOver={handleDragOver}
+            handleDragLeave={handleDragLeave}
+            handleDrop={handleDrop}
+          />
 
-                {/* Scheduled Points suggestions */}
-                {indicator.frequency && (
-                  <div className="mt-2 flex flex-wrap gap-1.5">
-                    {[0, 1, 2, 3, 4, 5, 6].map((offset) => {
-                      if (offset >= 4 && indicator.frequency !== "Daily")
-                        return null;
-
-                      const d = new Date();
-                      let label = "";
-                      let dateStr = "";
-
-                      if (indicator.frequency === "Daily") {
-                        const target = new Date(
-                          d.getFullYear(),
-                          d.getMonth(),
-                          d.getDate() - offset,
-                        );
-                        dateStr = target.toISOString().split("T")[0];
-                        label =
-                          offset === 0
-                            ? "Today"
-                            : offset === 1
-                              ? "Yesterday"
-                              : target.toLocaleDateString(undefined, {
-                                  weekday: "short",
-                                  day: "numeric",
-                                });
-                      } else if (indicator.frequency === "Weekly") {
-                        const diff = d.getDate() - d.getDay() - offset * 7;
-                        const target = new Date(d.getFullYear(), d.getMonth(), diff);
-                        dateStr = target.toISOString().split("T")[0];
-                        label = `Wk ${target.toLocaleDateString(undefined, { month: "short", day: "numeric" })}`;
-                      } else if (indicator.frequency === "Monthly") {
-                        const target = new Date(
-                          d.getFullYear(),
-                          d.getMonth() - offset,
-                          0,
-                        );
-                        dateStr = target.toISOString().split("T")[0];
-                        label = target.toLocaleString("default", {
-                          month: "short",
-                        });
-                      }
-
-                      if (!dateStr) return null;
-                      const isSelected = entryDate === dateStr;
-                      const isDone = indicator.values.some((v) =>
-                        v.date.startsWith(dateStr),
-                      );
-
-                      return (
-                        <button
-                          key={offset}
-                          type="button"
-                          onClick={() => setEntryDate(dateStr)}
-                          title={isDone ? "Already reported" : "Pending report"}
-                          className={`text-[10px] px-2 py-1 rounded border transition-all flex items-center gap-1 ${
-                            isSelected
-                              ? "bg-blue-600 border-blue-600 text-white z-10"
-                              : isDone
-                                ? "bg-slate-50 border-slate-200 text-slate-400 opacity-60"
-                                : "bg-amber-50 border-amber-200 text-amber-700 hover:border-amber-400"
-                          }`}
-                        >
-                          {isDone && <CheckCircle className="w-2.5 h-2.5" />}
-                          {label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">
-                  Value
-                </label>
-                <input
-                  type={
-                    isNumericInputType(indicator.type) ? "number" : "text"
-                  }
-                  step={
-                    isNumericInputType(indicator.type) ? "0.01" : undefined
-                  }
-                  placeholder={
-                    isNumericInputType(indicator.type)
-                      ? "e.g. 45"
-                      : "e.g. Completed"
-                  }
-                  value={entryValue}
-                  onChange={(e) => setEntryValue(e.target.value)}
-                  className="w-full rounded-md border-slate-300 border p-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white text-slate-900"
-                />
-                {(indicator.type === IndicatorType.NUMBER ||
-                  indicator.type === IndicatorType.PERCENTAGE ||
-                  indicator.type === IndicatorType.CURRENCY) && (
-                  <p className="text-xs text-slate-400 mt-1">
-                    Expected range: {indicator.minExpected} -{" "}
-                    {indicator.maxExpected}
-                  </p>
-                )}
-              </div>
-
-              {/* Category Selection */}
-              {indicator.categories && indicator.categories.length > 0 && (
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-2">
-                      Category{" "}
-                      {indicator.categoryConfig?.required && (
-                        <span className="text-red-500">*</span>
-                      )}
-                    </label>
-                    <div className="space-y-1.5 max-h-40 overflow-y-auto border border-slate-200 rounded-md p-2 bg-slate-50">
-                      {indicator.categories.map((cat: CategoryDefinition) => {
-                        const isChecked = selectedCategories.includes(cat.id);
-                        const allowMultiple =
-                          indicator.categoryConfig?.allowMultiple ?? false;
-
-                        return (
-                          <label
-                            key={cat.id}
-                            className="flex items-center p-1.5 border border-slate-300 rounded cursor-pointer hover:bg-white transition-colors"
-                            style={{
-                              borderColor: isChecked ? cat.color : undefined,
-                              backgroundColor: isChecked
-                                ? `${cat.color}15`
-                                : undefined,
-                            }}
-                          >
-                            <input
-                              type={allowMultiple ? "checkbox" : "radio"}
-                              name="category-selection"
-                              checked={isChecked}
-                              onChange={() =>
-                                handleCategoryToggle(cat.id, allowMultiple)
-                              }
-                              className="h-3.5 w-3.5 text-blue-600 focus:ring-blue-500 border-slate-300"
-                            />
-                            <div className="ml-2 flex items-center gap-1.5">
-                              <div
-                                className="w-2.5 h-2.5 rounded"
-                                style={{ backgroundColor: cat.color }}
-                              />
-                              <span className="text-xs font-medium text-slate-900">
-                                {cat.label}
-                              </span>
-                            </div>
-                          </label>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-
-              {/* Disaggregation Selection (categorical only) */}
-              {indicator.type === IndicatorType.CATEGORICAL &&
-                indicator.categoryConfig?.disaggregationDimensions &&
-                indicator.categoryConfig.disaggregationDimensions.length > 0 && (
-                  <div>
-                    {(() => {
-                      const dims =
-                        indicator.categoryConfig?.disaggregationDimensions || [];
-                      const primaryDim = dims.find((d) => d.required) || dims[0];
-                      return (
-                        <div className="space-y-3">
-                          <div className="flex items-center justify-between">
-                            <label className="block text-sm font-medium text-slate-700">
-                              Disaggregation
-                            </label>
-                            {primaryDim && (
-                              <span className="text-[11px] text-slate-500">
-                                Saved key: {primaryDim.label || "Primary"}
-                              </span>
-                            )}
-                          </div>
-                          {dims.map((dim) => {
-                            const dimKey = dim.key || dim.label;
-                            const selectedValue =
-                              selectedDisaggregationValues[dimKey] || "";
-                            return (
-                              <div key={dimKey}>
-                                <label className="block text-xs font-medium text-slate-600 mb-1">
-                                  {dim.label || "Dimension"}{" "}
-                                  {dim.required && (
-                                    <span className="text-red-500">*</span>
-                                  )}
-                                </label>
-                                <select
-                                  value={selectedValue}
-                                  onChange={(e) =>
-                                    setSelectedDisaggregationValues((prev) => ({
-                                      ...prev,
-                                      [dimKey]: e.target.value,
-                                    }))
-                                  }
-                                  className="w-full rounded-md border-slate-300 border p-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white text-slate-900"
-                                >
-                                  <option value="">
-                                    Select {dim.label || "value"}
-                                  </option>
-                                  {dim.values.map((value) => (
-                                    <option key={value} value={value}>
-                                      {value}
-                                    </option>
-                                  ))}
-                                </select>
-                              </div>
-                            );
-                          })}
-                          {dims.length > 1 && (
-                            <p className="text-xs text-slate-500">
-                              Choose values for each dimension; the primary
-                              dimension is used for submission grouping.
-                            </p>
-                          )}
-                        </div>
-                      );
-                    })()}
-                  </div>
-                )}
-
-              {/* Evidence / File Upload */}
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">
-                  Verification
-                </label>
-                {attachedFile ? (
-                  <div className="w-full px-3 py-2 border border-blue-200 bg-blue-50 rounded-md flex items-center justify-between animate-in fade-in">
-                    <div className="flex items-center gap-2 overflow-hidden">
-                      <FileText className="w-4 h-4 text-blue-600 flex-shrink-0" />
-                      <span className="text-sm text-blue-900 truncate">
-                        {attachedFile.name}
-                      </span>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setAttachedFile(null)}
-                      className="text-slate-400 hover:text-red-500 p-1"
-                    >
-                      <X className="w-4 h-4" />
-                    </button>
-                  </div>
-                ) : (
-                  <div
-                    className={`relative transition-all duration-200 rounded-md border-2 ${
-                      isDragging
-                        ? "border-blue-500 bg-blue-50"
-                        : "border-slate-300 border-dashed bg-white hover:border-slate-400"
-                    }`}
-                    onDragOver={handleDragOver}
-                    onDragLeave={handleDragLeave}
-                    onDrop={handleDrop}
-                  >
-                    <input
-                      type="text"
-                      placeholder={
-                        isDragging ? "Drop file..." : "Link or drag file"
-                      }
-                      className={`w-full px-3 py-2 bg-transparent text-sm focus:outline-none pl-9 rounded-md z-10 relative ${isDragging ? "pointer-events-none" : ""}`}
-                      value={evidence}
-                      onChange={(e) => setEvidence(e.target.value)}
-                    />
-                    <LinkIcon
-                      className={`absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 transition-colors ${isDragging ? "text-blue-500" : "text-slate-400"}`}
-                    />
-
-                    {!evidence && (
-                      <div className="absolute right-2 top-1/2 -translate-y-1/2">
-                        <label
-                          className="cursor-pointer p-1 rounded-md text-slate-400 hover:text-blue-600 hover:bg-slate-100 block transition-colors"
-                          title="Upload File"
-                        >
-                          <UploadCloud className="w-4 h-4" />
-                          <input
-                            type="file"
-                            className="hidden"
-                            onChange={(e) =>
-                              e.target.files?.[0] &&
-                              setAttachedFile(e.target.files[0])
-                            }
-                          />
-                        </label>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              <Button type="submit" className="w-full" isLoading={saving}>
-                <Save className="w-4 h-4 mr-2" />
-                Save Entry
-              </Button>
-            </form>
-          </div>
-
-          <div className="bg-slate-50 p-6 rounded-lg border border-slate-200">
-            <h4 className="font-semibold text-slate-900 text-sm mb-3">
-              Indicator Details
-            </h4>
-            <dl className="space-y-2 text-sm">
-              <div className="flex justify-between">
-                <dt className="text-slate-500">Target</dt>
-                <dd className="font-medium text-slate-900">
-                  {indicator.type === IndicatorType.CATEGORICAL ? (
-                    indicator.targetCategory ? (
-                      formatCategoryValue(indicator.targetCategory)
-                    ) : indicator.target === undefined ||
-                      indicator.target === null ||
-                      indicator.target === "" ? (
-                      "No target set"
-                    ) : (
-                      indicator.target
-                    )
-                  ) : (
-                    indicator.target
-                  )}
-                </dd>
-              </div>
-              <div className="flex justify-between">
-                <dt className="text-slate-500">Baseline</dt>
-                <dd className="font-medium text-slate-900">
-                  {indicator.type === IndicatorType.CATEGORICAL &&
-                  indicator.baselineCategory
-                    ? formatCategoryValue(indicator.baselineCategory)
-                    : indicator.baseline}
-                </dd>
-              </div>
-              <div className="flex justify-between">
-                <dt className="text-slate-500">Frequency</dt>
-                <dd className="font-medium text-slate-900">
-                  {indicator.frequency}
-                </dd>
-              </div>
-            </dl>
-          </div>
+          <IndicatorMetadataSummary indicator={indicator} />
         </div>
       </div>
 
-      {/* Import/Export Modals */}
       <ImportWizard
         indicatorId={indicator.id}
         isOpen={showImportWizard}
@@ -1904,3 +833,4 @@ export const IndicatorDetail: React.FC = () => {
     </Layout>
   );
 };
+

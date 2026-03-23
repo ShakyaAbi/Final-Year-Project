@@ -33,6 +33,7 @@ import {
   Info,
   ClipboardCheck,
   Pencil,
+  Trash2,
 } from "lucide-react";
 import { Card } from "../components/ui/Card";
 
@@ -553,7 +554,7 @@ export const ProjectDetail: React.FC = () => {
                 onClick={handleDeleteProject}
                 isLoading={isDeleting}
               >
-                Delete
+                <Trash2 className="w-4 h-4 mr-2" /> Delete
               </Button>
               <Button
                 onClick={() => {
