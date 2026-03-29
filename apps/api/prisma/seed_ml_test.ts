@@ -88,7 +88,7 @@ async function main() {
   const submissions = [];
   const baseDate = new Date("2026-01-01");
 
-  for (let i = 0; i < 60; i++) {
+  for (let i = 0; i < 250; i++) {
     const reportedAt = new Date(baseDate);
     reportedAt.setDate(baseDate.getDate() + i);
 

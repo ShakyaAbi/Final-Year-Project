@@ -114,6 +114,22 @@ type SeedProject = {
     targetCategory?: string | null;
     minValue?: number | null;
     maxValue?: number | null;
+    anomalyConfig?: {
+      enabled?: boolean;
+      mode?: "RULES" | "ML";
+      ml?: {
+        method?: "ISOLATION_FOREST";
+        contamination?: number;
+        windowSize?: number;
+        minPoints?: number;
+        seed?: number;
+      };
+      fallback?: {
+        useRangeChecks?: boolean;
+        useRulesWhenInsufficientData?: boolean;
+        useRulesOnServiceError?: boolean;
+      };
+    };
     categories?: Array<{ id: string; label: string; color?: string }>;
     categoryConfig?: {
       allowMultiple?: boolean;
@@ -203,9 +219,11 @@ const createLogframeAndIndicators = async (
           dataType: indicator.dataType,
           minValue: indicator.minValue ?? null,
           maxValue: indicator.maxValue ?? null,
+          anomalyConfig: indicator.anomalyConfig ? (indicator.anomalyConfig as any) : null,
           categories: indicator.categories as any,
           categoryConfig: indicator.categoryConfig as any,
         })),
+
       });
     }
 
@@ -580,6 +598,21 @@ const seedProjects: SeedProject[] = [
         targetValue: 100,
         minValue: -20,
         maxValue: 200,
+        anomalyConfig: {
+          enabled: true,
+          mode: "ML",
+          ml: {
+            method: "ISOLATION_FOREST",
+            contamination: 0.05,
+            windowSize: 20,
+            minPoints: 5,
+            seed: 123,
+          },
+          fallback: {
+            useRulesWhenInsufficientData: true,
+            useRulesOnServiceError: true,
+          },
+        },
       },
     ],
   },
