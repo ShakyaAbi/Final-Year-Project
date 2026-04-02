@@ -147,6 +147,8 @@ type SeedProject = {
 const createLogframeAndIndicators = async (
   projectId: number,
   project: SeedProject,
+  createdByUserId: number,
+  organizationId: number,
 ) => {
   const existingNode = await prisma.logframeNode.findFirst({
     where: { projectId },
@@ -222,8 +224,8 @@ const createLogframeAndIndicators = async (
           anomalyConfig: indicator.anomalyConfig ? (indicator.anomalyConfig as any) : null,
           categories: indicator.categories as any,
           categoryConfig: indicator.categoryConfig as any,
+          createdByUserId,
         })),
-
       });
     }
 
@@ -622,7 +624,18 @@ async function main() {
   const email = SEED_ADMIN_EMAIL;
   const password = SEED_ADMIN_PASSWORD;
 
-  // Get or create admin user
+  // Create or find seed Organization
+  const ORG_NAME = 'Seed Test Organization';
+  let seedOrg = await prisma.organization.findFirst({ where: { name: ORG_NAME } });
+  if (!seedOrg) {
+    seedOrg = await prisma.organization.create({ data: { name: ORG_NAME } });
+    console.log(`✓ Created seed organization: ${ORG_NAME}`);
+  } else {
+    console.log(`✓ Seed organization exists: ${ORG_NAME}`);
+  }
+  const orgId = seedOrg.id;
+
+  // Get or create admin user in that org
   let adminUser = await prisma.user.findUnique({ where: { email } });
   if (!adminUser) {
     const passwordHash = await hashPassword(password);
@@ -631,6 +644,8 @@ async function main() {
         email,
         passwordHash,
         role: Role.ADMIN,
+        organizationId: orgId,
+        name: 'Seed Admin',
       },
     });
     console.log(`✓ Seeded admin user ${email}`);
@@ -655,10 +670,11 @@ async function main() {
         status: project.status,
         startDate: project.startDate,
         endDate: project.endDate ?? null,
+        organizationId: orgId,
       },
     });
 
-    await createLogframeAndIndicators(createdProject.id, project);
+    await createLogframeAndIndicators(createdProject.id, project, adminUser.id, orgId);
     console.log(`✓ Created project: ${project.name}`);
 
     // Generate submission data for all indicators

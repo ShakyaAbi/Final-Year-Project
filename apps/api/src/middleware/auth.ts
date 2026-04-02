@@ -17,9 +17,9 @@ export const authenticate = async (
     if (!user) {
       const password = adminSeed.password ?? "admin1234";
       const passwordHash = await hashPassword(password);
-      user = await userRepo.create({ email: adminEmail, passwordHash, role: "ADMIN" as any });
+      user = await userRepo.create({ email: adminEmail, passwordHash, role: "ADMIN" as any, organizationId: 1 });
     }
-    req.user = { id: user.id, email: user.email, role: user.role } as any;
+    req.user = { id: user.id, email: user.email, role: user.role, organizationId: user.organizationId } as any;
     return next();
   }
 
@@ -37,6 +37,7 @@ export const authenticate = async (
       id: typeof payload.sub === 'string' ? Number(payload.sub) : payload.sub,
       email: payload.email,
       role: payload.role as any,
+      organizationId: payload.organizationId,
     };
     return next();
   } catch (err) {

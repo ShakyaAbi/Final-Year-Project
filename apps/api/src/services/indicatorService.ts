@@ -17,8 +17,8 @@ import {
 import { TemplateService } from "./templateService";
 import { prisma } from "../prisma";
 
-const ensureProject = async (projectId: number) => {
-  const project = await projectRepo.getProjectById(projectId);
+const ensureProject = async (projectId: number, organizationId: number) => {
+  const project = await projectRepo.getProjectById(projectId, organizationId);
   if (!project)
     throw new NotFoundError("PROJECT_NOT_FOUND", "Project not found");
   return project;
@@ -40,6 +40,7 @@ const ensureNodeInProject = async (
 
 export const createIndicator = async (
   projectId: number,
+  organizationId: number,
   data: {
     logframeNodeId: number;
     name: string;
@@ -63,7 +64,7 @@ export const createIndicator = async (
   },
   userId: number,
 ) => {
-  await ensureProject(projectId);
+  await ensureProject(projectId, organizationId);
   await ensureNodeInProject(data.logframeNodeId, projectId);
 
   // Validate categorical fields if dataType is CATEGORICAL
@@ -101,6 +102,7 @@ export const createIndicator = async (
     },
     categories: validatedCategories as any,
     categoryConfig: validatedCategoryConfig as any,
+    createdByUserId: userId,
     // Reminder fields
     reminderEnabled: data.reminderEnabled ?? false,
     reminderDaysBeforeDue: data.reminderDaysBeforeDue ?? null,
@@ -121,18 +123,19 @@ export const createIndicator = async (
   return indicator;
 };
 
-export const getIndicators = async (projectId: number) => {
-  await ensureProject(projectId);
-  return indicatorRepo.getIndicatorsByProject(projectId);
+export const getIndicators = async (projectId: number, organizationId: number) => {
+  await ensureProject(projectId, organizationId);
+  return indicatorRepo.getIndicatorsByProject(projectId, organizationId);
 };
 
 export const getIndicatorById = async (
   id: number,
+  organizationId: number,
   includeSubmissions = false,
 ) => {
   const indicator = includeSubmissions
-    ? await indicatorRepo.getByIdWithSubmissions(id)
-    : await indicatorRepo.getById(id);
+    ? await indicatorRepo.getByIdWithSubmissions(id, organizationId)
+    : await indicatorRepo.getById(id, organizationId);
   if (!indicator)
     throw new NotFoundError("INDICATOR_NOT_FOUND", "Indicator not found");
   return indicator;
@@ -140,6 +143,7 @@ export const getIndicatorById = async (
 
 export const updateIndicator = async (
   id: number,
+  organizationId: number,
   data: Partial<{
     projectId: number;
     logframeNodeId: number;
@@ -161,12 +165,12 @@ export const updateIndicator = async (
     reminderRecipients?: string[] | null;
   }>,
 ) => {
-  const indicator = await indicatorRepo.getById(id);
+  const indicator = await indicatorRepo.getById(id, organizationId);
   if (!indicator)
     throw new NotFoundError("INDICATOR_NOT_FOUND", "Indicator not found");
 
   const projectId = data.projectId ?? indicator.projectId;
-  await ensureProject(projectId);
+  await ensureProject(projectId, organizationId);
 
   if (data.logframeNodeId) {
     await ensureNodeInProject(data.logframeNodeId, projectId);
@@ -194,7 +198,7 @@ export const updateIndicator = async (
     }
   }
 
-  return indicatorRepo.updateIndicator(id, {
+  return indicatorRepo.updateIndicator(id, organizationId, {
     projectId,
     logframeNodeId: data.logframeNodeId,
     name: data.name,
@@ -241,8 +245,8 @@ const calculateTrend = (
   return "stable";
 };
 
-export const getIndicatorWithStats = async (id: number) => {
-  const indicator = await indicatorRepo.getByIdWithSubmissions(id);
+export const getIndicatorWithStats = async (id: number, organizationId: number) => {
+  const indicator = await indicatorRepo.getByIdWithSubmissions(id, organizationId);
   if (!indicator)
     throw new NotFoundError("INDICATOR_NOT_FOUND", "Indicator not found");
 
@@ -379,6 +383,7 @@ export const detectReportingGaps = (
 
 export const bulkUpdateIndicators = async (
   projectId: number,
+  organizationId: number,
   updates: Array<{
     id: number;
     data: Partial<{
@@ -394,11 +399,11 @@ export const bulkUpdateIndicators = async (
     }>;
   }>,
 ) => {
-  await ensureProject(projectId);
+  await ensureProject(projectId, organizationId);
 
   // Validate all indicators belong to the project
   const indicators = await Promise.all(
-    updates.map((u) => indicatorRepo.getById(u.id)),
+    updates.map((u) => indicatorRepo.getById(u.id, organizationId)),
   );
 
   if (indicators.some((ind) => !ind || ind.projectId !== projectId)) {
@@ -418,22 +423,22 @@ export const bulkUpdateIndicators = async (
   const { prisma } = await import("../prisma");
 
   return prisma.$transaction(
-    updates.map(({ id, data }) => indicatorRepo.updateIndicator(id, data)),
+    updates.map(({ id, data }) => indicatorRepo.updateIndicator(id, organizationId, data)),
   );
 };
 
-export const deleteIndicator = async (id: number) => {
-  const indicator = await indicatorRepo.getById(id);
+export const deleteIndicator = async (id: number, organizationId: number) => {
+  const indicator = await indicatorRepo.getById(id, organizationId);
 
   if (!indicator) {
     throw new NotFoundError("INDICATOR_NOT_FOUND", "Indicator not found");
   }
 
-  return indicatorRepo.deleteIndicator(id);
+  return indicatorRepo.deleteIndicator(id, organizationId);
 };
 
-export const getIndicatorTemplates = async (indicatorId: number) => {
-  const indicator = await indicatorRepo.getById(indicatorId);
+export const getIndicatorTemplates = async (indicatorId: number, organizationId: number) => {
+  const indicator = await indicatorRepo.getById(indicatorId, organizationId);
 
   if (!indicator) {
     throw new NotFoundError("INDICATOR_NOT_FOUND", "Indicator not found");
@@ -455,8 +460,8 @@ export const getIndicatorTemplates = async (indicatorId: number) => {
   };
 };
 
-export const getDisaggregatedCategoryStats = async (indicatorId: number) => {
-  const indicator = await indicatorRepo.getByIdWithSubmissions(indicatorId);
+export const getDisaggregatedCategoryStats = async (indicatorId: number, organizationId: number) => {
+  const indicator = await indicatorRepo.getByIdWithSubmissions(indicatorId, organizationId);
 
   if (!indicator) {
     throw new NotFoundError("INDICATOR_NOT_FOUND", "Indicator not found");
@@ -506,6 +511,7 @@ export const getDisaggregatedCategoryStats = async (indicatorId: number) => {
 
 export const getReportingCompliance = async (
   indicatorId: number,
+  organizationId: number,
   startDate: Date,
   endDate: Date,
   reportingFrequency:
@@ -515,7 +521,7 @@ export const getReportingCompliance = async (
     | "QUARTERLY"
     | "YEARLY" = "MONTHLY",
 ) => {
-  const indicator = await indicatorRepo.getById(indicatorId);
+  const indicator = await indicatorRepo.getById(indicatorId, organizationId);
   if (!indicator) {
     throw new NotFoundError("INDICATOR_NOT_FOUND", "Indicator not found");
   }
@@ -553,11 +559,12 @@ export const getReportingCompliance = async (
 
 export const getCategoryTimeSeriesStats = async (
   indicatorId: number,
+  organizationId: number,
   startDate: Date,
   endDate: Date,
   groupBy: "day" | "week" | "month" | "quarter" | "year" = "month",
 ) => {
-  const indicator = await indicatorRepo.getById(indicatorId);
+  const indicator = await indicatorRepo.getById(indicatorId, organizationId);
   if (!indicator) {
     throw new NotFoundError("INDICATOR_NOT_FOUND", "Indicator not found");
   }
@@ -595,9 +602,10 @@ export const getCategoryTimeSeriesStats = async (
 
 export const evaluateML = async (
   indicatorId: number,
+  organizationId: number,
   compareAll = false,
 ) => {
-  const indicator = await indicatorRepo.getByIdWithSubmissions(indicatorId);
+  const indicator = await indicatorRepo.getByIdWithSubmissions(indicatorId, organizationId);
   if (!indicator) {
     throw new NotFoundError("INDICATOR_NOT_FOUND", "Indicator not found");
   }

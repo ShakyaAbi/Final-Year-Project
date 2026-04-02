@@ -10,8 +10,8 @@ const allowedChildren: Record<NodeType, NodeType[]> = {
   ACTIVITY: []
 };
 
-const ensureProject = async (projectId: number) => {
-  const project = await projectRepo.getProjectById(projectId);
+const ensureProject = async (projectId: number, organizationId: number) => {
+  const project = await projectRepo.getProjectById(projectId, organizationId);
   if (!project) throw new NotFoundError('PROJECT_NOT_FOUND', 'Project not found');
   return project;
 };
@@ -49,9 +49,10 @@ const buildTree = (nodes: LogframeNode[]) => {
 
 export const createNode = async (
   projectId: number,
+  organizationId: number,
   data: { type: NodeType; title: string; description?: string; assumptions?: string; risks?: string; parentId?: number | null; sortOrder?: number }
 ) => {
-  await ensureProject(projectId);
+  await ensureProject(projectId, organizationId);
   let parent: LogframeNode | null = null;
 
   if (data.parentId) {
@@ -75,8 +76,8 @@ export const createNode = async (
   });
 };
 
-export const getTree = async (projectId: number) => {
-  await ensureProject(projectId);
+export const getTree = async (projectId: number, organizationId: number) => {
+  await ensureProject(projectId, organizationId);
   const nodes = await logframeRepo.getByProject(projectId);
   return buildTree(nodes);
 };

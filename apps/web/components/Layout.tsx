@@ -17,6 +17,8 @@ import {
   CheckCircle,
   AlertCircle,
   Clock,
+  Users,
+  Mail,
 } from "lucide-react";
 import { AnomalyNotification, CurrentUser } from "../types";
 import Silk from "./ui/Silk";
@@ -95,9 +97,15 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
     return () => clearInterval(interval);
   }, []);
 
+  const isAdmin = currentUser?.role === 'ADMIN';
+
   const navItems = [
     { icon: FolderKanban, label: "Projects", path: "/projects" },
     { icon: ClipboardCheck, label: "Data Entry", path: "/data-entry" },
+    ...(isAdmin ? [
+      { icon: Users, label: "Team", path: "/admin/users" },
+      { icon: Mail, label: "Invitations", path: "/admin/invitations" },
+    ] as const : []),
     { icon: Settings, label: "Settings", path: "/settings" },
   ];
 

@@ -20,11 +20,13 @@ export const createSubmission = (data: {
 
 export const listSubmissions = (
   indicatorId: number,
+  organizationId: number,
   filters: { from?: Date | null; to?: Date | null; includeDeleted?: boolean },
 ) =>
   prisma.submission.findMany({
     where: {
       indicatorId,
+      indicator: { project: { organizationId } },
       reportedAt: {
         gte: filters.from ?? undefined,
         lte: filters.to ?? undefined,
@@ -34,21 +36,26 @@ export const listSubmissions = (
     orderBy: { reportedAt: "desc" },
   });
 
-export const getById = (id: number) =>
-  prisma.submission.findUnique({
-    where: { id },
+export const getById = (id: number, organizationId: number) =>
+  prisma.submission.findFirst({
+    where: { id, indicator: { project: { organizationId } } },
     include: { indicator: true },
   });
 
-export const getRecentSubmissions = (indicatorId: number, limit: number) =>
+export const getRecentSubmissions = (indicatorId: number, organizationId: number, limit: number) =>
   prisma.submission.findMany({
-    where: { indicatorId, deletedAt: null } as any,
+    where: { 
+      indicatorId, 
+      indicator: { project: { organizationId } },
+      deletedAt: null 
+    } as any,
     orderBy: { reportedAt: "desc" },
     take: limit,
   });
 
 export const updateSubmission = (
   id: number,
+  organizationId: number,
   data: Partial<{
     anomalyStatus: AnomalyStatus;
     anomalyReviewedBy: number;
@@ -59,10 +66,11 @@ export const updateSubmission = (
     anomalyMethod: string | null;
     anomalyMeta: Record<string, any> | null;
   }>,
-) => prisma.submission.update({ where: { id }, data: data as any });
+) => prisma.submission.update({ where: { id, indicator: { project: { organizationId } } }, data: data as any });
 
 export const updateSubmissionData = (
   id: number,
+  organizationId: number,
   data: {
     reportedAt: Date;
     value: string;
@@ -78,11 +86,11 @@ export const updateSubmissionData = (
     anomalyMethod?: string | null;
     anomalyMeta?: Record<string, any> | null;
   },
-) => prisma.submission.update({ where: { id }, data: data as any });
+) => prisma.submission.update({ where: { id, indicator: { project: { organizationId } } }, data: data as any });
 
-export const softDeleteSubmission = (id: number, userId: number) =>
+export const softDeleteSubmission = (id: number, organizationId: number, userId: number) =>
   prisma.submission.update({
-    where: { id },
+    where: { id, indicator: { project: { organizationId } } },
     data: {
       deletedAt: new Date(),
       deletedByUserId: userId,
@@ -90,9 +98,9 @@ export const softDeleteSubmission = (id: number, userId: number) =>
     } as any,
   });
 
-export const restoreSubmission = (id: number, userId: number) =>
+export const restoreSubmission = (id: number, organizationId: number, userId: number) =>
   prisma.submission.update({
-    where: { id },
+    where: { id, indicator: { project: { organizationId } } },
     data: {
       deletedAt: null,
       deletedByUserId: null,
@@ -102,12 +110,14 @@ export const restoreSubmission = (id: number, userId: number) =>
 
 export const findUniqueSubmission = (
   indicatorId: number,
+  organizationId: number,
   reportedAt: Date,
   disaggregationKey: string | null,
 ) =>
   prisma.submission.findFirst({
     where: {
       indicatorId,
+      indicator: { project: { organizationId } },
       reportedAt,
       disaggregationKey: disaggregationKey || null,
       deletedAt: null,

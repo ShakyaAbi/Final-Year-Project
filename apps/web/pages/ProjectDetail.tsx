@@ -49,6 +49,7 @@ export const ProjectDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const [project, setProject] = useState<Project | undefined>(undefined);
   const [indicators, setIndicators] = useState<Indicator[]>([]);
+  const [currentUser, setCurrentUser] = useState<{ role: string } | null>(null);
   const [stats, setStats] = useState<ProjectStats | null>(null);
   const [activities, setActivities] = useState<ActivityLog[]>([]);
   const [alerts, setAlerts] = useState<any[]>([]);
@@ -111,13 +112,15 @@ export const ProjectDetail: React.FC = () => {
         api.getProjectStats(id),
         api.getProjectActivities(id),
         api.getProjectAlerts(id),
+        api.me(),
       ])
-        .then(([projData, indData, statsData, actData, alertsData]) => {
+        .then(([projData, indData, statsData, actData, alertsData, userData]) => {
           setProject(projData ? { ...projData } : undefined);
           setIndicators(indData);
           setStats(statsData);
           setActivities(actData);
           setAlerts(alertsData || []);
+          setCurrentUser({ role: userData.role });
         })
         .catch((error) => {
           console.error("Failed to load project detail", error);
@@ -1390,6 +1393,7 @@ export const ProjectDetail: React.FC = () => {
                   <IndicatorCard
                     key={ind.id}
                     indicator={ind}
+                    canEdit={currentUser?.role === "ADMIN" || currentUser?.role === "MANAGER"}
                     onEdit={(indicator) => {
                       setEditingIndicator(indicator);
                       setIsWizardOpen(true);

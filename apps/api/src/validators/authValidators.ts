@@ -5,7 +5,21 @@ export const registerSchema = {
   body: z.object({
     email: z.string().email(),
     password: z.string().min(8),
-    role: z.nativeEnum(Role).optional()
+    name: z.string().optional(),
+    jobTitle: z.string().optional(),
+    role: z.nativeEnum(Role).optional(),
+    organizationId: z.number().int().positive().optional(),
+    organizationName: z.string().min(1).optional(),
+    invitationToken: z.string().optional()
+  }).refine(data => data.organizationId || data.organizationName || data.invitationToken, {
+    message: "Either organizationId, organizationName, or invitationToken is required"
+  })
+};
+
+export const createInvitationSchema = {
+  body: z.object({
+    email: z.string().email(),
+    role: z.nativeEnum(Role).default(Role.DATA_ENTRY)
   })
 };
 

@@ -9,7 +9,7 @@ const MS_PER_DAY = 1000 * 60 * 60 * 24;
 const diffDays = (start: Date, end: Date) =>
   Math.max(0, Math.ceil((end.getTime() - start.getTime()) / MS_PER_DAY));
 
-export const createProject = async (data: {
+export const createProject = async (organizationId: number, data: {
   name: string;
   description?: string;
   status?: ProjectStatus;
@@ -33,14 +33,15 @@ export const createProject = async (data: {
     donor: data.donor ?? null,
     budgetAmount: data.budgetAmount ?? null,
     budgetSpent: data.budgetSpent ?? null,
-    budgetCurrency: data.budgetCurrency ?? null
+    budgetCurrency: data.budgetCurrency ?? null,
+    organizationId
   });
 };
 
-export const listProjects = async () => projectRepo.getProjects();
+export const listProjects = async (organizationId: number) => projectRepo.getProjects(organizationId);
 
-export const getProject = async (id: number) => {
-  const project = await projectRepo.getProjectById(id);
+export const getProject = async (id: number, organizationId: number) => {
+  const project = await projectRepo.getProjectById(id, organizationId);
   if (!project) {
     throw new NotFoundError('PROJECT_NOT_FOUND', 'Project not found');
   }
@@ -49,6 +50,7 @@ export const getProject = async (id: number) => {
 
 export const updateProject = async (
   id: number,
+  organizationId: number,
   data: Partial<{
     name: string;
     description: string;
@@ -63,8 +65,8 @@ export const updateProject = async (
     budgetCurrency: string;
   }>
 ) => {
-  await getProject(id);
-  return projectRepo.updateProject(id, {
+  await getProject(id, organizationId);
+  return projectRepo.updateProject(id, organizationId, {
     name: data.name,
     description: data.description,
     status: data.status,
@@ -79,13 +81,13 @@ export const updateProject = async (
   });
 };
 
-export const deleteProject = async (id: number) => {
-  await getProject(id);
-  return projectRepo.deleteProject(id);
+export const deleteProject = async (id: number, organizationId: number) => {
+  await getProject(id, organizationId);
+  return projectRepo.deleteProject(id, organizationId);
 };
 
-export const getProjectStats = async (id: number) => {
-  const project = await getProject(id);
+export const getProjectStats = async (id: number, organizationId: number) => {
+  const project = await getProject(id, organizationId);
   const now = new Date();
 
   const daysTotal =
@@ -95,7 +97,7 @@ export const getProjectStats = async (id: number) => {
     project.startDate ? diffDays(project.startDate, endCap) : 0;
 
   const indicators = await prisma.indicator.findMany({
-    where: { projectId: project.id },
+    where: { projectId: project.id, project: { organizationId } },
     select: {
       id: true,
       submissions: {
@@ -111,7 +113,7 @@ export const getProjectStats = async (id: number) => {
   ).length;
 
   const submissionsCount = await prisma.submission.count({
-    where: { indicator: { projectId: id } }
+    where: { indicator: { projectId: id, project: { organizationId } } }
   });
 
   return {
@@ -125,13 +127,13 @@ export const getProjectStats = async (id: number) => {
   };
 };
 
-export const getProjectAlerts = async (id: number) => {
-  const project = await getProject(id);
+export const getProjectAlerts = async (id: number, organizationId: number) => {
+  const project = await getProject(id, organizationId);
   const now = new Date();
 
   // Get all indicators with their last 10 submissions to check for alerts
   const indicators = await prisma.indicator.findMany({
-    where: { projectId: id },
+    where: { projectId: id, project: { organizationId } },
     include: {
       submissions: {
         where: { deletedAt: null },
@@ -201,10 +203,10 @@ export const getProjectAlerts = async (id: number) => {
   return alerts.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 };
 
-export const getProjectActivities = async (id: number) => {
-  await getProject(id);
+export const getProjectActivities = async (id: number, organizationId: number) => {
+  await getProject(id, organizationId);
   return prisma.submission.findMany({
-    where: { indicator: { projectId: id } },
+    where: { indicator: { projectId: id, project: { organizationId } } },
     include: {
       indicator: true,
       createdByUser: true

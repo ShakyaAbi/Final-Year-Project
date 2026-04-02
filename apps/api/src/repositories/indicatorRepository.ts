@@ -17,6 +17,7 @@ export const createIndicator = (data: {
   categories?: any[] | null;
   categoryConfig?: Record<string, any> | null;
   validationConfig?: Record<string, any> | null;
+  createdByUserId: number;
   // Reminder fields
   reminderEnabled?: boolean;
   reminderDaysBeforeDue?: number | null;
@@ -37,9 +38,12 @@ export const createIndicator = (data: {
     },
   });
 
-export const getIndicatorsByProject = (projectId: number) =>
+export const getIndicatorsByProject = (projectId: number, organizationId: number) =>
   prisma.indicator.findMany({
-    where: { projectId },
+    where: { 
+      projectId,
+      project: { organizationId }
+    },
     include: {
       submissions: {
         where: { deletedAt: null },
@@ -50,12 +54,12 @@ export const getIndicatorsByProject = (projectId: number) =>
     orderBy: { createdAt: "desc" },
   });
 
-export const getById = (id: number) =>
-  prisma.indicator.findUnique({ where: { id } });
+export const getById = (id: number, organizationId: number) =>
+  prisma.indicator.findFirst({ where: { id, project: { organizationId } } });
 
-export const getByIdWithSubmissions = (id: number) =>
-  prisma.indicator.findUnique({
-    where: { id },
+export const getByIdWithSubmissions = (id: number, organizationId: number) =>
+  prisma.indicator.findFirst({
+    where: { id, project: { organizationId } },
     include: {
       submissions: {
         where: { deletedAt: null },
@@ -66,6 +70,7 @@ export const getByIdWithSubmissions = (id: number) =>
 
 export const updateIndicator = (
   id: number,
+  organizationId: number,
   data: Partial<{
     projectId: number;
     logframeNodeId: number;
@@ -114,5 +119,5 @@ export const updateIndicator = (
     },
   });
 
-export const deleteIndicator = (id: number) =>
-  prisma.indicator.delete({ where: { id } });
+export const deleteIndicator = (id: number, organizationId: number) =>
+  prisma.indicator.delete({ where: { id, project: { organizationId } } });

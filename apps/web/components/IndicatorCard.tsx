@@ -6,11 +6,13 @@ import { Link } from "react-router-dom";
 interface IndicatorCardProps {
   indicator: Indicator;
   onEdit?: (indicator: Indicator) => void;
+  canEdit?: boolean;
 }
 
 export const IndicatorCard: React.FC<IndicatorCardProps> = ({
   indicator,
   onEdit,
+  canEdit = false,
 }) => {
   const isCategorical = indicator.type === IndicatorType.CATEGORICAL;
 
@@ -224,14 +226,16 @@ export const IndicatorCard: React.FC<IndicatorCardProps> = ({
             View Details
           </Button>
         </Link>
-        <Button
-          variant="outline"
-          size="sm"
-          className="px-4 text-slate-500 hover:text-slate-700"
-          onClick={() => onEdit?.(indicator)}
-        >
-          Edit
-        </Button>
+        {canEdit && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="px-4 text-slate-500 hover:text-slate-700"
+            onClick={() => onEdit?.(indicator)}
+          >
+            Edit
+          </Button>
+        )}
       </div>
     </div>
   );

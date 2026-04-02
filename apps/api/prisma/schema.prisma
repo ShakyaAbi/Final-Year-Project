@@ -4,6 +4,7 @@ generator client {
 
 datasource db {
   provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 enum Role {
@@ -70,6 +71,22 @@ enum RowStatus {
   SKIPPED
 }
 
+model Invitation {
+  id               Int        @id @default(autoincrement())
+  email            String
+  organization     Organization @relation(fields: [organizationId], references: [id])
+  organizationId   Int
+  invitedBy        User @relation("InvitationsSent", fields: [invitedByUserId], references: [id])
+  invitedByUserId  Int
+  role             Role
+  token            String     @unique
+  expiresAt        DateTime
+  acceptedAt       DateTime?
+  createdAt        DateTime   @default(now())
+
+  @@unique([email, organizationId])
+}
+
 model User {
   id                      Int       @id @default(autoincrement())
   email                   String    @unique
@@ -90,6 +107,8 @@ model User {
   importJobs              ImportJob[]
   importTemplates         ImportTemplate[]
   exportTemplates         ExportTemplate[]
+  invitationsSent         Invitation[] @relation("InvitationsSent")
+  indicatorsCreated       Indicator[]  @relation("IndicatorsCreated")
 }
 
 model Organization {
@@ -98,6 +117,7 @@ model Organization {
   createdAt   DateTime @default(now())
   users       User[]
   projects    Project[]
+  invitations Invitation[]
 }
 
 model Project {
@@ -129,7 +149,6 @@ model LogframeNode {
   description String?
   assumptions String?
   risks       String?
-
   parent      LogframeNode? @relation("LogframeHierarchy", fields: [parentId], references: [id])
   parentId    Int?
   children    LogframeNode[] @relation("LogframeHierarchy")
@@ -165,21 +184,18 @@ model Indicator {
   importTemplates ImportTemplate[]
   importJobs     ImportJob[]
   exportTemplates ExportTemplate[]
-
   // Reminder fields for data entry
   reminderEnabled      Boolean   @default(false)
   reminderDaysBeforeDue Int?    // Days before due date to send reminder
   reminderDaysAfterDue  Int?    // Days after due date to send overdue reminder
   reminderRecipients    Json?   // Array of user IDs or emails to notify
-
-  createdByUser        User      @relation(fields: [createdByUserId], references: [id])
+  createdByUser        User      @relation("IndicatorsCreated", fields: [createdByUserId], references: [id])
   createdByUserId      Int
 
   @@index([projectId])
   @@index([logframeNodeId])
   @@index([createdByUserId])
 }
-
 
 model Submission {
   id              Int      @id @default(autoincrement())
@@ -195,7 +211,6 @@ model Submission {
   sourceImportJob ImportJob? @relation(fields: [sourceImportJobId], references: [id], onDelete: SetNull)
   sourceImportJobId Int?           // Tracks which import created this record
   createdAt       DateTime @default(now())
-  
   isAnomaly        Boolean        @default(false)
   anomalyReason    String?
   anomalyStatus    AnomalyStatus?
@@ -234,9 +249,8 @@ model ImportTemplate {
   createdByUserId Int
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
-  
   importJobs      ImportJob[]
-  
+
   @@index([indicatorId])
   @@index([createdByUserId])
 }
@@ -261,10 +275,9 @@ model ImportJob {
   importMode      ImportMode    @default(CREATE_ONLY)
   createdAt       DateTime      @default(now())
   completedAt     DateTime?
-  
   stagingRows     ImportJobRow[]
   submissions     Submission[]
-  
+
   @@index([indicatorId])
   @@index([userId])
   @@index([status])
@@ -281,7 +294,7 @@ model ImportJobRow {
   errors           Json?
   warnings         Json?
   createdAt        DateTime  @default(now())
-  
+
   @@unique([jobId, rowNumber])
   @@index([jobId])
   @@index([validationStatus])
@@ -301,7 +314,7 @@ model ExportTemplate {
   createdByUserId Int
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
-  
+
   @@index([indicatorId])
   @@index([createdByUserId])
 }

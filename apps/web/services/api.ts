@@ -1,9 +1,11 @@
-import { authApi } from "./authApi";
+import { authApi, Invitation, OrganizationUser } from "./authApi";
 import { projectApi } from "./projectApi";
 import { indicatorApi, submissionApi } from "./indicatorApi";
 import { importApi, exportApi } from "./importExportApi";
 import { notificationApi } from "./notificationApi";
 import { getToken, setToken, request } from "./apiClient";
+
+export type { Invitation, OrganizationUser };
 
 /**
  * @deprecated Use individual API modules (authApi, projectApi, etc.) instead.

@@ -9,6 +9,7 @@ import exportRoutes from "./exportRoutes";
 import templateRoutes from "./templateRoutes";
 import healthRoutes from "./healthRoutes";
 import notificationRoutes from "./notificationRoutes";
+import usersRoutes from "./usersRoutes";
 
 const router = Router();
 
@@ -22,5 +23,6 @@ router.use("/", exportRoutes);
 router.use("/", templateRoutes);
 router.use("/", healthRoutes);
 router.use("/", notificationRoutes);
+router.use("/users", usersRoutes);
 
 export default router;

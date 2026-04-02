@@ -12,6 +12,7 @@ if (missing.length) {
 export const config = {
   env: process.env.NODE_ENV ?? "development",
   port: parseInt(process.env.PORT ?? "4000", 10),
+  appUrl: process.env.APP_URL ?? "http://localhost:5173",
   jwtSecret: process.env.JWT_SECRET as string,
   jwtExpiresIn: process.env.JWT_EXPIRES_IN ?? "1h",
   rateLimitEnabled: (process.env.RATE_LIMIT_ENABLED ?? "true") === "true",

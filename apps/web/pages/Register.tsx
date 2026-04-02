@@ -1,11 +1,12 @@
-import React, { useState } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import React, { useState, useEffect } from "react";
+import { useNavigate, Link, useSearchParams } from "react-router-dom";
 import { Eye, EyeOff, Mail, ArrowLeft, User, Lock, Briefcase, Building } from "lucide-react";
 import { api } from "../services/api";
 import Silk from "../components/ui/Silk";
 
 export const Register: React.FC = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [email, setEmail] = useState("");
@@ -13,25 +14,66 @@ export const Register: React.FC = () => {
   const [name, setName] = useState("");
   const [jobTitle, setJobTitle] = useState("");
   const [organization, setOrganization] = useState("");
+  const [organizationId, setOrganizationId] = useState<number | null>(null);
+  const [invitationToken, setInvitationToken] = useState<string | null>(null);
+  const [invitationDetails, setInvitationDetails] = useState<{email: string; role: string; organizationName: string} | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  const [validatingInvite, setValidatingInvite] = useState(false);
+
+  useEffect(() => {
+    const token = searchParams.get("token");
+    const orgId = searchParams.get("org");
+    
+    if (token && orgId) {
+      setInvitationToken(token);
+      setOrganizationId(Number(orgId));
+      validateInvitation(token, Number(orgId));
+    }
+  }, [searchParams]);
+
+  const validateInvitation = async (token: string, orgId: number) => {
+    setValidatingInvite(true);
+    try {
+      const response = await api.get(`/auth/invitations/validate?token=${token}&orgId=${orgId}`);
+      setInvitationDetails(response);
+      setEmail(response.email);
+    } catch (err) {
+      setError("Invalid or expired invitation");
+    } finally {
+      setValidatingInvite(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
     setError(null);
     try {
-      await api.post("/auth/register", { 
+      const payload: any = { 
         email, 
         password,
         name,
-        jobTitle,
-        organization
-      });
+        jobTitle
+      };
+      
+      if (invitationToken && organizationId) {
+        payload.invitationToken = invitationToken;
+        payload.organizationId = organizationId;
+      } else if (organization) {
+        payload.organizationName = organization;
+      }
+      
+      await api.post("/auth/register", payload);
+      
+      const loginResponse = await api.post("/auth/login", { email, password });
+      localStorage.setItem("merlin_token", loginResponse.token);
+      localStorage.setItem("merlin_user", JSON.stringify(loginResponse.user));
+      
       setSuccess(true);
       setTimeout(() => {
-        navigate("/");
-      }, 3000);
+        navigate("/projects");
+      }, 1500);
     } catch (err: any) {
       setError(err?.message || "Registration failed");
     } finally {
@@ -82,9 +124,37 @@ export const Register: React.FC = () => {
         <div className="px-8 md:px-12 pb-12">
           <div className="max-w-md mx-auto">
             <div className="mb-10 text-center">
-              <h1 className="text-3xl font-bold text-slate-900 mb-2">Create an account</h1>
-              <p className="text-slate-500">Join the Merlin M&E community today</p>
+              {validatingInvite ? (
+                <div className="flex items-center justify-center gap-2 py-4">
+                  <div className="w-5 h-5 border-2 border-blue-500/30 border-t-blue-500 rounded-full animate-spin" />
+                  <span className="text-slate-500">Validating invitation...</span>
+                </div>
+              ) : (
+                <>
+                  <h1 className="text-3xl font-bold text-slate-900 mb-2">
+                    {invitationDetails ? "Accept Invitation" : "Create an account"}
+                  </h1>
+                  <p className="text-slate-500">
+                    {invitationDetails 
+                      ? `You've been invited to join ${invitationDetails.organizationName} as ${invitationDetails.role}`
+                      : "Join the Merlin M&E community today"
+                    }
+                  </p>
+                </>
+              )}
             </div>
+
+            {invitationDetails && (
+              <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-xl">
+                <div className="flex items-center gap-2 text-blue-800">
+                  <Mail className="w-5 h-5" />
+                  <span className="font-medium">Invitation sent to {invitationDetails.email}</span>
+                </div>
+                <div className="mt-2 text-sm text-blue-600">
+                  Role: <span className="font-semibold">{invitationDetails.role}</span>
+                </div>
+              </div>
+            )}
 
             <form onSubmit={handleSubmit} className="space-y-4">
               {error && (
@@ -122,7 +192,8 @@ export const Register: React.FC = () => {
                       required
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
-                      className="w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:bg-white outline-none transition-all shadow-sm"
+                      disabled={!!invitationDetails}
+                      className="w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:bg-white outline-none transition-all shadow-sm disabled:bg-slate-100 disabled:text-slate-500"
                       placeholder="john@example.com"
                     />
                   </div>
@@ -146,21 +217,23 @@ export const Register: React.FC = () => {
                   </div>
                 </div>
 
-                <div className="space-y-1.5">
-                  <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider ml-1">
-                    Organization
-                  </label>
-                  <div className="relative group">
-                    <Building className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 group-focus-within:text-blue-500 transition-colors" />
-                    <input
-                      type="text"
-                      value={organization}
-                      onChange={(e) => setOrganization(e.target.value)}
-                      className="w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:bg-white outline-none transition-all shadow-sm"
-                      placeholder="Global Health Org"
-                    />
+                {!invitationDetails && (
+                  <div className="space-y-1.5">
+                    <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider ml-1">
+                      Organization
+                    </label>
+                    <div className="relative group">
+                      <Building className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 group-focus-within:text-blue-500 transition-colors" />
+                      <input
+                        type="text"
+                        value={organization}
+                        onChange={(e) => setOrganization(e.target.value)}
+                        className="w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:bg-white outline-none transition-all shadow-sm"
+                        placeholder="Global Health Org"
+                      />
+                    </div>
                   </div>
-                </div>
+                )}
               </div>
 
               <div className="space-y-1.5">

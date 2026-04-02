@@ -210,6 +210,7 @@ export interface CurrentUser {
   id: string;
   email: string;
   role: string;
+  organizationId: number;
   createdAt?: string;
   name?: string | null;
   jobTitle?: string | null;

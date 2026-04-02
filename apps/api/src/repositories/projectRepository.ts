@@ -13,9 +13,11 @@ export const createProject = (data: {
   budgetAmount: number | null;
   budgetSpent: number | null;
   budgetCurrency: string | null;
+  organizationId: number;
 }) => prisma.project.create({ data });
 
-export const getProjects = () => prisma.project.findMany({ 
+export const getProjects = (organizationId: number) => prisma.project.findMany({ 
+  where: { organizationId },
   include: {
     _count: {
       select: { indicators: true }
@@ -24,10 +26,13 @@ export const getProjects = () => prisma.project.findMany({
   orderBy: { createdAt: 'desc' } 
 });
 
-export const getProjectById = (id: number) => prisma.project.findUnique({ where: { id } });
+export const getProjectById = (id: number, organizationId: number) => prisma.project.findFirst({ 
+  where: { id, organizationId }
+});
 
 export const updateProject = (
   id: number,
+  organizationId: number,
   data: Partial<{
     name: string;
     description: string | null;
@@ -41,6 +46,6 @@ export const updateProject = (
     budgetSpent: number | null;
     budgetCurrency: string | null;
   }>
-) => prisma.project.update({ where: { id }, data });
+) => prisma.project.update({ where: { id, organizationId }, data });
 
-export const deleteProject = (id: number) => prisma.project.delete({ where: { id } });
+export const deleteProject = (id: number, organizationId: number) => prisma.project.delete({ where: { id, organizationId } });

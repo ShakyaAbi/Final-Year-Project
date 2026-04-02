@@ -8,6 +8,8 @@ import { IndicatorDetail } from './pages/IndicatorDetail';
 import { Settings } from './pages/Settings';
 import { DataEntry } from './pages/DataEntry';
 import { Register } from './pages/Register';
+import { AdminUsers } from './pages/AdminUsers';
+import { AdminInvitations } from './pages/AdminInvitations';
 
 import { PrivateRoute } from './components/PrivateRoute';
 
@@ -22,6 +24,8 @@ const App: React.FC = () => {
         <Route path="/indicators/:id" element={<PrivateRoute><IndicatorDetail /></PrivateRoute>} />
         <Route path="/data-entry" element={<PrivateRoute><DataEntry /></PrivateRoute>} />
         <Route path="/settings" element={<PrivateRoute><Settings /></PrivateRoute>} />
+        <Route path="/admin/users" element={<PrivateRoute><AdminUsers /></PrivateRoute>} />
+        <Route path="/admin/invitations" element={<PrivateRoute><AdminInvitations /></PrivateRoute>} />
         
         <Route path="/indicators" element={<PrivateRoute><Navigate to="/projects" replace /></PrivateRoute>} />
         

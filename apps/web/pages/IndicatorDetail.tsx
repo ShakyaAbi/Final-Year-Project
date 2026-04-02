@@ -429,13 +429,7 @@ export const IndicatorDetail: React.FC = () => {
     if (currentUser.role === "ADMIN" || currentUser.role === "MANAGER") {
       return true;
     }
-    if (currentUser.role !== "DATA_ENTRY") return false;
-    if (!row.createdByUserId || row.createdByUserId !== currentUser.id) {
-      return false;
-    }
-    if (!row.createdAt) return false;
-    const ageMs = Date.now() - new Date(row.createdAt).getTime();
-    return ageMs <= 7 * 24 * 60 * 60 * 1000;
+    return false;
   };
 
   const startRowEdit = (row: Indicator["values"][number]) => {

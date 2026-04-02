@@ -386,6 +386,7 @@ const withMlValidationMeta = (
 const detectAnomaly = async (
   indicator: any,
   normalizedValue: string,
+  organizationId: number,
   excludeSubmissionId?: number,
 ) => {
   const config = normalizeAnomalyConfig((indicator.anomalyConfig as any) ?? null);
@@ -398,6 +399,7 @@ const detectAnomaly = async (
 
   const recentSubmissions = await submissionRepo.getRecentSubmissions(
     indicator.id,
+    organizationId,
     excludeSubmissionId ? windowSize + 1 : windowSize,
   );
   const chronological = [...recentSubmissions]
@@ -516,16 +518,19 @@ const detectAnomaly = async (
 
 export const createSubmission = async (
   indicatorId: number,
+  organizationId: number,
   data: {
-    reportedAt: string;
-    value: any;
-    categoryValue?: string | null;
-    disaggregationKey?: string | null;
-    evidence?: string | null;
+    reportedAt?: string;
+    value: string;
+    categoryValue?: string;
+    disaggregationKey?: string;
+    evidence?: string;
+    isAnomaly?: boolean;
+    anomalyReason?: string;
   },
   userId: number,
 ) => {
-  const indicator = await indicatorRepo.getById(indicatorId);
+  const indicator = await indicatorRepo.getById(indicatorId, organizationId);
   if (!indicator)
     throw new NotFoundError("INDICATOR_NOT_FOUND", "Indicator not found");
 
@@ -555,11 +560,12 @@ export const createSubmission = async (
     });
 
   // Run anomaly detection
-  const anomalyResult = await detectAnomaly(indicator, normalizedValue);
+  const anomalyResult = await detectAnomaly(indicator, normalizedValue, organizationId);
 
   // Check if a submission already exists for this bucket to avoid P2002
   const existing = await submissionRepo.findUniqueSubmission(
     indicatorId,
+    organizationId,
     reportedAt!,
     data.disaggregationKey ?? null
   );
@@ -581,7 +587,7 @@ export const createSubmission = async (
   };
 
   if (existing) {
-    return submissionRepo.updateSubmissionData(existing.id, {
+    return submissionRepo.updateSubmissionData(existing.id, organizationId, {
       ...submissionData,
       updatedByUserId: userId,
     });
@@ -596,19 +602,20 @@ export const createSubmission = async (
 
 export const listSubmissions = async (
   indicatorId: number,
-  query: { from?: string; to?: string; includeDeleted?: string },
+  organizationId: number,
+  filters: { from?: string; to?: string; includeDeleted?: boolean },
 ) => {
-  const indicator = await indicatorRepo.getById(indicatorId);
+  const indicator = await indicatorRepo.getById(indicatorId, organizationId);
   if (!indicator)
     throw new NotFoundError("INDICATOR_NOT_FOUND", "Indicator not found");
 
-  const from = query.from ? parseDate(query.from) : undefined;
-  const to = query.to ? parseDate(query.to) : undefined;
+  const from = filters.from ? parseDate(filters.from) : undefined;
+  const to = filters.to ? parseDate(filters.to) : undefined;
 
-  const submissions = await submissionRepo.listSubmissions(indicatorId, {
+  const submissions = await submissionRepo.listSubmissions(indicatorId, organizationId, {
     from,
     to,
-    includeDeleted: query.includeDeleted === "true",
+    includeDeleted: filters.includeDeleted === true,
   });
 
   // Return submissions with persisted anomaly data
@@ -640,6 +647,7 @@ export const listSubmissions = async (
 
 export const updateSubmission = async (
   submissionId: number,
+  organizationId: number,
   data: {
     reportedAt: string;
     value: any;
@@ -650,7 +658,7 @@ export const updateSubmission = async (
   userId: number,
   role: Role,
 ) => {
-  const submission = await submissionRepo.getById(submissionId);
+  const submission = await submissionRepo.getById(submissionId, organizationId);
   if (!submission) {
     throw new NotFoundError("SUBMISSION_NOT_FOUND", "Submission not found");
   }
@@ -662,7 +670,7 @@ export const updateSubmission = async (
   }
   ensureCanModifySubmission(submission, userId, role);
 
-  const indicator = await indicatorRepo.getById(submission.indicatorId);
+  const indicator = await indicatorRepo.getById(submission.indicatorId, organizationId);
   if (!indicator) {
     throw new NotFoundError("INDICATOR_NOT_FOUND", "Indicator not found");
   }
@@ -691,10 +699,10 @@ export const updateSubmission = async (
     });
 
   // Run anomaly detection
-  const anomalyResult = await detectAnomaly(indicator, normalizedValue, submission.id);
+  const anomalyResult = await detectAnomaly(indicator, normalizedValue, organizationId, submission.id);
 
   try {
-    return await submissionRepo.updateSubmissionData(submission.id, {
+    return await submissionRepo.updateSubmissionData(submission.id, organizationId, {
       reportedAt: reportedAt!,
       value: normalizedValue,
       categoryValue: normalizedCategoryValue,
@@ -719,26 +727,27 @@ export const updateSubmission = async (
 
 export const deleteSubmission = async (
   submissionId: number,
+  organizationId: number,
   userId: number,
   role: Role,
 ) => {
-  const submission = await submissionRepo.getById(submissionId);
+  const submission = await submissionRepo.getById(submissionId, organizationId);
   if (!submission) {
     throw new NotFoundError("SUBMISSION_NOT_FOUND", "Submission not found");
   }
   if ((submission as any).deletedAt) return;
   ensureCanModifySubmission(submission, userId, role);
-  await submissionRepo.softDeleteSubmission(submission.id, userId);
+  await submissionRepo.softDeleteSubmission(submission.id, organizationId, userId);
 };
 
-export const restoreSubmission = async (submissionId: number, userId: number) => {
-  const submission = await submissionRepo.getById(submissionId);
+export const restoreSubmission = async (submissionId: number, organizationId: number, userId: number) => {
+  const submission = await submissionRepo.getById(submissionId, organizationId);
   if (!submission) {
     throw new NotFoundError("SUBMISSION_NOT_FOUND", "Submission not found");
   }
   if (!(submission as any).deletedAt) return submission;
   try {
-    return await submissionRepo.restoreSubmission(submission.id, userId);
+    return await submissionRepo.restoreSubmission(submission.id, organizationId, userId);
   } catch (error: any) {
     if (error?.code === "P2002") {
       throw toSubmissionConflictError();
@@ -749,10 +758,11 @@ export const restoreSubmission = async (submissionId: number, userId: number) =>
 
 export const acknowledgeAnomaly = async (
   submissionId: number,
+  organizationId: number,
   userId: number,
   notes?: string,
 ) => {
-  const submission = await submissionRepo.getById(submissionId);
+  const submission = await submissionRepo.getById(submissionId, organizationId);
   if (!submission)
     throw new NotFoundError("SUBMISSION_NOT_FOUND", "Submission not found");
   if (!submission.isAnomaly) {
@@ -762,7 +772,7 @@ export const acknowledgeAnomaly = async (
     );
   }
 
-  return submissionRepo.updateSubmission(submissionId, {
+  return submissionRepo.updateSubmission(submissionId, organizationId, {
     anomalyStatus: AnomalyStatus.ACKNOWLEDGED,
     anomalyReviewedBy: userId,
     anomalyReviewedAt: new Date(),
@@ -772,10 +782,11 @@ export const acknowledgeAnomaly = async (
 
 export const resolveAnomaly = async (
   submissionId: number,
+  organizationId: number,
   userId: number,
   notes?: string,
 ) => {
-  const submission = await submissionRepo.getById(submissionId);
+  const submission = await submissionRepo.getById(submissionId, organizationId);
   if (!submission)
     throw new NotFoundError("SUBMISSION_NOT_FOUND", "Submission not found");
   if (!submission.isAnomaly) {
@@ -785,7 +796,7 @@ export const resolveAnomaly = async (
     );
   }
 
-  return submissionRepo.updateSubmission(submissionId, {
+  return submissionRepo.updateSubmission(submissionId, organizationId, {
     anomalyStatus: AnomalyStatus.RESOLVED,
     anomalyReviewedBy: userId,
     anomalyReviewedAt: new Date(),
@@ -795,10 +806,11 @@ export const resolveAnomaly = async (
 
 export const markAnomalyFalsePositive = async (
   submissionId: number,
+  organizationId: number,
   userId: number,
   notes?: string,
 ) => {
-  const submission = await submissionRepo.getById(submissionId);
+  const submission = await submissionRepo.getById(submissionId, organizationId);
   if (!submission)
     throw new NotFoundError("SUBMISSION_NOT_FOUND", "Submission not found");
   if (!submission.isAnomaly) {
@@ -808,7 +820,7 @@ export const markAnomalyFalsePositive = async (
     );
   }
 
-  return submissionRepo.updateSubmission(submissionId, {
+  return submissionRepo.updateSubmission(submissionId, organizationId, {
     anomalyStatus: AnomalyStatus.FALSE_POSITIVE,
     anomalyReviewedBy: userId,
     anomalyReviewedAt: new Date(),
@@ -818,11 +830,12 @@ export const markAnomalyFalsePositive = async (
 
 export const updateAnomalyStatus = async (
   submissionId: number,
+  organizationId: number,
   status: AnomalyStatus,
   userId: number,
   notes?: string,
 ) => {
-  const submission = await submissionRepo.getById(submissionId);
+  const submission = await submissionRepo.getById(submissionId, organizationId);
   if (!submission)
     throw new NotFoundError("SUBMISSION_NOT_FOUND", "Submission not found");
   if (!submission.isAnomaly) {
@@ -832,7 +845,7 @@ export const updateAnomalyStatus = async (
     );
   }
 
-  return submissionRepo.updateSubmission(submissionId, {
+  return submissionRepo.updateSubmission(submissionId, organizationId, {
     anomalyStatus: status,
     anomalyReviewedBy: userId,
     anomalyReviewedAt: new Date(),

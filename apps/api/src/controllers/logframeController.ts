@@ -4,13 +4,15 @@ import { asyncHandler } from '../utils/asyncHandler';
 
 export const createLogframeNode = asyncHandler(async (req: Request, res: Response) => {
   const projectId = Number(req.params.projectId);
-  const node = await logframeService.createNode(projectId, req.body);
+  const organizationId = req.user!.organizationId;
+  const node = await logframeService.createNode(projectId, organizationId, req.body);
   res.status(201).json(node);
 });
 
 export const getLogframeTree = asyncHandler(async (req: Request, res: Response) => {
   const projectId = Number(req.params.projectId);
-  const tree = await logframeService.getTree(projectId);
+  const organizationId = req.user!.organizationId;
+  const tree = await logframeService.getTree(projectId, organizationId);
   res.json(tree);
 });
 

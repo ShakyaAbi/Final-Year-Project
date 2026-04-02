@@ -11,6 +11,9 @@ export const create = (data: {
   email: string;
   passwordHash: string;
   role: Role;
+  organizationId: number;
+  name?: string | null;
+  jobTitle?: string | null;
 }) => prisma.user.create({ data });
 
 export const updateById = (
@@ -18,7 +21,6 @@ export const updateById = (
   data: Partial<{
     name: string | null;
     jobTitle: string | null;
-    organization: string | null;
     timezone: string | null;
     avatar: string | null;
     notificationPreferences: Record<string, any> | null;
@@ -34,3 +36,9 @@ export const updateById = (
           : undefined,
     },
   });
+
+export const updateRole = (id: number, role: Role) =>
+  prisma.user.update({ where: { id }, data: { role } });
+
+export const deleteById = (id: number) =>
+  prisma.user.delete({ where: { id } });

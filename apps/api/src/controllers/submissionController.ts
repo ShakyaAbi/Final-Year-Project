@@ -14,6 +14,7 @@ export const createSubmission = asyncHandler(
 
     const submission = await submissionService.createSubmission(
       indicatorId,
+      req.user!.organizationId,
       req.body,
       req.user!.id
     );
@@ -26,6 +27,7 @@ export const listSubmissions = asyncHandler(
     const indicatorId = Number(req.params.indicatorId);
     const submissions = await submissionService.listSubmissions(
       indicatorId,
+      req.user!.organizationId,
       req.query as any
     );
     res.json(submissions);
@@ -37,6 +39,7 @@ export const updateSubmission = asyncHandler(
     const submissionId = Number(req.params.id);
     const submission = await submissionService.updateSubmission(
       submissionId,
+      req.user!.organizationId,
       req.body,
       req.user!.id,
       req.user!.role,
@@ -50,6 +53,7 @@ export const deleteSubmission = asyncHandler(
     const submissionId = Number(req.params.id);
     await submissionService.deleteSubmission(
       submissionId,
+      req.user!.organizationId,
       req.user!.id,
       req.user!.role,
     );
@@ -62,6 +66,7 @@ export const restoreSubmission = asyncHandler(
     const submissionId = Number(req.params.id);
     const submission = await submissionService.restoreSubmission(
       submissionId,
+      req.user!.organizationId,
       req.user!.id,
     );
     res.json(submission);
@@ -73,6 +78,7 @@ export const acknowledgeAnomaly = asyncHandler(
     const submissionId = Number(req.params.id);
     const submission = await submissionService.acknowledgeAnomaly(
       submissionId,
+      req.user!.organizationId,
       req.user!.id,
       req.body.notes
     );
@@ -85,6 +91,7 @@ export const resolveAnomaly = asyncHandler(
     const submissionId = Number(req.params.id);
     const submission = await submissionService.resolveAnomaly(
       submissionId,
+      req.user!.organizationId,
       req.user!.id,
       req.body.notes
     );
@@ -97,6 +104,7 @@ export const markAnomalyFalsePositive = asyncHandler(
     const submissionId = Number(req.params.id);
     const submission = await submissionService.markAnomalyFalsePositive(
       submissionId,
+      req.user!.organizationId,
       req.user!.id,
       req.body.notes
     );
@@ -109,6 +117,7 @@ export const updateAnomalyStatus = asyncHandler(
     const submissionId = Number(req.params.id);
     const submission = await submissionService.updateAnomalyStatus(
       submissionId,
+      req.user!.organizationId,
       req.body.status,
       req.user!.id,
       req.body.notes

@@ -5,12 +5,33 @@ const mapCurrentUser = (user: any): CurrentUser => ({
   id: String(user.id),
   email: user.email ?? "",
   role: user.role ?? "",
+  organizationId: user.organizationId ?? 0,
   createdAt: user.createdAt ? new Date(user.createdAt).toISOString() : undefined,
   name: user.name ?? null,
   jobTitle: user.jobTitle ?? null,
   organization: user.organization ?? null,
   avatar: user.avatar ?? null,
 });
+
+export interface Invitation {
+  id: number;
+  email: string;
+  role: string;
+  organizationId: number;
+  invitedByUserId: number;
+  token: string;
+  expiresAt: string;
+  acceptedAt: string | null;
+}
+
+export interface OrganizationUser {
+  id: number;
+  email: string;
+  role: string;
+  name: string | null;
+  jobTitle: string | null;
+  createdAt: string;
+}
 
 export const authApi = {
   login: async (email: string, password: string) => {
@@ -24,5 +45,33 @@ export const authApi = {
   me: async (): Promise<CurrentUser> => {
     const user = await request("/auth/me");
     return mapCurrentUser(user);
+  },
+  createInvitation: async (email: string, role: string) => {
+    return request<Invitation>("/auth/invitations", {
+      method: "POST",
+      body: { email, role },
+    });
+  },
+  listInvitations: async (): Promise<Invitation[]> => {
+    return request("/auth/invitations");
+  },
+  revokeInvitation: async (id: number) => {
+    return request(`/auth/invitations/${id}`, {
+      method: "DELETE",
+    });
+  },
+  listUsers: async (): Promise<OrganizationUser[]> => {
+    return request("/users");
+  },
+  updateUserRole: async (userId: number, role: string) => {
+    return request<OrganizationUser>(`/users/${userId}/role`, {
+      method: "PATCH",
+      body: { role },
+    });
+  },
+  removeUser: async (userId: number) => {
+    return request(`/users/${userId}`, {
+      method: "DELETE",
+    });
   },
 };

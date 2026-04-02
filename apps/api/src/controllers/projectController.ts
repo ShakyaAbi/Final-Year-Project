@@ -23,37 +23,37 @@ const assessAnomaly = (dataType: IndicatorDataType, value: string, min?: number 
 };
 
 export const createProject = asyncHandler(async (req: Request, res: Response) => {
-  const project = await projectService.createProject(req.body);
+  const project = await projectService.createProject(req.user!.organizationId, req.body);
   res.status(201).json(project);
 });
 
-export const listProjects = asyncHandler(async (_req: Request, res: Response) => {
-  const projects = await projectService.listProjects();
+export const listProjects = asyncHandler(async (req: Request, res: Response) => {
+  const projects = await projectService.listProjects(req.user!.organizationId);
   res.json(projects);
 });
 
 export const getProject = asyncHandler(async (req: Request, res: Response) => {
-  const project = await projectService.getProject(Number(req.params.id));
+  const project = await projectService.getProject(Number(req.params.id), req.user!.organizationId);
   res.json(project);
 });
 
 export const updateProject = asyncHandler(async (req: Request, res: Response) => {
-  const project = await projectService.updateProject(Number(req.params.id), req.body);
+  const project = await projectService.updateProject(Number(req.params.id), req.user!.organizationId, req.body);
   res.json(project);
 });
 
 export const deleteProject = asyncHandler(async (req: Request, res: Response) => {
-  const project = await projectService.deleteProject(Number(req.params.id));
+  const project = await projectService.deleteProject(Number(req.params.id), req.user!.organizationId);
   res.json(project);
 });
 
 export const getProjectStats = asyncHandler(async (req: Request, res: Response) => {
-  const stats = await projectService.getProjectStats(Number(req.params.id));
+  const stats = await projectService.getProjectStats(Number(req.params.id), req.user!.organizationId);
   res.json(stats);
 });
 
 export const getProjectActivities = asyncHandler(async (req: Request, res: Response) => {
-  const activities = await projectService.getProjectActivities(Number(req.params.id));
+  const activities = await projectService.getProjectActivities(Number(req.params.id), req.user!.organizationId);
   const response = activities.map((submission) => {
     const userName = submission.createdByUser.name || submission.createdByUser.email;
     const isAnomaly = assessAnomaly(
@@ -76,6 +76,6 @@ export const getProjectActivities = asyncHandler(async (req: Request, res: Respo
 });
 
 export const getProjectAlerts = asyncHandler(async (req: Request, res: Response) => {
-  const alerts = await projectService.getProjectAlerts(Number(req.params.id));
+  const alerts = await projectService.getProjectAlerts(Number(req.params.id), req.user!.organizationId);
   res.json(alerts);
 });

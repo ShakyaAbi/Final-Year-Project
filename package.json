@@ -16,10 +16,14 @@
   },
   "devDependencies": {
     "@types/papaparse": "^5.5.2",
-    "prisma": "^7.4.0"
+    "tsx": "^4.21.0"
   },
   "dependencies": {
+    "@playwright/mcp": "^0.0.68",
     "@react-three/fiber": "^9.5.0",
     "three": "^0.182.0"
+  },
+  "prisma": {
+    "seed": "tsx apps/api/prisma/seed.ts"
   }
 }

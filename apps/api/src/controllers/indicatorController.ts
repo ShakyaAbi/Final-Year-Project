@@ -5,9 +5,10 @@ import { asyncHandler } from "../utils/asyncHandler";
 export const createIndicator = asyncHandler(
   async (req: Request, res: Response) => {
     const projectId = Number(req.params.projectId);
-    const userId = req.user?.id || 1; // Fallback to admin if no user
+    const userId = req.user?.id || 1;
     const indicator = await indicatorService.createIndicator(
       projectId,
+      req.user!.organizationId,
       req.body,
       userId,
     );
@@ -18,7 +19,7 @@ export const createIndicator = asyncHandler(
 export const getIndicatorsByProject = asyncHandler(
   async (req: Request, res: Response) => {
     const projectId = Number(req.params.projectId);
-    const indicators = await indicatorService.getIndicators(projectId);
+    const indicators = await indicatorService.getIndicators(projectId, req.user!.organizationId);
     res.json(indicators);
   },
 );
@@ -28,6 +29,7 @@ export const getIndicator = asyncHandler(
     const includeSubmissions = req.query.includeSubmissions === "true";
     const indicator = await indicatorService.getIndicatorById(
       Number(req.params.id),
+      req.user!.organizationId,
       includeSubmissions,
     );
     res.json(indicator);
@@ -38,6 +40,7 @@ export const updateIndicator = asyncHandler(
   async (req: Request, res: Response) => {
     const indicator = await indicatorService.updateIndicator(
       Number(req.params.id),
+      req.user!.organizationId,
       req.body,
     );
     res.json(indicator);
@@ -48,6 +51,7 @@ export const getIndicatorStats = asyncHandler(
   async (req: Request, res: Response) => {
     const indicator = await indicatorService.getIndicatorWithStats(
       Number(req.params.id),
+      req.user!.organizationId,
     );
     res.json(indicator);
   },
@@ -57,6 +61,7 @@ export const getReportingGaps = asyncHandler(
   async (req: Request, res: Response) => {
     const indicator = await indicatorService.getIndicatorById(
       Number(req.params.id),
+      req.user!.organizationId,
       true,
     );
 
@@ -78,6 +83,7 @@ export const getCategoryDistribution = asyncHandler(
   async (req: Request, res: Response) => {
     const indicatorWithStats = await indicatorService.getIndicatorWithStats(
       Number(req.params.id),
+      req.user!.organizationId,
     );
 
     if (indicatorWithStats.dataType !== "CATEGORICAL") {
@@ -104,7 +110,7 @@ export const getCategoryDistribution = asyncHandler(
 
 export const deleteIndicator = asyncHandler(
   async (req: Request, res: Response) => {
-    await indicatorService.deleteIndicator(Number(req.params.id));
+    await indicatorService.deleteIndicator(Number(req.params.id), req.user!.organizationId);
     res.status(204).send();
   },
 );
@@ -113,6 +119,7 @@ export const getIndicatorTemplates = asyncHandler(
   async (req: Request, res: Response) => {
     const templates = await indicatorService.getIndicatorTemplates(
       Number(req.params.id),
+      req.user!.organizationId,
     );
     res.json(templates);
   },
@@ -122,6 +129,7 @@ export const getDisaggregatedCategoryStats = asyncHandler(
   async (req: Request, res: Response) => {
     const stats = await indicatorService.getDisaggregatedCategoryStats(
       Number(req.params.id),
+      req.user!.organizationId,
     );
     res.json(stats);
   },
@@ -155,6 +163,7 @@ export const getReportingCompliance = asyncHandler(
 
     const compliance = await indicatorService.getReportingCompliance(
       Number(req.params.id),
+      req.user!.organizationId,
       new Date(startDate as string),
       new Date(endDate as string),
       frequency as 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'QUARTERLY' | 'YEARLY',
@@ -192,6 +201,7 @@ export const getCategoryTimeSeries = asyncHandler(
 
     const timeSeries = await indicatorService.getCategoryTimeSeriesStats(
       Number(req.params.id),
+      req.user!.organizationId,
       new Date(startDate as string),
       new Date(endDate as string),
       group as 'day' | 'week' | 'month' | 'quarter' | 'year'
@@ -212,7 +222,7 @@ export const evaluateML = asyncHandler(
     try {
       const indicatorId = Number(req.params.id);
       const compareAll = req.query.compareAll === "true";
-      const results = await indicatorService.evaluateML(indicatorId, compareAll);
+      const results = await indicatorService.evaluateML(indicatorId, req.user!.organizationId, compareAll);
       res.json(results);
     } catch (error: any) {
       if (error.type === "NETWORK" || error.type === "CONNECTION") {
