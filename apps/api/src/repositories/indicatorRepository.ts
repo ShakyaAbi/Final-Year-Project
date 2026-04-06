@@ -38,7 +38,8 @@ export const createIndicator = (data: {
     },
   });
 
-export const getIndicatorsByProject = (projectId: number, organizationId: number) =>
+
+export const getIndicatorsByProject = (projectId: number, organizationId: number, includeDeleted = false) =>
   prisma.indicator.findMany({
     where: { 
       projectId,
@@ -46,7 +47,7 @@ export const getIndicatorsByProject = (projectId: number, organizationId: number
     },
     include: {
       submissions: {
-        where: { deletedAt: null },
+        where: includeDeleted ? {} : { deletedAt: null },
         orderBy: { reportedAt: 'desc' },
         take: 50
       }
@@ -57,12 +58,13 @@ export const getIndicatorsByProject = (projectId: number, organizationId: number
 export const getById = (id: number, organizationId: number) =>
   prisma.indicator.findFirst({ where: { id, project: { organizationId } } });
 
-export const getByIdWithSubmissions = (id: number, organizationId: number) =>
+
+export const getByIdWithSubmissions = (id: number, organizationId: number, includeDeleted = false) =>
   prisma.indicator.findFirst({
     where: { id, project: { organizationId } },
     include: {
       submissions: {
-        where: { deletedAt: null },
+        where: includeDeleted ? {} : { deletedAt: null },
         orderBy: { reportedAt: "desc" },
       },
     },

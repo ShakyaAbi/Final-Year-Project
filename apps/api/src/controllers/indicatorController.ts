@@ -16,21 +16,26 @@ export const createIndicator = asyncHandler(
   },
 );
 
+
 export const getIndicatorsByProject = asyncHandler(
   async (req: Request, res: Response) => {
     const projectId = Number(req.params.projectId);
-    const indicators = await indicatorService.getIndicators(projectId, req.user!.organizationId);
+    const includeDeleted = req.query.includeDeleted === "true";
+    const indicators = await indicatorService.getIndicators(projectId, req.user!.organizationId, includeDeleted);
     res.json(indicators);
   },
 );
 
+
 export const getIndicator = asyncHandler(
   async (req: Request, res: Response) => {
     const includeSubmissions = req.query.includeSubmissions === "true";
+    const includeDeleted = req.query.includeDeleted === "true";
     const indicator = await indicatorService.getIndicatorById(
       Number(req.params.id),
       req.user!.organizationId,
       includeSubmissions,
+      includeDeleted,
     );
     res.json(indicator);
   },
@@ -47,11 +52,14 @@ export const updateIndicator = asyncHandler(
   },
 );
 
+
 export const getIndicatorStats = asyncHandler(
   async (req: Request, res: Response) => {
+    const includeDeleted = req.query.includeDeleted === "true";
     const indicator = await indicatorService.getIndicatorWithStats(
       Number(req.params.id),
       req.user!.organizationId,
+      includeDeleted,
     );
     res.json(indicator);
   },
@@ -66,7 +74,7 @@ export const getReportingGaps = asyncHandler(
     );
 
     const frequency =
-      (req.query.frequency as "DAILY" | "WEEKLY" | "MONTHLY") || "MONTHLY";
+      (req.query.frequency as "DAILY" | "WEEKLY" | "MONTHLY" | "QUARTERLY" | "YEARLY") || "MONTHLY";
     const submissions = (indicator as any).submissions || [];
     const gaps = indicatorService.detectReportingGaps(submissions, frequency);
 
@@ -81,9 +89,11 @@ export const getReportingGaps = asyncHandler(
 
 export const getCategoryDistribution = asyncHandler(
   async (req: Request, res: Response) => {
+    const includeDeleted = req.query.includeDeleted === "true";
     const indicatorWithStats = await indicatorService.getIndicatorWithStats(
       Number(req.params.id),
       req.user!.organizationId,
+      includeDeleted,
     );
 
     if (indicatorWithStats.dataType !== "CATEGORICAL") {
@@ -127,9 +137,11 @@ export const getIndicatorTemplates = asyncHandler(
 
 export const getDisaggregatedCategoryStats = asyncHandler(
   async (req: Request, res: Response) => {
+    const includeDeleted = req.query.includeDeleted === "true";
     const stats = await indicatorService.getDisaggregatedCategoryStats(
       Number(req.params.id),
       req.user!.organizationId,
+      includeDeleted,
     );
     res.json(stats);
   },

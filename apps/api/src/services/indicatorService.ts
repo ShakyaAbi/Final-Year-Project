@@ -67,9 +67,13 @@ export const createIndicator = async (
   await ensureProject(projectId, organizationId);
   await ensureNodeInProject(data.logframeNodeId, projectId);
 
-  // Validate categorical fields if dataType is CATEGORICAL
+  // Validate categoryConfig for all indicator types (disaggregation/dimensions support)
   let validatedCategories = null;
   let validatedCategoryConfig = null;
+
+  if (data.categoryConfig) {
+    validatedCategoryConfig = validateCategoryConfig(data.categoryConfig);
+  }
 
   if (data.dataType === "CATEGORICAL") {
     if (!data.categories || data.categories.length === 0) {
@@ -79,9 +83,10 @@ export const createIndicator = async (
       );
     }
     validatedCategories = validateCategories(data.categories);
-    validatedCategoryConfig = data.categoryConfig
-      ? validateCategoryConfig(data.categoryConfig)
-      : {};
+    // For categorical, if categoryConfig provided then validatedCategoryConfig already set.
+    if (!validatedCategoryConfig) {
+      validatedCategoryConfig = {};
+    }
   }
 
   const indicator = await indicatorRepo.createIndicator({
@@ -123,18 +128,21 @@ export const createIndicator = async (
   return indicator;
 };
 
-export const getIndicators = async (projectId: number, organizationId: number) => {
+
+export const getIndicators = async (projectId: number, organizationId: number, includeDeleted = false) => {
   await ensureProject(projectId, organizationId);
-  return indicatorRepo.getIndicatorsByProject(projectId, organizationId);
+  return indicatorRepo.getIndicatorsByProject(projectId, organizationId, includeDeleted);
 };
+
 
 export const getIndicatorById = async (
   id: number,
   organizationId: number,
   includeSubmissions = false,
+  includeDeleted = false,
 ) => {
   const indicator = includeSubmissions
-    ? await indicatorRepo.getByIdWithSubmissions(id, organizationId)
+    ? await indicatorRepo.getByIdWithSubmissions(id, organizationId, includeDeleted)
     : await indicatorRepo.getById(id, organizationId);
   if (!indicator)
     throw new NotFoundError("INDICATOR_NOT_FOUND", "Indicator not found");
@@ -176,9 +184,13 @@ export const updateIndicator = async (
     await ensureNodeInProject(data.logframeNodeId, projectId);
   }
 
-  // Validate categorical fields if updating to CATEGORICAL type or if already CATEGORICAL
+  // Validate categoryConfig for all types (disaggregation/dimension support)
   let validatedCategories = data.categories;
   let validatedCategoryConfig = data.categoryConfig;
+
+  if (data.categoryConfig !== undefined) {
+    validatedCategoryConfig = validateCategoryConfig(data.categoryConfig) as any;
+  }
 
   const finalDataType = data.dataType ?? indicator.dataType;
   if (finalDataType === "CATEGORICAL") {
@@ -191,10 +203,8 @@ export const updateIndicator = async (
       }
       validatedCategories = validateCategories(data.categories) as any;
     }
-    if (data.categoryConfig !== undefined) {
-      validatedCategoryConfig = validateCategoryConfig(
-        data.categoryConfig,
-      ) as any;
+    if (!validatedCategoryConfig && indicator.categoryConfig) {
+      validatedCategoryConfig = validateCategoryConfig(indicator.categoryConfig as any) as any;
     }
   }
 
@@ -245,8 +255,8 @@ const calculateTrend = (
   return "stable";
 };
 
-export const getIndicatorWithStats = async (id: number, organizationId: number) => {
-  const indicator = await indicatorRepo.getByIdWithSubmissions(id, organizationId);
+export const getIndicatorWithStats = async (id: number, organizationId: number, includeDeleted = false) => {
+  const indicator = await indicatorRepo.getByIdWithSubmissions(id, organizationId, includeDeleted);
   if (!indicator)
     throw new NotFoundError("INDICATOR_NOT_FOUND", "Indicator not found");
 
@@ -341,7 +351,7 @@ export const getIndicatorWithStats = async (id: number, organizationId: number) 
 
 export const detectReportingGaps = (
   submissions: { reportedAt: Date }[],
-  expectedFrequency: "DAILY" | "WEEKLY" | "MONTHLY",
+  expectedFrequency: "DAILY" | "WEEKLY" | "MONTHLY" | "QUARTERLY" | "YEARLY",
 ) => {
   if (submissions.length < 2) return [];
 
@@ -360,6 +370,8 @@ export const detectReportingGaps = (
     DAILY: 1,
     WEEKLY: 7,
     MONTHLY: 30,
+    QUARTERLY: 90,
+    YEARLY: 365,
   }[expectedFrequency];
 
   for (let i = 1; i < sorted.length; i++) {
@@ -460,8 +472,8 @@ export const getIndicatorTemplates = async (indicatorId: number, organizationId:
   };
 };
 
-export const getDisaggregatedCategoryStats = async (indicatorId: number, organizationId: number) => {
-  const indicator = await indicatorRepo.getByIdWithSubmissions(indicatorId, organizationId);
+export const getDisaggregatedCategoryStats = async (indicatorId: number, organizationId: number, includeDeleted = false) => {
+  const indicator = await indicatorRepo.getByIdWithSubmissions(indicatorId, organizationId, includeDeleted);
 
   if (!indicator) {
     throw new NotFoundError("INDICATOR_NOT_FOUND", "Indicator not found");

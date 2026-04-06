@@ -314,7 +314,7 @@ export const indicatorApi = {
   },
   getReportingGaps: async (
     indicatorId: string,
-    frequency: "DAILY" | "WEEKLY" | "MONTHLY",
+    frequency: "DAILY" | "WEEKLY" | "MONTHLY" | "QUARTERLY" | "YEARLY",
   ): Promise<any> =>
     request(`/indicators/${indicatorId}/gaps?frequency=${frequency}`),
   getCategoryDistribution: async (indicatorId: string): Promise<any> =>

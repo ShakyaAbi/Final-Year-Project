@@ -14,6 +14,7 @@ import {
   validateDisaggregationKey,
 } from "./categoricalService";
 import { normalizeSubmissionByIndicator } from "./submissionNormalization";
+import { createSubmission } from "./submissionService";
 
 interface ParsedRow {
   rowNumber: number;
@@ -211,7 +212,7 @@ export class ImportService {
    */
 
   async commitToDatabase(jobId: number, selectedRowNumbers?: number[]): Promise<void> {
-    const job = await this.jobRepo.findById(jobId);
+    const job: any = await this.jobRepo.findById(jobId);
     if (!job) throw new Error("Import job not found");
 
     if (!job.indicatorId)
@@ -232,71 +233,87 @@ export class ImportService {
       orderBy: { rowNumber: "asc" },
     });
 
+    // Resolve organization id from indicator -> project
+    const indicatorRecord = job.indicator as any;
+    let organizationId: number | null = null;
+    if (indicatorRecord && indicatorRecord.projectId) {
+      const project = await this.prisma.project.findUnique({
+        where: { id: indicatorRecord.projectId },
+        select: { organizationId: true },
+      });
+      organizationId = project?.organizationId ?? null;
+    }
+
+    if (!organizationId) {
+      throw new Error("Unable to determine organization for indicator");
+    }
+
+    // Process rows sequentially so anomaly detection (which may call ML) can
+    // evaluate using recently-created submissions. Sort by reportedAt so
+    // historical rows are inserted before newer rows (important for scoring).
     const BATCH_SIZE = 500;
-    for (let i = 0; i < validRows.length; i += BATCH_SIZE) {
-      const batch = validRows.slice(i, i + BATCH_SIZE);
+    let processed = 0;
+    let successful = 0;
+    let failed = 0;
+    const warnings = job.warningRows || 0;
 
-      await this.prisma.$transaction(async (tx) => {
-        for (const stagingRow of batch) {
-          const data = stagingRow.normalizedData as any;
+    // Sort valid rows chronologically by reportedAt; fall back to rowNumber
+    // if reportedAt is missing or unparsable.
+    const sortedRows = [...validRows].sort((a, b) => {
+      const aVal = a.normalizedData?.reportedAt;
+      const bVal = b.normalizedData?.reportedAt;
+      const aDate = aVal ? new Date(aVal) : new Date(0);
+      const bDate = bVal ? new Date(bVal) : new Date(0);
+      return aDate.getTime() - bDate.getTime();
+    });
 
-          if (job.importMode === "CREATE_ONLY") {
-            await tx.submission.create({
-              data: {
-                indicatorId: job.indicatorId!,
-                reportedAt: new Date(data.reportedAt),
-                value: String(data.value),
-                categoryValue: data.categoryValue,
-                disaggregationKey: data.disaggregationKey || "",
-                evidence: data.evidence,
-                createdByUserId: job.userId,
-                sourceImportJobId: jobId,
-              },
-            });
-          } else if (job.importMode === "UPSERT") {
-            await tx.submission.upsert({
-              where: {
-                indicatorId_reportedAt_disaggregationKey: {
-                  indicatorId: job.indicatorId!,
-                  reportedAt: new Date(data.reportedAt),
-                  disaggregationKey: data.disaggregationKey || "",
-                },
-              },
-              create: {
-                indicatorId: job.indicatorId!,
-                reportedAt: new Date(data.reportedAt),
-                value: String(data.value),
-                categoryValue: data.categoryValue,
-                disaggregationKey: data.disaggregationKey || "",
-                evidence: data.evidence,
-                createdByUserId: job.userId,
-                sourceImportJobId: jobId,
-              },
-              update: {
-                value: String(data.value),
-                categoryValue: data.categoryValue,
-                evidence: data.evidence,
-                sourceImportJobId: jobId,
-              },
-            });
-          }
+    for (let i = 0; i < sortedRows.length; i += BATCH_SIZE) {
+      const batch = sortedRows.slice(i, i + BATCH_SIZE);
 
-          // Mark staging row as imported
-          await tx.importJobRow.update({
+      for (const stagingRow of batch) {
+        const data = stagingRow.normalizedData as any;
+
+        try {
+          const payload = {
+            reportedAt: data.reportedAt,
+            value: String(data.value),
+            categoryValue: data.categoryValue,
+            disaggregationKey: data.disaggregationKey || null,
+            evidence: data.evidence,
+            sourceImportJobId: jobId,
+          };
+
+          // Use submissionService.createSubmission so anomaly detection runs
+          await createSubmission(job.indicatorId!, organizationId, payload, job.userId);
+
+          successful++;
+
+          await this.prisma.importJobRow.update({
             where: { id: stagingRow.id },
             data: { validationStatus: "IMPORTED" },
           });
+        } catch (error: any) {
+          failed++;
+          const errObj = {
+            field: "import",
+            message: error?.message ?? "Import failed",
+            severity: "error",
+          } as any;
+          await this.prisma.importJobRow.update({
+            where: { id: stagingRow.id },
+            data: {
+              validationStatus: "ERROR",
+              errors: [errObj],
+            },
+          });
+          console.error("Import row failed:", error?.message ?? error);
+        } finally {
+          processed++;
         }
-      });
+      }
 
-      // Update progress
-      await this.jobRepo.updateProgress(
-        jobId,
-        i + batch.length,
-        i + batch.length,
-        job.failedRows,
-        job.warningRows,
-      );
+      // Update progress after each batch
+      await this.jobRepo.updateProgress(jobId, processed, successful, failed, warnings);
     }
 
     await this.jobRepo.markComplete(jobId);

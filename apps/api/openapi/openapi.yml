@@ -397,6 +397,10 @@ paths:
           name: projectId
           schema: { type: integer }
           required: true
+        - in: query
+          name: includeDeleted
+          schema: { type: boolean }
+          description: Include soft-deleted indicators and submissions
       responses:
         "200": { description: Indicators }
   /indicators/{id}:
@@ -408,6 +412,10 @@ paths:
           name: id
           schema: { type: integer }
           required: true
+        - in: query
+          name: includeDeleted
+          schema: { type: boolean }
+          description: Include soft-deleted submissions
       responses:
         "200":
           description: Indicator
@@ -433,6 +441,10 @@ paths:
           name: id
           schema: { type: integer }
           required: true
+        - in: query
+          name: includeDeleted
+          schema: { type: boolean }
+          description: Include soft-deleted submissions in statistics
       responses:
         "200":
           description: Indicator with stats
@@ -560,6 +572,7 @@ paths:
         - in: query
           name: includeDeleted
           schema: { type: boolean }
+          description: Include soft-deleted submissions
       responses:
         "200":
           description: Submissions
