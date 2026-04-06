@@ -37,6 +37,9 @@ export const updateById = (
     },
   });
 
+export const updatePasswordById = (id: number, passwordHash: string) =>
+  prisma.user.update({ where: { id }, data: { passwordHash } });
+
 export const updateRole = (id: number, role: Role) =>
   prisma.user.update({ where: { id }, data: { role } });
 

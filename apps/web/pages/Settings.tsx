@@ -9,6 +9,12 @@ export const Settings: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'profile' | 'notifications' | 'security'>('profile');
   const [user, setUser] = useState<CurrentUser | null>(null);
   const [loading, setLoading] = useState(true);
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [changing, setChanging] = useState(false);
+  const [securityError, setSecurityError] = useState<string | null>(null);
+  const [securitySuccess, setSecuritySuccess] = useState<string | null>(null);
 
   useEffect(() => {
     api.me()
@@ -144,13 +150,97 @@ export const Settings: React.FC = () => {
 
               {/* Security Tab */}
               {activeTab === 'security' && (
-                <div className="p-6 md:p-8 space-y-4">
+                <div className="p-6 md:p-8 space-y-6">
                   <div>
                     <h2 className="text-lg font-bold text-slate-900">Security Settings</h2>
-                    <p className="text-sm text-slate-500">
-                      Password updates and account deletion are not available yet. These actions will appear once the API supports them.
-                    </p>
+                    <p className="text-sm text-slate-500">Manage your account security settings.</p>
                   </div>
+
+                  <div className="border border-slate-200 rounded-md bg-slate-50 p-4">
+                    <h3 className="text-sm font-medium text-slate-900">Change password</h3>
+                    <p className="text-sm text-slate-500 mb-3">Update your account password. Choose a strong, unique password.</p>
+
+                    <form
+                      onSubmit={async (e) => {
+                        e.preventDefault();
+                        setSecurityError(null);
+                        setSecuritySuccess(null);
+                        if (newPassword !== confirmPassword) {
+                          setSecurityError('New password and confirmation do not match');
+                          return;
+                        }
+                        if (newPassword.length < 8) {
+                          setSecurityError('Password must be at least 8 characters');
+                          return;
+                        }
+                        try {
+                          setChanging(true);
+                          await api.changePassword(currentPassword, newPassword);
+                          setSecuritySuccess('Password updated successfully');
+                          setCurrentPassword('');
+                          setNewPassword('');
+                          setConfirmPassword('');
+                        } catch (err: any) {
+                          setSecurityError(err?.message || 'Failed to change password');
+                        } finally {
+                          setChanging(false);
+                        }
+                      }}
+                      className="space-y-3"
+                    >
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">Current password</label>
+                        <input
+                          type="password"
+                          value={currentPassword}
+                          onChange={(e) => setCurrentPassword(e.target.value)}
+                          className="w-full px-3 py-2 border border-slate-200 rounded-md bg-white"
+                          required
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">New password</label>
+                        <input
+                          type="password"
+                          value={newPassword}
+                          onChange={(e) => setNewPassword(e.target.value)}
+                          className="w-full px-3 py-2 border border-slate-200 rounded-md bg-white"
+                          required
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">Confirm new password</label>
+                        <input
+                          type="password"
+                          value={confirmPassword}
+                          onChange={(e) => setConfirmPassword(e.target.value)}
+                          className="w-full px-3 py-2 border border-slate-200 rounded-md bg-white"
+                          required
+                        />
+                      </div>
+
+                      {securityError && (
+                        <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg p-2">{securityError}</div>
+                      )}
+                      {securitySuccess && (
+                        <div className="text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg p-2">{securitySuccess}</div>
+                      )}
+
+                      <div className="text-right">
+                        <button
+                          type="submit"
+                          disabled={changing}
+                          className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-md disabled:opacity-50"
+                        >
+                          {changing ? 'Updating…' : 'Update password'}
+                        </button>
+                      </div>
+                    </form>
+                  </div>
+
+                  <div className="text-sm text-slate-500">Account deletion is not available from this UI yet.</div>
                 </div>
               )}
 

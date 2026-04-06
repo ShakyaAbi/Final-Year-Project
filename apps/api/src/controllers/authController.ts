@@ -49,3 +49,8 @@ export const validateInvitation = asyncHandler(async (req: Request, res: Respons
   const result = await authService.validateInvitation(token, orgId);
   res.json(result);
 });
+
+export const changePassword = asyncHandler(async (req: Request, res: Response) => {
+  await authService.changePassword(req.user!.id, req.body.currentPassword, req.body.newPassword);
+  res.status(204).send();
+});

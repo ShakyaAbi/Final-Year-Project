@@ -60,6 +60,12 @@ export const authApi = {
       method: "DELETE",
     });
   },
+  changePassword: async (currentPassword: string, newPassword: string) => {
+    return request(`/auth/me/password`, {
+      method: "PATCH",
+      body: { currentPassword, newPassword },
+    });
+  },
   listUsers: async (): Promise<OrganizationUser[]> => {
     return request("/users");
   },

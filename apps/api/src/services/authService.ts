@@ -127,6 +127,20 @@ export const updateCurrentUser = async (
   return sanitizeUser(user);
 };
 
+export const changePassword = async (id: number, currentPassword: string, newPassword: string) => {
+  const user = await userRepo.findById(id as number);
+  if (!user) {
+    throw new NotFoundError('USER_NOT_FOUND', 'User not found');
+  }
+  const valid = await comparePassword(currentPassword, user.passwordHash);
+  if (!valid) {
+    throw new UnauthorizedError('Current password is incorrect');
+  }
+  const newHash = await hashPassword(newPassword);
+  await userRepo.updatePasswordById(id as number, newHash);
+  return true;
+};
+
 export const createInvitation = async (input: {
   email: string;
   organizationId: number;
