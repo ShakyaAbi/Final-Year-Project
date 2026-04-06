@@ -1,3 +1,20 @@
+model AuditLog {
+  id             Int      @id @default(autoincrement())
+  action         String
+  userId         Int
+  submissionId   Int
+  indicatorId    Int
+  organizationId Int
+  meta           Json?
+  createdAt      DateTime @default(now())
+
+  // Indexes for fast lookup
+  @@index([userId])
+  @@index([submissionId])
+  @@index([indicatorId])
+  @@index([organizationId])
+  @@index([action])
+}
 generator client {
   provider = "prisma-client-js"
 }

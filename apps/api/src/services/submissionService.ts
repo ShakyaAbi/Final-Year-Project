@@ -1,3 +1,4 @@
+import { logAuditEvent } from "../utils/auditLog";
 import { IndicatorDataType, AnomalyStatus, Role } from "@prisma/client";
 import * as indicatorRepo from "../repositories/indicatorRepository";
 import * as submissionRepo from "../repositories/submissionRepository";
@@ -527,6 +528,7 @@ export const createSubmission = async (
     evidence?: string;
     isAnomaly?: boolean;
     anomalyReason?: string;
+    sourceImportJobId?: number;
   },
   userId: number,
 ) => {
@@ -542,9 +544,7 @@ export const createSubmission = async (
     indicator.categoryConfig as any as CategoryConfig | null;
 
   // Validate disaggregation key if provided or required
-  if (indicator.dataType === "CATEGORICAL") {
-    validateDisaggregationKey(data.disaggregationKey, categoryConfig);
-  }
+  validateDisaggregationKey(data.disaggregationKey, categoryConfig);
 
   const { normalizedValue, normalizedCategoryValue } =
     normalizeSubmissionByIndicator({
@@ -577,6 +577,7 @@ export const createSubmission = async (
     categoryValue: normalizedCategoryValue,
     disaggregationKey: data.disaggregationKey ?? null,
     evidence: data.evidence ?? null,
+    sourceImportJobId: data.sourceImportJobId ?? null,
     isAnomaly: anomalyResult.isAnomaly,
     anomalyReason: anomalyResult.anomalyReason ?? null,
     anomalyStatus: anomalyResult.isAnomaly ? AnomalyStatus.DETECTED : null,
@@ -603,7 +604,7 @@ export const createSubmission = async (
 export const listSubmissions = async (
   indicatorId: number,
   organizationId: number,
-  filters: { from?: string; to?: string; includeDeleted?: boolean },
+  filters: { from?: string; to?: string; includeDeleted?: boolean | string },
 ) => {
   const indicator = await indicatorRepo.getById(indicatorId, organizationId);
   if (!indicator)
@@ -612,11 +613,13 @@ export const listSubmissions = async (
   const from = filters.from ? parseDate(filters.from) : undefined;
   const to = filters.to ? parseDate(filters.to) : undefined;
 
+  const includeDeleted = filters.includeDeleted === true || filters.includeDeleted === "true";
   const submissions = await submissionRepo.listSubmissions(indicatorId, organizationId, {
     from,
     to,
-    includeDeleted: filters.includeDeleted === true,
+    includeDeleted,
   });
+  
 
   // Return submissions with persisted anomaly data
   return submissions.map((submission) => ({
@@ -681,9 +684,7 @@ export const updateSubmission = async (
   const categoryConfig =
     indicator.categoryConfig as any as CategoryConfig | null;
 
-  if (indicator.dataType === "CATEGORICAL") {
-    validateDisaggregationKey(data.disaggregationKey, categoryConfig);
-  }
+  validateDisaggregationKey(data.disaggregationKey, categoryConfig);
 
   const { normalizedValue, normalizedCategoryValue } =
     normalizeSubmissionByIndicator({
@@ -737,7 +738,15 @@ export const deleteSubmission = async (
   }
   if ((submission as any).deletedAt) return;
   ensureCanModifySubmission(submission, userId, role);
-  await submissionRepo.softDeleteSubmission(submission.id, organizationId, userId);
+    await submissionRepo.softDeleteSubmission(submission.id, organizationId, userId);
+    await logAuditEvent({
+      action: "SUBMISSION_DELETE",
+      userId,
+      submissionId: submission.id,
+      indicatorId: submission.indicatorId,
+      organizationId,
+      meta: {},
+    });
 };
 
 export const restoreSubmission = async (submissionId: number, organizationId: number, userId: number) => {
@@ -747,7 +756,16 @@ export const restoreSubmission = async (submissionId: number, organizationId: nu
   }
   if (!(submission as any).deletedAt) return submission;
   try {
-    return await submissionRepo.restoreSubmission(submission.id, organizationId, userId);
+      const restored = await submissionRepo.restoreSubmission(submission.id, organizationId, userId);
+      await logAuditEvent({
+        action: "SUBMISSION_RESTORE",
+        userId,
+        submissionId: submission.id,
+        indicatorId: submission.indicatorId,
+        organizationId,
+        meta: {},
+      });
+      return restored;
   } catch (error: any) {
     if (error?.code === "P2002") {
       throw toSubmissionConflictError();
