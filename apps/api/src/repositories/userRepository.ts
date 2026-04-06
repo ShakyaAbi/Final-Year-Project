@@ -14,6 +14,7 @@ export const create = (data: {
   organizationId: number;
   name?: string | null;
   jobTitle?: string | null;
+  avatar?: string | null;
 }) => prisma.user.create({ data });
 
 export const updateById = (

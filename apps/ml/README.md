@@ -24,3 +24,24 @@ pytest -q
 - `GET /health`
 - `POST /score`
 - `POST /score/batch`
+
+## Sample test data
+
+Example ML test payloads are included in this directory:
+
+- `apps/ml/sample_ml_data.json`
+- `apps/ml/sample_ml_batch_data.json`
+
+Use them to verify the service manually:
+
+```bash
+curl -X POST http://localhost:8000/score \
+  -H 'Content-Type: application/json' \
+  --data @apps/ml/sample_ml_data.json
+
+curl -X POST http://localhost:8000/score/batch \
+  -H 'Content-Type: application/json' \
+  --data @apps/ml/sample_ml_batch_data.json
+```
+
+If your ML service requires an API key, add the `Authorization: Bearer <key>` header.

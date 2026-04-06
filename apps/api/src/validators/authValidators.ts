@@ -7,7 +7,6 @@ export const registerSchema = {
     password: z.string().min(8),
     name: z.string().optional(),
     jobTitle: z.string().optional(),
-    role: z.nativeEnum(Role).optional(),
     organizationId: z.number().int().positive().optional(),
     organizationName: z.string().min(1).optional(),
     invitationToken: z.string().optional()

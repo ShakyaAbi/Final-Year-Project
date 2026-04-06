@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import * as authService from '../services/authService';
 import { asyncHandler } from '../utils/asyncHandler';
+import { config } from '../config/env';
 
 export const register = asyncHandler(async (req: Request, res: Response) => {
   const user = await authService.register(req.body);
@@ -10,6 +11,37 @@ export const register = asyncHandler(async (req: Request, res: Response) => {
 export const login = asyncHandler(async (req: Request, res: Response) => {
   const result = await authService.login(req.body);
   res.json(result);
+});
+
+const redirectToLoginWithError = (res: Response, error: string) => {
+  const redirectUrl = `${config.appUrl}/#/?error=${encodeURIComponent(error)}`;
+  return res.redirect(redirectUrl);
+};
+
+export const googleAuthRedirect = asyncHandler(async (_req: Request, res: Response) => {
+  try {
+    const authUrl = authService.getGoogleAuthUrl();
+    res.redirect(authUrl);
+  } catch (error: any) {
+    const message = error?.message || 'Google sign-in is not configured';
+    return redirectToLoginWithError(res, message);
+  }
+});
+
+export const googleAuthCallback = asyncHandler(async (req: Request, res: Response) => {
+  const code = req.query.code as string | undefined;
+  if (!code) {
+    return redirectToLoginWithError(res, 'Missing Google authorization code');
+  }
+
+  try {
+    const result = await authService.handleGoogleCallback(code);
+    const redirectUrl = `${config.appUrl}/#/google-callback?token=${encodeURIComponent(result.token)}`;
+    res.redirect(redirectUrl);
+  } catch (error: any) {
+    const message = error?.message || 'Google sign-in failed';
+    return redirectToLoginWithError(res, message);
+  }
 });
 
 export const me = asyncHandler(async (req: Request, res: Response) => {

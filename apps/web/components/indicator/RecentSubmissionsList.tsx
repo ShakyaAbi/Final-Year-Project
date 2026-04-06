@@ -129,7 +129,28 @@ export const RecentSubmissionsList: React.FC<RecentSubmissionsListProps> = ({
                   row.evidence || "-"
                 )}
               </div>
-              <div className="col-span-4 flex flex-col items-end gap-1">
+              <div className="col-span-2 text-slate-500 truncate">
+                {edit ? (
+                  <input
+                    type="text"
+                    value={edit.disaggregationKey || ""}
+                    placeholder="Disaggregation key"
+                    onChange={(e) =>
+                      setEditingSubmissionRows((prev) => ({
+                        ...prev,
+                        [row.id]: {
+                          ...prev[row.id],
+                          disaggregationKey: e.target.value,
+                        },
+                      }))
+                    }
+                    className="w-full px-1 py-1 border border-slate-300 rounded bg-white"
+                  />
+                ) : (
+                  row.disaggregationKey || "-"
+                )}
+              </div>
+              <div className="col-span-2 flex flex-col items-end gap-1">
                 {row.deletedAt && (
                   <div className="text-xs text-amber-700 mb-1">
                     Deleted {row.deletedAt ? `on ${new Date(row.deletedAt).toLocaleString()}` : ""}

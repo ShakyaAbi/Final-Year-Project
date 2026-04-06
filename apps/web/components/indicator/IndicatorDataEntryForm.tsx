@@ -225,9 +225,8 @@ export const IndicatorDataEntryForm: React.FC<IndicatorDataEntryFormProps> = ({
           </div>
         )}
 
-        {/* Disaggregation Selection (categorical only) */}
-        {indicator.type === IndicatorType.CATEGORICAL &&
-          indicator.categoryConfig?.disaggregationDimensions &&
+        {/* Disaggregation Selection */}
+        {indicator.categoryConfig?.disaggregationDimensions &&
           indicator.categoryConfig.disaggregationDimensions.length > 0 && (
             <div>
               {(() => {

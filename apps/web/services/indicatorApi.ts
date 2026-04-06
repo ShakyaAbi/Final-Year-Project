@@ -332,6 +332,12 @@ export const indicatorApi = {
       method: "POST",
     });
   },
+  recalculateIndicatorAnomalies: async (
+    indicatorId: string,
+  ): Promise<any> =>
+    request(`/indicators/${indicatorId}/anomalies/recalculate`, {
+      method: "POST",
+    }),
 };
 
 export const submissionApi = {

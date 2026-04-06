@@ -24,6 +24,7 @@ import {
   getCategoryTimeSeries,
   getMLAlgorithms,
   evaluateML,
+  recalculateIndicatorAnomalies,
 } from "../controllers/indicatorController";
 
 const router = Router();
@@ -109,6 +110,13 @@ router.post(
   authenticate,
   validate(indicatorIdParamsSchema),
   evaluateML,
+);
+router.post(
+  "/indicators/:id/anomalies/recalculate",
+  authenticate,
+  requireRoles(Role.ADMIN, Role.MANAGER),
+  validate(indicatorIdParamsSchema),
+  recalculateIndicatorAnomalies,
 );
 router.patch(
   "/indicators/:id",

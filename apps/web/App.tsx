@@ -10,6 +10,7 @@ import { DataEntry } from './pages/DataEntry';
 import { Register } from './pages/Register';
 import { AdminUsers } from './pages/AdminUsers';
 import { AdminInvitations } from './pages/AdminInvitations';
+import { GoogleCallback } from './pages/GoogleCallback';
 
 import { PrivateRoute } from './components/PrivateRoute';
 
@@ -26,7 +27,7 @@ const App: React.FC = () => {
         <Route path="/settings" element={<PrivateRoute><Settings /></PrivateRoute>} />
         <Route path="/admin/users" element={<PrivateRoute><AdminUsers /></PrivateRoute>} />
         <Route path="/admin/invitations" element={<PrivateRoute><AdminInvitations /></PrivateRoute>} />
-        
+        <Route path="/google-callback" element={<GoogleCallback />} />
         <Route path="/indicators" element={<PrivateRoute><Navigate to="/projects" replace /></PrivateRoute>} />
         
         {/* Fallback */}

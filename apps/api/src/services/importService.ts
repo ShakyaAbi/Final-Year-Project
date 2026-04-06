@@ -260,8 +260,10 @@ export class ImportService {
     // Sort valid rows chronologically by reportedAt; fall back to rowNumber
     // if reportedAt is missing or unparsable.
     const sortedRows = [...validRows].sort((a, b) => {
-      const aVal = a.normalizedData?.reportedAt;
-      const bVal = b.normalizedData?.reportedAt;
+      const aNormalized = a.normalizedData as any;
+      const bNormalized = b.normalizedData as any;
+      const aVal = aNormalized?.reportedAt;
+      const bVal = bNormalized?.reportedAt;
       const aDate = aVal ? new Date(aVal) : new Date(0);
       const bDate = bVal ? new Date(bVal) : new Date(0);
       return aDate.getTime() - bDate.getTime();

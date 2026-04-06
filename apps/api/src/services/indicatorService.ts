@@ -15,6 +15,8 @@ import {
   getCategoryTimeSeries,
 } from "./categoricalService";
 import { TemplateService } from "./templateService";
+import * as submissionService from "./submissionService";
+import { normalizeAnomalyConfig } from "./anomalyConfig";
 import { prisma } from "../prisma";
 
 const ensureProject = async (projectId: number, organizationId: number) => {
@@ -208,7 +210,7 @@ export const updateIndicator = async (
     }
   }
 
-  return indicatorRepo.updateIndicator(id, organizationId, {
+  const updatedIndicator = await indicatorRepo.updateIndicator(id, organizationId, {
     projectId,
     logframeNodeId: data.logframeNodeId,
     name: data.name,
@@ -234,6 +236,40 @@ export const updateIndicator = async (
     reminderDaysAfterDue: data.reminderDaysAfterDue,
     reminderRecipients: data.reminderRecipients,
   });
+
+  const dataTypeChanged =
+    data.dataType !== undefined && data.dataType !== indicator.dataType;
+  const anomalyConfigChanged =
+    data.anomalyConfig !== undefined &&
+    JSON.stringify(normalizeAnomalyConfig(data.anomalyConfig ?? null)) !==
+      JSON.stringify(
+        normalizeAnomalyConfig(indicator.anomalyConfig as any ?? null),
+      );
+
+  if (dataTypeChanged || anomalyConfigChanged) {
+    await submissionService.recalculateAnomaliesForIndicator(id, organizationId);
+  }
+
+  return updatedIndicator;
+};
+
+export const recalculateIndicatorAnomalies = async (
+  indicatorId: number,
+  organizationId: number,
+) => {
+  const indicator = await getIndicatorById(
+    indicatorId,
+    organizationId,
+    true,
+    false,
+  );
+
+  await submissionService.recalculateAnomaliesForIndicator(
+    indicatorId,
+    organizationId,
+  );
+
+  return indicator;
 };
 
 const calculateTrend = (

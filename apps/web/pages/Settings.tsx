@@ -3,10 +3,10 @@ import React, { useEffect, useState } from 'react';
 import { Layout } from '../components/Layout';
 import { CurrentUser } from '../types';
 import { api } from '../services/api';
-import { User, Bell, Lock, Mail, Shield, Calendar } from 'lucide-react';
+import { User, Lock, Mail, Shield, Calendar } from 'lucide-react';
 
 export const Settings: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'profile' | 'notifications' | 'security'>('profile');
+  const [activeTab, setActiveTab] = useState<'profile' | 'security'>('profile');
   const [user, setUser] = useState<CurrentUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [currentPassword, setCurrentPassword] = useState('');
@@ -47,7 +47,6 @@ export const Settings: React.FC = () => {
         <div className="w-full lg:w-64 flex-shrink-0 space-y-2">
            {[
              { id: 'profile', label: 'My Profile', icon: User },
-             { id: 'notifications', label: 'Notifications', icon: Bell },
              { id: 'security', label: 'Security', icon: Lock },
            ].map(tab => (
              <button
@@ -133,18 +132,6 @@ export const Settings: React.FC = () => {
                       </div>
                     </div>
                   )}
-                </div>
-              )}
-
-              {/* Notifications Tab */}
-              {activeTab === 'notifications' && (
-                <div className="p-6 md:p-8 space-y-4">
-                  <div>
-                    <h2 className="text-lg font-bold text-slate-900">Notification Preferences</h2>
-                    <p className="text-sm text-slate-500">
-                      Notification settings are not available yet. This section will be enabled once the API supports it.
-                    </p>
-                  </div>
                 </div>
               )}
 

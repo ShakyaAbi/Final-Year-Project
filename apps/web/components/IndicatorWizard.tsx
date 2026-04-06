@@ -68,7 +68,7 @@ const defaultAnomalyConfig: AnomalyConfig = {
        method: "ISOLATION_FOREST",
        contamination: 0.05,
        windowSize: 50,
-       minPoints: 20,
+       minPoints: 5,
        seed: 42,
      },
      fallback: {

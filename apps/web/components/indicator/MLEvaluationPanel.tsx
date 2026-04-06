@@ -15,18 +15,25 @@ import {
 
 interface MLEvaluationPanelProps {
   indicator: Indicator;
+  onRescore?: () => Promise<void> | void;
 }
 
-export const MLEvaluationPanel: React.FC<MLEvaluationPanelProps> = ({ indicator }) => {
+export const MLEvaluationPanel: React.FC<MLEvaluationPanelProps> = ({
+  indicator,
+  onRescore,
+}) => {
   const [loading, setLoading] = useState(false);
+  const [recalculating, setRecalculating] = useState(false);
   const [results, setResults] = useState<MLEvaluationResult[]>([]);
   const [compareAll, setCompareAll] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [isExpanded, setIsExpanded] = useState(false);
 
   const runEvaluation = async () => {
     setLoading(true);
     setError(null);
+    setStatusMessage(null);
     try {
       const data = await api.evaluateML(indicator.id, compareAll);
       setResults(data.results || []);
@@ -38,11 +45,31 @@ export const MLEvaluationPanel: React.FC<MLEvaluationPanelProps> = ({ indicator 
     }
   };
 
+  const recalculateAnomalies = async () => {
+    setRecalculating(true);
+    setError(null);
+    setStatusMessage(null);
+    try {
+      await api.recalculateIndicatorAnomalies(indicator.id);
+      setStatusMessage("Historical anomaly flags were recalculated.");
+      if (onRescore) {
+        await onRescore();
+      }
+    } catch (err: any) {
+      setError(err?.message || "Failed to recalculate anomaly flags.");
+    } finally {
+      setRecalculating(false);
+    }
+  };
+
   if (indicator.type === "Categorical" || indicator.type === "Boolean" || indicator.type === "Text") {
     return null;
   }
 
   const isMLEnabled = indicator.anomalyConfig?.mode === "ML";
+  const mlMinPoints = indicator.anomalyConfig?.ml?.minPoints ?? 20;
+  const numericSubmissionCount = indicator.values.filter((value) => typeof value.value === "number").length;
+  const isHistoryInsufficient = isMLEnabled && numericSubmissionCount < mlMinPoints;
 
   const bestModel = results.length > 0 
     ? [...results].sort((a, b) => b.f1 - a.f1)[0]
@@ -73,7 +100,7 @@ export const MLEvaluationPanel: React.FC<MLEvaluationPanelProps> = ({ indicator 
 
       {isExpanded && (
         <div className="p-4 border-t border-slate-100 bg-slate-50/50 space-y-4">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-4">
               <label className="flex items-center gap-2 text-xs font-medium text-slate-700">
                 <input
@@ -85,16 +112,36 @@ export const MLEvaluationPanel: React.FC<MLEvaluationPanelProps> = ({ indicator 
                 Compare all algorithms
               </label>
             </div>
-            <Button 
-              size="sm" 
-              onClick={(e) => { e.stopPropagation(); runEvaluation(); }} 
-              isLoading={loading}
-              disabled={indicator.values.length < 5}
-            >
-              <Zap className="w-3.5 h-3.5 mr-2" />
-              {results.length ? "Re-evaluate" : "Run Evaluation"}
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button 
+                size="sm" 
+                onClick={(e) => { e.stopPropagation(); runEvaluation(); }} 
+                isLoading={loading}
+                disabled={indicator.values.length < 5}
+              >
+                <Zap className="w-3.5 h-3.5 mr-2" />
+                {results.length ? "Re-evaluate" : "Run Evaluation"}
+              </Button>
+              {isMLEnabled && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={(e) => { e.stopPropagation(); recalculateAnomalies(); }}
+                  isLoading={recalculating}
+                >
+                  Recalculate anomalies
+                </Button>
+              )}
+            </div>
           </div>
+          {isMLEnabled && isHistoryInsufficient && (
+            <div className="p-3 bg-amber-50 border border-amber-100 rounded-lg flex gap-2">
+              <Info className="w-4 h-4 text-amber-500 flex-shrink-0" />
+              <p className="text-[11px] text-amber-800">
+                ML mode is enabled, but this indicator has only {numericSubmissionCount} numeric submissions. ML scoring will remain limited until it reaches {mlMinPoints} values.
+              </p>
+            </div>
+          )}
 
           {indicator.values.length < 5 && (
             <div className="p-3 bg-amber-50 border border-amber-100 rounded-lg flex gap-2">
@@ -105,7 +152,17 @@ export const MLEvaluationPanel: React.FC<MLEvaluationPanelProps> = ({ indicator 
             </div>
           )}
 
+          {isHistoryInsufficient && (
+            <div className="p-3 bg-amber-50 border border-amber-100 rounded-lg flex gap-2">
+              <Info className="w-4 h-4 text-amber-500 flex-shrink-0" />
+              <p className="text-[11px] text-amber-800">
+                Not enough ML anomaly history yet. This indicator needs at least {mlMinPoints} numeric submissions before ML anomaly detection can run reliably.
+              </p>
+            </div>
+          )}
+
           {error && <p className="text-xs text-red-500">{error}</p>}
+          {statusMessage && <p className="text-xs text-slate-600">{statusMessage}</p>}
 
           {results.length > 0 && (
             <div className="space-y-3 pt-2">

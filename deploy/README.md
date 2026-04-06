@@ -6,6 +6,9 @@ Quick checklist before first deploy
 
 - Copy `deploy/api.env.example` to `deploy/api.env` and fill secrets (especially `JWT_SECRET` and `DATABASE_URL`).
 - Copy `deploy/web.env.example` to `deploy/web.env` and set `VITE_API_BASE_URL` to your VPS (e.g. `http://YOUR_VPS_IP/api/v1`).
+- If you serve the app from a subpath like `/merlin/`, also set `VITE_BASE_URL=/merlin/`.
+- Copy `deploy/api.env.example` to `deploy/api.env` and set `APP_URL` to the public frontend URL (e.g. `http://YOUR_VPS_IP` or `https://example.com/merlin`).
+- If you use Google OAuth, set `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and `GOOGLE_AUTH_REDIRECT_URI`.
 - Put the repo on the VPS at the chosen path (example `/srv/merlin`).
 
 First-time server setup (example for Ubuntu):

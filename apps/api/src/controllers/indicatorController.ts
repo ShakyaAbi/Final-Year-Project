@@ -52,6 +52,15 @@ export const updateIndicator = asyncHandler(
   },
 );
 
+export const recalculateIndicatorAnomalies = asyncHandler(
+  async (req: Request, res: Response) => {
+    await indicatorService.recalculateIndicatorAnomalies(
+      Number(req.params.id),
+      req.user!.organizationId,
+    );
+    res.json({ success: true });
+  },
+);
 
 export const getIndicatorStats = asyncHandler(
   async (req: Request, res: Response) => {

@@ -8,6 +8,7 @@ import { signAccessToken } from '../utils/jwt';
 import { randomBytes } from 'crypto';
 import { sendReminderEmail } from '../utils/email';
 import { config } from '../config/env';
+import { OAuth2Client } from 'google-auth-library';
 
 const sanitizeUser = (user: any) => ({
   id: user.id,
@@ -23,12 +24,107 @@ const sanitizeUser = (user: any) => ({
   createdAt: user.createdAt
 });
 
+const googleOAuthClient = new OAuth2Client(
+  config.googleClientId,
+  config.googleClientSecret,
+  config.googleAuthRedirectUri,
+);
+
+const getGoogleAuthClient = () => {
+  if (!config.googleClientId || !config.googleClientSecret || !config.googleAuthRedirectUri) {
+    throw new Error('Google OAuth is not configured. Set GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, and GOOGLE_AUTH_REDIRECT_URI.');
+  }
+  return googleOAuthClient;
+};
+
+export const getGoogleAuthUrl = () => {
+  const oauthClient = getGoogleAuthClient();
+  return oauthClient.generateAuthUrl({
+    access_type: 'offline',
+    scope: ['openid', 'email', 'profile'],
+    prompt: 'select_account',
+  });
+};
+
+const loginOrCreateGoogleUser = async (payload: {
+  email: string;
+  email_verified?: boolean;
+  name?: string;
+  picture?: string;
+}) => {
+  const email = payload.email;
+  if (!email) {
+    throw new BadRequestError('GOOGLE_EMAIL_REQUIRED', 'Google account email is required');
+  }
+  if (!payload.email_verified) {
+    throw new BadRequestError('GOOGLE_EMAIL_UNVERIFIED', 'Google account email must be verified');
+  }
+
+  let user = await userRepo.findByEmail(email);
+  if (!user) {
+    const passwordHash = await hashPassword(randomBytes(32).toString('hex'));
+    const organization = await orgRepo.create({
+      name: payload.name
+        ? `${payload.name}'s organization`
+        : `Organization for ${email}`,
+    });
+
+    user = await userRepo.create({
+      email,
+      passwordHash,
+      role: Role.ADMIN,
+      organizationId: organization.id,
+      name: payload.name ?? null,
+      avatar: payload.picture ?? null,
+    });
+  } else {
+    const updates: Record<string, any> = {};
+    if (!user.name && payload.name) updates.name = payload.name;
+    if (!user.avatar && payload.picture) updates.avatar = payload.picture;
+    if (Object.keys(updates).length > 0) {
+      user = await userRepo.updateById(user.id, updates);
+    }
+  }
+
+  const token = signAccessToken({
+    sub: user.id,
+    email: user.email,
+    role: user.role,
+    organizationId: user.organizationId,
+  });
+
+  return { token, user: sanitizeUser(user) };
+};
+
+export const handleGoogleCallback = async (code: string) => {
+  const oauthClient = getGoogleAuthClient();
+  const { tokens } = await oauthClient.getToken(code);
+  if (!tokens.id_token) {
+    throw new BadRequestError('GOOGLE_TOKEN_ERROR', 'Google ID token is missing');
+  }
+
+  const ticket = await oauthClient.verifyIdToken({
+    idToken: tokens.id_token,
+    audience: config.googleClientId,
+  });
+  const payload = ticket.getPayload();
+  if (!payload) {
+    throw new BadRequestError('GOOGLE_TOKEN_ERROR', 'Google token verification failed');
+  }
+
+  return loginOrCreateGoogleUser({
+    email: payload.email ?? '',
+    email_verified: payload.email_verified,
+    name: payload.name ?? undefined,
+    picture: payload.picture ?? undefined,
+  });
+};
+
 export const register = async (input: { 
   email: string; 
   password: string;
   name?: string;
   jobTitle?: string;
-  role?: Role;
   organizationId?: number;
   organizationName?: string;
   invitationToken?: string;
@@ -76,7 +172,7 @@ export const register = async (input: {
     throw new NotFoundError('ORGANIZATION_NOT_FOUND', 'Organization not found');
   }
 
-  let role = input.role || Role.DATA_ENTRY;
+  const role = input.invitationToken ? Role.DATA_ENTRY : Role.ADMIN;
 
   const passwordHash = await hashPassword(input.password);
   const user = await userRepo.create({

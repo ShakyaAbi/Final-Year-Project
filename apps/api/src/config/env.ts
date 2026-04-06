@@ -25,6 +25,11 @@ export const config = {
     10,
   ),
   mlServiceApiKey: process.env.ML_SERVICE_API_KEY ?? "",
+  googleClientId: process.env.GOOGLE_CLIENT_ID ?? "",
+  googleClientSecret: process.env.GOOGLE_CLIENT_SECRET ?? "",
+  googleAuthRedirectUri:
+    process.env.GOOGLE_AUTH_REDIRECT_URI ??
+    "http://localhost:4000/api/v1/auth/google/callback",
   anomalyBackfillBatchSize: parseInt(
     process.env.ANOMALY_BACKFILL_BATCH_SIZE ?? "100",
     10,

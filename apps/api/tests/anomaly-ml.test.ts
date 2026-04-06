@@ -1,6 +1,7 @@
 import request from "supertest";
 import { prisma } from "../src/prisma";
 import { Role, IndicatorDataType } from "@prisma/client";
+import { hashPassword } from "../src/utils/password";
 
 let app: any;
 
@@ -9,6 +10,7 @@ describe("ML Anomaly Detection", () => {
   let projectId: number;
   let nodeId: number;
   let indicatorId: number;
+  let userId: number;
   let fetchSpy: jest.SpyInstance;
 
   beforeAll(async () => {
@@ -74,14 +76,23 @@ describe("ML Anomaly Detection", () => {
 
     app = (await import("../src/app")).default;
 
+    const organization = await prisma.organization.create({
+      data: {
+        name: "ML Anomaly Org",
+      },
+    });
+
+    const passwordHash = await hashPassword("password123");
     const user = await prisma.user.create({
       data: {
         email: "anomaly-ml@test.com",
-        passwordHash: "$2b$10$validhash",
+        passwordHash,
         role: Role.ADMIN,
         name: "ML Tester",
+        organization: { connect: { id: organization.id } },
       },
     });
+    userId = user.id;
 
     const loginRes = await request(app)
       .post("/api/v1/auth/login")
@@ -92,6 +103,7 @@ describe("ML Anomaly Detection", () => {
       data: {
         name: "ML Anomaly Project",
         status: "ACTIVE",
+        organization: { connect: { id: organization.id } },
       },
     });
     projectId = project.id;
@@ -113,6 +125,7 @@ describe("ML Anomaly Detection", () => {
         name: "ML Indicator",
         unit: "units",
         dataType: IndicatorDataType.NUMBER,
+        createdByUserId: user.id,
         anomalyConfig: {
           enabled: true,
           mode: "ML",
@@ -136,6 +149,12 @@ describe("ML Anomaly Detection", () => {
           value: "12",
           createdByUserId: user.id,
         },
+        {
+          indicatorId,
+          reportedAt: new Date("2024-01-15"),
+          value: "200",
+          createdByUserId: user.id,
+        },
       ],
     });
   }, 20000);
@@ -147,6 +166,7 @@ describe("ML Anomaly Detection", () => {
     await prisma.logframeNode.deleteMany();
     await prisma.project.deleteMany();
     await prisma.user.deleteMany({ where: { email: "anomaly-ml@test.com" } });
+    await prisma.organization.deleteMany({ where: { name: "ML Anomaly Org" } });
     await prisma.$disconnect();
   });
 
@@ -154,7 +174,7 @@ describe("ML Anomaly Detection", () => {
     const res = await request(app)
       .post(`/api/v1/indicators/${indicatorId}/submissions`)
       .set("Authorization", `Bearer ${authToken}`)
-      .send({ reportedAt: "2024-01-15", value: 200 });
+      .send({ reportedAt: "2024-01-22", value: 200 });
 
     expect(res.status).toBe(201);
     expect(res.body.isAnomaly).toBe(true);
@@ -162,5 +182,107 @@ describe("ML Anomaly Detection", () => {
     expect(res.body.anomalyThreshold).toBeDefined();
     expect(res.body.anomalyMethod).toBe("ISOLATION_FOREST");
     expect(res.body.anomalyMeta?.mlValidation?.status).toBe("ML_OK");
+  });
+
+  test("should recalculate anomalies when indicator anomaly mode changes to ML", async () => {
+    const ruleIndicator = await prisma.indicator.create({
+      data: {
+        projectId,
+        logframeNodeId: nodeId,
+        name: "Rule to ML Indicator",
+        unit: "units",
+        dataType: IndicatorDataType.NUMBER,
+        createdByUserId: userId,
+        anomalyConfig: {
+          enabled: true,
+          mode: "RULES",
+          ml: { windowSize: 50, minPoints: 2, contamination: 0.05, seed: 42 },
+        },
+      },
+    });
+
+    await prisma.submission.createMany({
+      data: [
+        {
+          indicatorId: ruleIndicator.id,
+          reportedAt: new Date("2024-01-01"),
+          value: "10",
+          createdByUserId: userId,
+        },
+        {
+          indicatorId: ruleIndicator.id,
+          reportedAt: new Date("2024-01-08"),
+          value: "20",
+          createdByUserId: userId,
+        },
+        {
+          indicatorId: ruleIndicator.id,
+          reportedAt: new Date("2024-01-15"),
+          value: "30",
+          createdByUserId: userId,
+        },
+        {
+          indicatorId: ruleIndicator.id,
+          reportedAt: new Date("2024-01-22"),
+          value: "40",
+          createdByUserId: userId,
+        },
+        {
+          indicatorId: ruleIndicator.id,
+          reportedAt: new Date("2024-01-24"),
+          value: "50",
+          createdByUserId: userId,
+        },
+        {
+          indicatorId: ruleIndicator.id,
+          reportedAt: new Date("2024-01-29"),
+          value: "150",
+          createdByUserId: userId,
+        },
+      ],
+    });
+
+    const updateRes = await request(app)
+      .patch(`/api/v1/indicators/${ruleIndicator.id}`)
+      .set("Authorization", `Bearer ${authToken}`)
+      .send({
+        anomalyConfig: {
+          enabled: true,
+          mode: "ML",
+          ml: { windowSize: 50, minPoints: 5, contamination: 0.05, seed: 42 },
+        },
+      });
+
+    expect(updateRes.status).toBe(200);
+    expect(updateRes.body.anomalyConfig.mode).toBe("ML");
+
+    const submissions = await prisma.submission.findMany({
+      where: { indicatorId: ruleIndicator.id },
+      orderBy: { reportedAt: "asc" },
+    });
+
+    expect(submissions.some((s) => s.anomalyMethod === "ISOLATION_FOREST")).toBe(true);
+  });
+
+  test("should recalculate anomalies for existing submissions", async () => {
+    const res = await request(app)
+      .post(`/api/v1/indicators/${indicatorId}/anomalies/recalculate`)
+      .set("Authorization", `Bearer ${authToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+
+    const submissions = await prisma.submission.findMany({
+      where: { indicatorId },
+      orderBy: { reportedAt: "asc" },
+    });
+
+    expect(submissions).toHaveLength(4);
+    expect(submissions[0].isAnomaly).toBe(false);
+    expect(submissions[1].isAnomaly).toBe(false);
+    expect(submissions[2].isAnomaly).toBe(true);
+    expect(submissions[3].isAnomaly).toBe(true);
+    expect(submissions[2].anomalyMethod).toBe("ISOLATION_FOREST");
+    expect(submissions[3].anomalyMethod).toBe("ISOLATION_FOREST");
   });
 });

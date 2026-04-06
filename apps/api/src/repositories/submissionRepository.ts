@@ -53,6 +53,27 @@ export const getRecentSubmissions = (indicatorId: number, organizationId: number
     take: limit,
   });
 
+export const updateAnomalyFieldsByIndicator = (
+  indicatorId: number,
+  organizationId: number,
+  data: Partial<{
+    isAnomaly: boolean;
+    anomalyReason: string | null;
+    anomalyStatus: AnomalyStatus | null;
+    anomalyScore: number | null;
+    anomalyThreshold: number | null;
+    anomalyMethod: string | null;
+    anomalyMeta: Record<string, any> | null;
+  }>,
+) =>
+  prisma.submission.updateMany({
+    where: {
+      indicatorId,
+      indicator: { project: { organizationId } },
+    } as any,
+    data: data as any,
+  });
+
 export const updateSubmission = (
   id: number,
   organizationId: number,

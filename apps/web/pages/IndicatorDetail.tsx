@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Layout } from "../components/Layout";
 import { useParams, Link } from "react-router-dom";
 import { Indicator, IndicatorType, CategoryDefinition } from "../types";
 import { api } from "../services/api";
+import { Layout } from "../components/Layout";
 import { Button } from "../components/ui/Button";
 import { IndicatorCharts } from "../components/IndicatorCharts";
 import { ImportWizard } from "../components/ImportWizard";
@@ -90,6 +90,7 @@ export const IndicatorDetail: React.FC = () => {
         reportedAt: string;
         value: string;
         categoryValue: string;
+        disaggregationKey?: string;
         evidence: string;
       }
     >
@@ -128,7 +129,7 @@ export const IndicatorDetail: React.FC = () => {
     if (!id) return;
     try {
       const [data, submissions] = await Promise.all([
-        api.getIndicator(id, { includeDeleted }),
+        api.getIndicator(id),
         api.getIndicatorSubmissions(id, { includeDeleted }),
       ]);
       setIndicator({ ...data, values: submissions });
@@ -438,6 +439,7 @@ export const IndicatorDetail: React.FC = () => {
         reportedAt: row.date ? row.date.slice(0, 10) : "",
         value: String(row.value ?? ""),
         categoryValue: row.categoryValue ?? "",
+        disaggregationKey: row.disaggregationKey ?? "",
         evidence: row.evidence ?? "",
       },
     }));
@@ -465,6 +467,7 @@ export const IndicatorDetail: React.FC = () => {
         reportedAt: row.reportedAt,
         value: valuePayload,
         categoryValue: categoryValuePayload,
+        disaggregationKey: row.disaggregationKey || undefined,
         evidence: row.evidence || undefined,
       });
       cancelRowEdit(rowId);
@@ -694,7 +697,10 @@ export const IndicatorDetail: React.FC = () => {
             )}
 
 
-            <MLEvaluationPanel indicator={indicator} />
+            <MLEvaluationPanel
+            indicator={indicator}
+            onRescore={() => reloadIndicator(showDeleted)}
+          />
 
           <AnomalyReviewPanel indicator={indicator} anomalies={anomalies} />
 

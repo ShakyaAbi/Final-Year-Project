@@ -389,6 +389,7 @@ const detectAnomaly = async (
   normalizedValue: string,
   organizationId: number,
   excludeSubmissionId?: number,
+  recentSubmissions?: Array<any>,
 ) => {
   const config = normalizeAnomalyConfig((indicator.anomalyConfig as any) ?? null);
   const ruleWindowSize = Math.max(
@@ -398,14 +399,18 @@ const detectAnomaly = async (
   const mlWindowSize = config.ml?.windowSize ?? 50;
   const windowSize = Math.max(ruleWindowSize, mlWindowSize);
 
-  const recentSubmissions = await submissionRepo.getRecentSubmissions(
-    indicator.id,
-    organizationId,
-    excludeSubmissionId ? windowSize + 1 : windowSize,
-  );
-  const chronological = [...recentSubmissions]
+  const recentSubmissionRecords =
+    recentSubmissions ??
+    (await submissionRepo.getRecentSubmissions(
+      indicator.id,
+      organizationId,
+      excludeSubmissionId ? windowSize + 1 : windowSize,
+    ));
+
+  const chronological = [...recentSubmissionRecords]
     .filter((s) => s.id !== excludeSubmissionId)
-    .sort((a, b) => a.reportedAt.getTime() - b.reportedAt.getTime());
+    .sort((a, b) => a.reportedAt.getTime() - b.reportedAt.getTime())
+    .slice(-windowSize);
 
   let anomalyResult: {
     isAnomaly: boolean;
@@ -515,6 +520,89 @@ const detectAnomaly = async (
   }
 
   return anomalyResult;
+};
+
+export const resetAnomaliesForIndicator = async (
+  indicatorId: number,
+  organizationId: number,
+) => {
+  return submissionRepo.updateAnomalyFieldsByIndicator(indicatorId, organizationId, {
+    isAnomaly: false,
+    anomalyReason: null,
+    anomalyStatus: null,
+    anomalyScore: null,
+    anomalyThreshold: null,
+    anomalyMethod: null,
+    anomalyMeta: null,
+  });
+};
+
+export const recalculateAnomaliesForIndicator = async (
+  indicatorId: number,
+  organizationId: number,
+) => {
+  const indicator = await indicatorRepo.getByIdWithSubmissions(
+    indicatorId,
+    organizationId,
+  );
+  if (!indicator) return;
+
+  const config = normalizeAnomalyConfig((indicator.anomalyConfig as any) ?? null);
+  if (!config.enabled) {
+    await resetAnomaliesForIndicator(indicatorId, organizationId);
+    return;
+  }
+
+  const submissions = [...(indicator.submissions ?? [])].sort(
+    (a, b) => a.reportedAt.getTime() - b.reportedAt.getTime(),
+  );
+
+  const tasks = submissions.map(async (submission) => {
+    const anomalyResult = await detectAnomaly(
+      indicator,
+      submission.value,
+      organizationId,
+      submission.id,
+      submissions,
+    );
+
+    const anomalyStatus: AnomalyStatus | null = anomalyResult.isAnomaly ? "DETECTED" : null;
+    const updatePayload = {
+      reportedAt: submission.reportedAt,
+      value: submission.value,
+      categoryValue: submission.categoryValue,
+      disaggregationKey: submission.disaggregationKey,
+      evidence: submission.evidence ?? null,
+      updatedByUserId: submission.updatedByUserId ?? submission.createdByUserId,
+      isAnomaly: anomalyResult.isAnomaly,
+      anomalyReason: anomalyResult.anomalyReason ?? null,
+      anomalyStatus,
+      anomalyScore: anomalyResult.anomalyScore ?? null,
+      anomalyThreshold: anomalyResult.anomalyThreshold ?? null,
+      anomalyMethod: anomalyResult.anomalyMethod ?? null,
+      anomalyMeta: anomalyResult.anomalyMeta ?? null,
+    };
+
+    const hasChanges =
+      submission.isAnomaly !== updatePayload.isAnomaly ||
+      submission.anomalyReason !== updatePayload.anomalyReason ||
+      submission.anomalyStatus !== updatePayload.anomalyStatus ||
+      submission.anomalyScore !== updatePayload.anomalyScore ||
+      submission.anomalyThreshold !== updatePayload.anomalyThreshold ||
+      submission.anomalyMethod !== updatePayload.anomalyMethod ||
+      JSON.stringify(submission.anomalyMeta ?? null) !==
+        JSON.stringify(updatePayload.anomalyMeta ?? null);
+
+    if (!hasChanges) return null;
+
+    return submissionRepo.updateSubmissionData(submission.id, organizationId, updatePayload);
+  });
+
+  const concurrency = 20;
+  for (let i = 0; i < tasks.length; i += concurrency) {
+    const batch = tasks.slice(i, i + concurrency);
+    await Promise.all(batch);
+  }
 };
 
 export const createSubmission = async (

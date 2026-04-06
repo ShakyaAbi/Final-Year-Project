@@ -6,6 +6,7 @@ import {
   Role,
 } from "@prisma/client";
 import { hashPassword } from "../src/utils/password";
+import { main as seedMlTest } from "./seed_ml_test";
 
 const prisma = new PrismaClient();
 
@@ -310,29 +311,60 @@ const generateSubmissionsForIndicator = async (
     indicator.dataType === IndicatorDataType.PERCENT ||
     indicator.dataType === IndicatorDataType.NUMBER
   ) {
-    // Generate monthly aggregate data for numeric indicators
-    for (let month = 0; month < 4; month++) {
-      const reportDate = new Date(startDate);
-      reportDate.setMonth(reportDate.getMonth() + month);
-      reportDate.setDate(15);
+    const mlConfig = indicator.anomalyConfig?.mode === "ML" ? indicator.anomalyConfig.ml : undefined;
+    const isMlIndicator = Boolean(mlConfig && indicator.anomalyConfig?.mode === "ML");
 
-      const baseline = indicator.baselineValue || 0;
-      const target = indicator.targetValue || 100;
-      const progress = month / 3;
+    if (isMlIndicator) {
+      const minimumPoints = mlConfig?.minPoints ?? 20;
+      const windowSize = mlConfig?.windowSize ?? 50;
+      const points = Math.max(minimumPoints * 2, windowSize, 30);
 
-      // Linear interpolation with some randomness
-      const value =
-        baseline +
-        (target - baseline) * progress * 0.6 +
-        (Math.random() * 10 - 5);
+      for (let day = 0; day < points; day++) {
+        const reportDate = new Date(startDate);
+        reportDate.setDate(startDate.getDate() + day);
 
-      submissions.push({
-        indicatorId,
-        reportedAt: reportDate,
-        value: value.toFixed(2),
-        evidence: `Aggregate monthly report - ${reportDate.toLocaleString("default", { month: "long", year: "numeric" })}`,
-        createdByUserId: userId,
-      });
+        const baseline = indicator.baselineValue || 0;
+        const target = indicator.targetValue || 100;
+        const progress = Math.min(day / points, 1);
+
+        const value =
+          baseline +
+          (target - baseline) * progress * 0.6 +
+          (Math.random() * 10 - 5);
+
+        submissions.push({
+          indicatorId,
+          reportedAt: reportDate,
+          value: value.toFixed(2),
+          evidence: `Automated ML training report - Day ${day + 1}`,
+          createdByUserId: userId,
+        });
+      }
+    } else {
+      // Generate monthly aggregate data for numeric indicators
+      for (let month = 0; month < 4; month++) {
+        const reportDate = new Date(startDate);
+        reportDate.setMonth(reportDate.getMonth() + month);
+        reportDate.setDate(15);
+
+        const baseline = indicator.baselineValue || 0;
+        const target = indicator.targetValue || 100;
+        const progress = month / 3;
+
+        // Linear interpolation with some randomness
+        const value =
+          baseline +
+          (target - baseline) * progress * 0.6 +
+          (Math.random() * 10 - 5);
+
+        submissions.push({
+          indicatorId,
+          reportedAt: reportDate,
+          value: value.toFixed(2),
+          evidence: `Aggregate monthly report - ${reportDate.toLocaleString("default", { month: "long", year: "numeric" })}`,
+          createdByUserId: userId,
+        });
+      }
     }
   } else if (indicator.dataType === IndicatorDataType.CATEGORICAL) {
     // At least 1 month of data for categorical indicators without disaggregation
@@ -717,6 +749,9 @@ async function main() {
       }
     }
   }
+
+  // Also seed the ML validation project and its high-density ML indicators
+  await seedMlTest();
 
   console.log("\n✅ Database seeding complete!");
   console.log(`\n📊 Summary:`);

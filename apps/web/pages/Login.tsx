@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import React, { useState, useEffect } from "react";
+import { useNavigate, Link, useSearchParams } from "react-router-dom";
 import { Eye, EyeOff, Mail } from "lucide-react";
 import { api } from "../services/api";
 import Silk from "../components/ui/Silk";
@@ -27,11 +27,21 @@ const GoogleIcon = () => (
 
 export const Login: React.FC = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
+
+  const BACKEND_API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:4000/api/v1";
+
+  useEffect(() => {
+    const urlError = searchParams.get("error");
+    if (urlError) {
+      setError(urlError);
+    }
+  }, [searchParams]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -45,6 +55,10 @@ export const Login: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleGoogleSignIn = () => {
+    window.location.href = `${BACKEND_API_BASE}/auth/google`;
   };
 
   return (
@@ -70,7 +84,11 @@ export const Login: React.FC = () => {
             <h3 className="text-xl font-bold text-slate-900 mb-8">Sign up</h3>
 
             <div className="w-full space-y-4 max-w-xs">
-              <button className="w-full flex items-center justify-center gap-3 px-4 py-2.5 border border-slate-300 rounded-full text-slate-600 font-medium hover:bg-slate-50 transition-colors text-sm bg-white">
+              <button
+                type="button"
+                onClick={handleGoogleSignIn}
+                className="w-full flex items-center justify-center gap-3 px-4 py-2.5 border border-slate-300 rounded-full text-slate-600 font-medium hover:bg-slate-50 transition-colors text-sm bg-white"
+              >
                 <GoogleIcon />
                 Continue with Google
               </button>

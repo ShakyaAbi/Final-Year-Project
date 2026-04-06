@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from "react";
-import { Layout } from "../components/Layout";
 import { api } from "../services/api";
 import {
   Project,
@@ -23,6 +22,7 @@ import {
 } from "lucide-react";
 import { Link, useSearchParams } from "react-router-dom";
 import { extractTextFromPDF, parseDataFromText } from "../utils/pdfParser";
+import { Layout } from "../components/Layout";
 import { DataEntryToolbar } from "../components/indicator/DataEntryToolbar";
 import { IndicatorEntryCard } from "../components/indicator/IndicatorEntryCard";
 
@@ -45,6 +45,7 @@ export const DataEntry: React.FC = () => {
         reportedAt: string;
         value: string;
         categoryValue: string;
+        disaggregationKey?: string;
         evidence: string;
       }
     >
@@ -519,6 +520,7 @@ export const DataEntry: React.FC = () => {
         reportedAt: row.date.slice(0, 10),
         value: String(row.value ?? ""),
         categoryValue: row.categoryValue ?? "",
+        disaggregationKey: row.disaggregationKey ?? "",
         evidence: row.evidence ?? "",
       },
     }));
@@ -547,6 +549,7 @@ export const DataEntry: React.FC = () => {
         reportedAt: edit.reportedAt,
         value: valuePayload,
         categoryValue: edit.categoryValue || undefined,
+        disaggregationKey: edit.disaggregationKey || undefined,
         evidence: edit.evidence || undefined,
       });
       cancelEditSubmission(submissionId);

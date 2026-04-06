@@ -9,16 +9,17 @@ import { hashPassword } from "../src/utils/password";
 
 const prisma = new PrismaClient();
 
-async function main() {
+export async function main() {
   console.log("🚀 Starting ML Testing Seed...");
 
-  // 1. Get or use existing Organization (Seed Test Organization)
-  const orgId = 1; // Use existing org for user
-  const org = await prisma.organization.findUnique({ where: { id: orgId } });
+  // 1. Get or create seed organization
+  const ORG_NAME = "Seed Test Organization";
+  let org = await prisma.organization.findFirst({ where: { name: ORG_NAME } });
   if (!org) {
-    console.error("Organization with ID 1 not found!");
-    process.exit(1);
+    org = await prisma.organization.create({ data: { name: ORG_NAME } });
+    console.log(`✓ Created missing organization: ${ORG_NAME}`);
   }
+  const orgId = org.id;
   console.log(`✓ Using Organization: ${org.name}`);
 
   // 2. Get or create Admin user
@@ -78,10 +79,20 @@ async function main() {
       baselineValue: 50,
       targetValue: 90,
       anomalyConfig: {
-        method: "ISOLATION_FOREST",
-        contamination: 0.05,
-        minPoints: 10,
-        windowSize: 100
+        enabled: true,
+        mode: "ML",
+        ml: {
+          method: "ISOLATION_FOREST",
+          contamination: 0.05,
+          minPoints: 10,
+          windowSize: 100,
+          seed: 42,
+        },
+        fallback: {
+          useRangeChecks: true,
+          useRulesWhenInsufficientData: true,
+          useRulesOnServiceError: true,
+        },
       },
       dataPattern: "productivity"
     },
@@ -91,11 +102,21 @@ async function main() {
       baselineValue: 120,
       targetValue: 200,
       anomalyConfig: {
-        method: "Z_SCORE",
-        contamination: 0.03,
-        minPoints: 15,
-        windowSize: 50,
-        zscore_threshold: 3.0
+        enabled: true,
+        mode: "ML",
+        ml: {
+          method: "Z_SCORE",
+          contamination: 0.03,
+          minPoints: 15,
+          windowSize: 50,
+          zscore_threshold: 3.0,
+          seed: 42,
+        },
+        fallback: {
+          useRangeChecks: true,
+          useRulesWhenInsufficientData: true,
+          useRulesOnServiceError: true,
+        },
       },
       dataPattern: "health"
     },
@@ -105,10 +126,20 @@ async function main() {
       baselineValue: 300,
       targetValue: 500,
       anomalyConfig: {
-        method: "LOF",
-        contamination: 0.08,
-        minPoints: 20,
-        windowSize: 80
+        enabled: true,
+        mode: "ML",
+        ml: {
+          method: "LOF",
+          contamination: 0.08,
+          minPoints: 20,
+          windowSize: 80,
+          seed: 42,
+        },
+        fallback: {
+          useRangeChecks: true,
+          useRulesWhenInsufficientData: true,
+          useRulesOnServiceError: true,
+        },
       },
       dataPattern: "education"
     },
@@ -118,10 +149,20 @@ async function main() {
       baselineValue: 75,
       targetValue: 95,
       anomalyConfig: {
-        method: "DBSCAN",
-        contamination: 0.04,
-        minPoints: 25,
-        windowSize: 60
+        enabled: true,
+        mode: "ML",
+        ml: {
+          method: "DBSCAN",
+          contamination: 0.04,
+          minPoints: 25,
+          windowSize: 60,
+          seed: 42,
+        },
+        fallback: {
+          useRangeChecks: true,
+          useRulesWhenInsufficientData: true,
+          useRulesOnServiceError: true,
+        },
       },
       dataPattern: "wash"
     },
@@ -131,10 +172,20 @@ async function main() {
       baselineValue: 5000,
       targetValue: 10000,
       anomalyConfig: {
-        method: "ISOLATION_FOREST",
-        contamination: 0.02,
-        minPoints: 10,
-        windowSize: 120
+        enabled: true,
+        mode: "ML",
+        ml: {
+          method: "ISOLATION_FOREST",
+          contamination: 0.02,
+          minPoints: 10,
+          windowSize: 120,
+          seed: 42,
+        },
+        fallback: {
+          useRangeChecks: true,
+          useRulesWhenInsufficientData: true,
+          useRulesOnServiceError: true,
+        },
       },
       dataPattern: "finance"
     }
@@ -248,11 +299,17 @@ async function main() {
   console.log(`🔗 Indicator IDs: ${indicators.map(i => i.indicator.id).join(", ")}`);
 }
 
-main()
-  .catch((e) => {
-    console.error(e);
-    process.exit(1);
-  })
-  .finally(async () => {
+if (require.main === module) {
+  main()
+    .catch((e) => {
+      console.error(e);
+      process.exit(1);
+    })
+    .finally(async () => {
+      await prisma.$disconnect();
+    });
+} else {
+  process.on("beforeExit", async () => {
     await prisma.$disconnect();
   });
+}

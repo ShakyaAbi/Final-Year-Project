@@ -47,6 +47,7 @@ interface SubmissionHistoryTableProps {
       reportedAt: string;
       value: string;
       categoryValue: string;
+      disaggregationKey?: string;
       evidence: string;
     }
   >;
@@ -373,7 +374,23 @@ export const SubmissionHistoryTable: React.FC<SubmissionHistoryTableProps> = ({
                         </td>
                       )}
                       <td className="px-6 py-4">
-                        {row.disaggregationKey ? (() => {
+                        {edit ? (
+                          <input
+                            type="text"
+                            value={edit.disaggregationKey || ""}
+                            placeholder="Disaggregation key"
+                            onChange={(e) =>
+                              setEditingRows((prev) => ({
+                                ...prev,
+                                [row.id]: {
+                                  ...prev[row.id],
+                                  disaggregationKey: e.target.value,
+                                },
+                              }))
+                            }
+                            className="w-full px-2 py-1 border border-slate-300 rounded"
+                          />
+                        ) : row.disaggregationKey ? (() => {
                           const key = row.disaggregationKey;
                           // Composite key: dim1:val1|dim2:val2
                           if (key.includes("|")) {
