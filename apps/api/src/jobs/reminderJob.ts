@@ -72,12 +72,17 @@ export async function runReminderJob() {
         </div>
       `;
 
-      await sendReminderEmail({
-        to: email,
-        subject,
-        text,
-        html
-      });
+      try {
+        await sendReminderEmail({
+          to: email,
+          subject,
+          text,
+          html,
+        });
+      } catch (err) {
+        // Log and continue sending to remaining recipients/indicators
+        console.error(`[ReminderJob] Failed to send reminder to ${email}:`, err);
+      }
     }
   }
 }

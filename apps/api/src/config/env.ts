@@ -36,6 +36,12 @@ export const config = {
     pass: process.env.SMTP_PASS ?? "",
     from: process.env.SMTP_FROM ?? "noreply@merlin.local",
   },
+  // Reminder scheduler configuration
+  reminderSchedulerEnabled: (process.env.REMINDER_SCHEDULER_ENABLED ?? "true") === "true",
+  // Cron expression for the reminder job (default: daily at 08:00)
+  reminderCron: process.env.REMINDER_CRON ?? "0 8 * * *",
+  // When true, email sending is a dry-run (logged only)
+  emailDryRun: (process.env.EMAIL_DRY_RUN ?? "false") === "true",
 };
 
 export const adminSeed = {

@@ -62,6 +62,14 @@ npm run ml:canary
 - ML health: `GET /api/v1/health/ml` (ADMIN/MANAGER)
 - Error shape: `{ "error": { "code": string, "message": string, "details"?: any } }`
 
+## Reminder scheduler
+
+Automatic reminder emails can be controlled via environment variables:
+
+- `REMINDER_SCHEDULER_ENABLED` (default: `true`) — enable/disable scheduler on startup.
+- `REMINDER_CRON` (default: `0 8 * * *`) — cron expression for reminder job.
+- `EMAIL_DRY_RUN` (default: `false`) — when `true`, emails are logged only and not sent.
+
 ## Notes
 - Never commit real secrets; `.env.example` documents required variables.
 - `jwtSecret` is required; set a strong value in `.env`.
