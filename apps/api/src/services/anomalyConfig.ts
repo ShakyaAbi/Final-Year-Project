@@ -31,28 +31,28 @@ export type AnomalyConfig = {
 };
 
 export const defaultAnomalyConfig: Required<Pick<AnomalyConfig, "enabled">> &
-  AnomalyConfig = {
-  enabled: false,
-  mode: "RULES",
-  rules: {
-    range: true,
-    maxChangePercent: 50,
-  },
-  outlier: { method: "MAD", threshold: 3.5, windowSize: 8, minPoints: 6 },
-  trend: { method: "SLOPE_SHIFT", threshold: 2, windowSize: 6 },
-  ml: {
-    method: "ISOLATION_FOREST",
-    contamination: 0.05,
-    windowSize: 50,
-    minPoints: 20,
-    seed: 42,
-  },
-  fallback: {
-    useRangeChecks: true,
-    useRulesWhenInsufficientData: true,
-    useRulesOnServiceError: true,
-  },
-};
+   AnomalyConfig = {
+   enabled: true,
+   mode: "RULES",
+   rules: {
+     range: true,
+     maxChangePercent: 50,
+   },
+   outlier: { method: "MAD", threshold: 3.5, windowSize: 8, minPoints: 6 },
+   trend: { method: "SLOPE_SHIFT", threshold: 2, windowSize: 6 },
+   ml: {
+     method: "ISOLATION_FOREST",
+     contamination: 0.05,
+     windowSize: 50,
+     minPoints: 20,
+     seed: 42,
+   },
+   fallback: {
+     useRangeChecks: true,
+     useRulesWhenInsufficientData: true,
+     useRulesOnServiceError: true,
+   },
+ };
 
 export const normalizeAnomalyConfig = (
   config?: AnomalyConfig | null,

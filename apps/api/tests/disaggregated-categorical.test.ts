@@ -101,6 +101,76 @@ describe("Disaggregated Categorical Indicators - District Reporting", () => {
     console.log("Created indicator ID:", indicatorId);
   });
 
+  it("should allow numeric indicator with disaggregation dimensions", async () => {
+    const numericIndicatorRes = await request(app)
+      .post(`/api/v1/projects/${projectId}/indicators`)
+      .set("Authorization", `Bearer ${authToken}`)
+      .send({
+        logframeNodeId,
+        name: "Numeric Disaggregation Testing",
+        unit: "units",
+        dataType: "NUMBER",
+        baselineValue: 0,
+        targetValue: 100,
+        minValue: 0,
+        maxValue: 200,
+        categoryConfig: {
+          disaggregationDimensions: [
+            {
+              key: "district",
+              label: "District",
+              values: ["District1", "District2"],
+              required: true,
+            },
+          ],
+        },
+      });
+
+    expect(numericIndicatorRes.status).toBe(201);
+    const numericIndicatorId = numericIndicatorRes.body.id;
+
+    // valid disaggregation key should be accepted
+    const validSub = await request(app)
+      .post(`/api/v1/indicators/${numericIndicatorId}/submissions`)
+      .set("Authorization", `Bearer ${authToken}`)
+      .send({
+        reportedAt: "2024-01-31",
+        value: "42",
+        disaggregationKey: "District1",
+        evidence: "Numeric test",
+      });
+
+    expect(validSub.status).toBe(201);
+    expect(validSub.body.disaggregationKey).toBe("District1");
+
+    // invalid value not in dimensions should fail
+    const invalidSub = await request(app)
+      .post(`/api/v1/indicators/${numericIndicatorId}/submissions`)
+      .set("Authorization", `Bearer ${authToken}`)
+      .send({
+        reportedAt: "2024-01-31",
+        value: "43",
+        disaggregationKey: "InvalidDistrict",
+        evidence: "Numeric test invalid",
+      });
+
+    expect(invalidSub.status).toBe(400);
+    expect(invalidSub.body.error.code).toBe("INVALID_DISAGGREGATION_VALUE");
+
+    // missing required key should fail
+    const missingSub = await request(app)
+      .post(`/api/v1/indicators/${numericIndicatorId}/submissions`)
+      .set("Authorization", `Bearer ${authToken}`)
+      .send({
+        reportedAt: "2024-01-31",
+        value: "45",
+        evidence: "Numeric test missing",
+      });
+
+    expect(missingSub.status).toBe(400);
+    expect(missingSub.body.error.code).toBe("MISSING_DISAGGREGATION");
+  });
+
   it("should create disaggregated submissions for multiple districts", async () => {
     const submissions = [
       // January 2024 reporting
@@ -231,7 +301,7 @@ describe("Disaggregated Categorical Indicators - District Reporting", () => {
     const verifiedCount =
       distribution.find((d: any) => d.categoryId === "verified")?.count || 0;
 
-    expect(reportedCount).toBe(3); // District1, District2, District6, District9
+    expect(reportedCount).toBe(4); // District1, District2, District6, District9
     expect(notReportedCount).toBe(2); // District4, District7
     expect(partialCount).toBe(2); // District3, District8
     expect(verifiedCount).toBe(2); // District5, District10

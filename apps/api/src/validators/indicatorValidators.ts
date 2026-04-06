@@ -7,52 +7,52 @@ const numericId = z
   .transform((v) => Number(v));
 
 const anomalyConfigSchema = z
-  .object({
-    enabled: z.boolean().default(false),
-    mode: z.enum(["RULES", "ML"]).default("RULES"),
-    rules: z
-      .object({
-        range: z.boolean().default(true),
-        maxChangePercent: z.number().positive().default(50),
-      })
-      .optional(),
-    outlier: z
-      .object({
-        method: z.enum(["MAD", "IQR"]).default("MAD"),
-        threshold: z.number().positive().default(3.5),
-        windowSize: z.number().int().min(2).max(50).default(8),
-        minPoints: z.number().int().min(2).default(6),
-      })
-      .optional(),
-    trend: z
-      .object({
-        method: z.enum(["SLOPE_SHIFT", "MEAN_SHIFT"]).default("SLOPE_SHIFT"),
-        threshold: z.number().positive().default(2),
-        windowSize: z.number().int().min(3).max(50).default(6),
-      })
-      .optional(),
-    ml: z
-      .object({
-        method: z
-          .enum(["ISOLATION_FOREST", "Z_SCORE", "LOF", "DBSCAN"])
-          .default("ISOLATION_FOREST"),
-        contamination: z.number().min(0.001).max(0.5).default(0.05).optional(),
-        windowSize: z.number().int().min(5).max(500).default(50).optional(),
-        minPoints: z.number().int().min(5).max(500).default(20).optional(),
-        seed: z.number().int().optional(),
-        zscore_threshold: z.number().positive().default(3.5).optional(),
-      })
-      .optional(),
-    fallback: z
-      .object({
-        useRangeChecks: z.boolean().default(true),
-        useRulesWhenInsufficientData: z.boolean().default(true),
-        useRulesOnServiceError: z.boolean().default(true),
-      })
-      .optional(),
-  })
-  .optional()
-  .nullable();
+   .object({
+     enabled: z.boolean().default(true),
+     mode: z.enum(["RULES", "ML"]).default("RULES"),
+     rules: z
+       .object({
+         range: z.boolean().default(true),
+         maxChangePercent: z.number().positive().default(50),
+       })
+       .optional(),
+     outlier: z
+       .object({
+         method: z.enum(["MAD", "IQR"]).default("MAD"),
+         threshold: z.number().positive().default(3.5),
+         windowSize: z.number().int().min(2).max(50).default(8),
+         minPoints: z.number().int().min(2).default(6),
+       })
+       .optional(),
+     trend: z
+       .object({
+         method: z.enum(["SLOPE_SHIFT", "MEAN_SHIFT"]).default("SLOPE_SHIFT"),
+         threshold: z.number().positive().default(2),
+         windowSize: z.number().int().min(3).max(50).default(6),
+       })
+       .optional(),
+     ml: z
+       .object({
+         method: z
+           .enum(["ISOLATION_FOREST", "Z_SCORE", "LOF", "DBSCAN"])
+           .default("ISOLATION_FOREST"),
+         contamination: z.number().min(0.001).max(0.5).default(0.05).optional(),
+         windowSize: z.number().int().min(5).max(500).default(50).optional(),
+         minPoints: z.number().int().min(5).max(500).default(20).optional(),
+         seed: z.number().int().optional(),
+         zscore_threshold: z.number().positive().default(3.5).optional(),
+       })
+       .optional(),
+     fallback: z
+       .object({
+         useRangeChecks: z.boolean().default(true),
+         useRulesWhenInsufficientData: z.boolean().default(true),
+         useRulesOnServiceError: z.boolean().default(true),
+       })
+       .optional(),
+   })
+   .optional()
+   .nullable();
 
 const categoryDefinitionSchema = z.object({
   id: z.string().min(1),
