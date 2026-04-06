@@ -6,33 +6,36 @@ import { formatDate } from "../../services/indicatorUtils";
 interface ReportingHealthCardProps {
   indicator: Indicator;
   project: any;
-  reportingFrequency: "DAILY" | "WEEKLY" | "MONTHLY";
-  setReportingFrequency: (freq: "DAILY" | "WEEKLY" | "MONTHLY") => void;
   reportingGaps: any[];
   anomalies: IndicatorValue[];
 }
 
+const frequencyToDays: Record<Indicator["frequency"], number> = {
+  Daily: 1,
+  Weekly: 7,
+  Monthly: 30,
+  Quarterly: 90,
+  Yearly: 365,
+};
+
 export const ReportingHealthCard: React.FC<ReportingHealthCardProps> = ({
   indicator,
   project,
-  reportingFrequency,
-  setReportingFrequency,
   reportingGaps,
   anomalies,
 }) => {
-  // Calculate compliance
+  const frequency = indicator.frequency;
+  const divisor = frequencyToDays[frequency] ?? 7;
+
   const submissionsTotal = indicator.values.length;
-  let expectedSoFar = 1; // Minimum 1 expected
+  let expectedSoFar = 1;
 
   if (project?.startDate) {
     const start = new Date(project.startDate);
-    const end = new Date(); // now
+    const end = new Date();
     const diffMs = Math.max(0, end.getTime() - start.getTime());
     const diffDays = diffMs / (1000 * 60 * 60 * 24);
-
-    if (reportingFrequency === "DAILY") expectedSoFar = Math.ceil(diffDays);
-    else if (reportingFrequency === "WEEKLY") expectedSoFar = Math.ceil(diffDays / 7);
-    else expectedSoFar = Math.ceil(diffDays / 30);
+    expectedSoFar = Math.ceil(diffDays / divisor);
   }
 
   const complianceRate = Math.min(
@@ -60,25 +63,14 @@ export const ReportingHealthCard: React.FC<ReportingHealthCardProps> = ({
 
   return (
     <div className="bg-white rounded-lg border border-slate-200 shadow-sm p-5 overflow-hidden relative">
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
+      <div className="flex items-center justify-between mb-4">
         <h3 className="text-base font-semibold text-slate-900 flex items-center gap-2">
           <CalendarClock className="w-4 h-4 text-blue-600" />
           Reporting Health
         </h3>
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-slate-500">View as:</span>
-          <select
-            value={reportingFrequency}
-            onChange={(e) =>
-              setReportingFrequency(e.target.value as any)
-            }
-            className="text-xs border border-slate-300 rounded px-2 py-1 bg-white focus:ring-1 focus:ring-blue-500 outline-none"
-          >
-            <option value="DAILY">Daily</option>
-            <option value="WEEKLY">Weekly</option>
-            <option value="MONTHLY">Monthly</option>
-          </select>
-        </div>
+        <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-100 text-blue-800">
+          {frequency}
+        </span>
       </div>
 
       <div className="space-y-4">

@@ -419,6 +419,188 @@ export const WizardStepFormat: React.FC<WizardStepFormatProps> = ({
           </div>
         </div>
       )}
+
+      {(formData.type === IndicatorType.NUMBER ||
+        formData.type === IndicatorType.PERCENTAGE ||
+        formData.type === IndicatorType.CURRENCY) && (
+        <div className="bg-slate-50 p-4 rounded-lg space-y-4">
+          <div className="border-t border-slate-200 pt-4">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <Grid3x3 className="w-4 h-4 text-slate-600" />
+                <h3 className="text-sm font-semibold text-slate-900">
+                  Disaggregation
+                </h3>
+              </div>
+              <button
+                onClick={() => {
+                  const dims =
+                    formData.categoryConfig?.disaggregationDimensions ||
+                    [];
+                  updateField("categoryConfig", {
+                    ...formData.categoryConfig,
+                    disaggregationDimensions: [
+                      ...dims,
+                      { key: "", label: "", values: [""] },
+                    ],
+                  });
+                }}
+                className="px-3 py-1 text-xs bg-blue-50 text-blue-600 rounded-md hover:bg-blue-100 border border-blue-200 flex items-center gap-1"
+              >
+                <Plus className="w-3 h-3" /> Add Dimension
+              </button>
+            </div>
+
+            {formData.categoryConfig?.disaggregationDimensions?.map(
+              (dim, dimIdx) => (
+                <div
+                  key={dimIdx}
+                  className="mb-4 p-4 bg-slate-50 rounded-lg border border-slate-200"
+                >
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="text-xs font-medium text-slate-600">
+                      Dimension {dimIdx + 1}
+                    </span>
+                    <button
+                      onClick={() => {
+                        const dims =
+                          formData.categoryConfig
+                            ?.disaggregationDimensions || [];
+                        updateField("categoryConfig", {
+                          ...formData.categoryConfig,
+                          disaggregationDimensions: dims.filter(
+                            (_, i) => i !== dimIdx,
+                          ),
+                        });
+                      }}
+                      className="text-red-600 hover:bg-red-50 px-2 py-1 rounded"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3 mb-3">
+                    <div>
+                      <input
+                        type="text"
+                        value={dim.key}
+                        onChange={(e) => {
+                          const dims = [
+                            ...(formData.categoryConfig
+                              ?.disaggregationDimensions || []),
+                          ];
+                          dims[dimIdx] = {
+                            ...dims[dimIdx],
+                            key: e.target.value,
+                          };
+                          updateField("categoryConfig", {
+                            ...formData.categoryConfig,
+                            disaggregationDimensions: dims,
+                          });
+                        }}
+                        className="w-full px-3 py-2 border border-slate-300 rounded-md bg-white text-slate-900 text-sm"
+                        placeholder="key (e.g., district)"
+                      />
+                    </div>
+                    <div>
+                      <input
+                        type="text"
+                        value={dim.label}
+                        onChange={(e) => {
+                          const dims = [
+                            ...(formData.categoryConfig
+                              ?.disaggregationDimensions || []),
+                          ];
+                          dims[dimIdx] = {
+                            ...dims[dimIdx],
+                            label: e.target.value,
+                          };
+                          updateField("categoryConfig", {
+                            ...formData.categoryConfig,
+                            disaggregationDimensions: dims,
+                          });
+                        }}
+                        className="w-full px-3 py-2 border border-slate-300 rounded-md bg-white text-slate-900 text-sm"
+                        placeholder="Label (e.g., District)"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    {dim.values.map((val, valIdx) => (
+                      <div key={valIdx} className="flex gap-2">
+                        <input
+                          type="text"
+                          value={val}
+                          onChange={(e) => {
+                            const dims = [
+                              ...(formData.categoryConfig
+                                ?.disaggregationDimensions || []),
+                            ];
+                            const newVals = [...dims[dimIdx].values];
+                            newVals[valIdx] = e.target.value;
+                            dims[dimIdx] = {
+                              ...dims[dimIdx],
+                              values: newVals,
+                            };
+                            updateField("categoryConfig", {
+                              ...formData.categoryConfig,
+                              disaggregationDimensions: dims,
+                            });
+                          }}
+                          className="flex-1 px-3 py-2 border border-slate-300 rounded-md bg-white text-slate-900 text-sm"
+                          placeholder={`Value ${valIdx + 1}`}
+                        />
+                        <button
+                          onClick={() => {
+                            const dims = [
+                              ...(formData.categoryConfig
+                                ?.disaggregationDimensions || []),
+                            ];
+                            const newVals = dims[dimIdx].values.filter(
+                              (_, i) => i !== valIdx,
+                            );
+                            dims[dimIdx] = {
+                              ...dims[dimIdx],
+                              values: newVals,
+                            };
+                            updateField("categoryConfig", {
+                              ...formData.categoryConfig,
+                              disaggregationDimensions: dims,
+                            });
+                          }}
+                          className="px-3 py-2 text-red-600 hover:bg-red-50 rounded-md border border-slate-300"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ))}
+                    <button
+                      onClick={() => {
+                        const dims = [
+                          ...(formData.categoryConfig
+                            ?.disaggregationDimensions || []),
+                        ];
+                        dims[dimIdx] = {
+                          ...dims[dimIdx],
+                          values: [...dims[dimIdx].values, ""],
+                        };
+                        updateField("categoryConfig", {
+                          ...formData.categoryConfig,
+                          disaggregationDimensions: dims,
+                        });
+                      }}
+                      className="w-full px-3 py-1.5 border border-dashed border-slate-300 rounded-md text-xs text-slate-600 hover:border-blue-400 hover:text-blue-600"
+                    >
+                      + Add Value
+                    </button>
+                  </div>
+                </div>
+              ),
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 };

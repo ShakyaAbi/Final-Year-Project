@@ -58,25 +58,25 @@ export const IndicatorWizard: React.FC<IndicatorWizardProps> = ({
   ];
 
   // Form State
-  const defaultAnomalyConfig: AnomalyConfig = {
-    enabled: false,
-    mode: "RULES",
-    rules: { range: true, maxChangePercent: 50 },
-    outlier: { method: "MAD", threshold: 3.5, windowSize: 8, minPoints: 6 },
-    trend: { method: "SLOPE_SHIFT", threshold: 2, windowSize: 6 },
-    ml: {
-      method: "ISOLATION_FOREST",
-      contamination: 0.05,
-      windowSize: 50,
-      minPoints: 20,
-      seed: 42,
-    },
-    fallback: {
-      useRangeChecks: true,
-      useRulesWhenInsufficientData: true,
-      useRulesOnServiceError: true,
-    },
-  };
+const defaultAnomalyConfig: AnomalyConfig = {
+     enabled: true,
+     mode: "RULES",
+     rules: { range: true, maxChangePercent: 50 },
+     outlier: { method: "MAD", threshold: 3.5, windowSize: 8, minPoints: 6 },
+     trend: { method: "SLOPE_SHIFT", threshold: 2, windowSize: 6 },
+     ml: {
+       method: "ISOLATION_FOREST",
+       contamination: 0.05,
+       windowSize: 50,
+       minPoints: 20,
+       seed: 42,
+     },
+     fallback: {
+       useRangeChecks: true,
+       useRulesWhenInsufficientData: true,
+       useRulesOnServiceError: true,
+     },
+   };
 
   const [formData, setFormData] = useState<Partial<Indicator>>(
     editingIndicator
@@ -101,23 +101,39 @@ export const IndicatorWizard: React.FC<IndicatorWizardProps> = ({
     setFormData((prev) => ({ ...prev, [field]: value }));
   };
 
-  const updateAnomalyConfig = (patch: Partial<AnomalyConfig>) => {
-    setFormData((prev) => {
-      const current = prev.anomalyConfig ?? defaultAnomalyConfig;
-      return {
-        ...prev,
-        anomalyConfig: {
-          ...current,
-          ...patch,
-          rules: { ...current.rules, ...patch.rules },
-          outlier: { ...current.outlier, ...patch.outlier },
-          trend: { ...current.trend, ...patch.trend },
-          ml: { ...current.ml, ...patch.ml },
-          fallback: { ...current.fallback, ...patch.fallback },
-        },
-      };
-    });
-  };
+const updateAnomalyConfig = (patch: Partial<AnomalyConfig>) => {
+     setFormData((prev) => {
+       const current = prev.anomalyConfig ?? defaultAnomalyConfig;
+       
+       // Only merge sub-configurations if they exist in the patch
+       const anomalyConfig = { ...current, ...patch };
+       
+       if (patch.rules !== undefined) {
+         anomalyConfig.rules = { ...current.rules, ...patch.rules };
+       }
+       
+       if (patch.outlier !== undefined) {
+         anomalyConfig.outlier = { ...current.outlier, ...patch.outlier };
+       }
+       
+       if (patch.trend !== undefined) {
+         anomalyConfig.trend = { ...current.trend, ...patch.trend };
+       }
+       
+       if (patch.ml !== undefined) {
+         anomalyConfig.ml = { ...current.ml, ...patch.ml };
+       }
+       
+       if (patch.fallback !== undefined) {
+         anomalyConfig.fallback = { ...current.fallback, ...patch.fallback };
+       }
+       
+       return {
+         ...prev,
+         anomalyConfig,
+       };
+     });
+   };
 
   const handleNext = () => {
     if (step < steps.length - 1) setStep((s) => s + 1);

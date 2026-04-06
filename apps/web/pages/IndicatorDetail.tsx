@@ -25,7 +25,6 @@ import {
   Pencil,
   Trash2,
   RotateCcw,
-  CalendarClock,
   BellRing,
   ChevronLeft,
   ChevronRight,
@@ -77,9 +76,6 @@ export const IndicatorDetail: React.FC = () => {
   // Import/Export State
   const [showImportWizard, setShowImportWizard] = useState(false);
   const [showExportDialog, setShowExportDialog] = useState(false);
-  const [reportingFrequency, setReportingFrequency] = useState<
-    "DAILY" | "WEEKLY" | "MONTHLY"
-  >("WEEKLY");
   const [reportingGaps, setReportingGaps] = useState<any[]>([]);
   const [showDeleted, setShowDeleted] = useState(false);
   const [currentUser, setCurrentUser] = useState<{
@@ -132,7 +128,7 @@ export const IndicatorDetail: React.FC = () => {
     if (!id) return;
     try {
       const [data, submissions] = await Promise.all([
-        api.getIndicator(id),
+        api.getIndicator(id, { includeDeleted }),
         api.getIndicatorSubmissions(id, { includeDeleted }),
       ]);
       setIndicator({ ...data, values: submissions });
@@ -170,13 +166,6 @@ export const IndicatorDetail: React.FC = () => {
 
   useEffect(() => {
     if (!indicator) return;
-    setReportingFrequency(
-      indicator.frequency === "Daily"
-        ? "DAILY"
-        : indicator.frequency === "Monthly"
-          ? "MONTHLY"
-          : "WEEKLY",
-    );
 
     // Auto-set the best suggested date
     const today = new Date();
@@ -262,11 +251,21 @@ export const IndicatorDetail: React.FC = () => {
 
   useEffect(() => {
     if (!indicator) return;
+    const reportingFrequency =
+      indicator.frequency === "Daily"
+        ? "DAILY"
+        : indicator.frequency === "Weekly"
+          ? "WEEKLY"
+          : indicator.frequency === "Monthly"
+            ? "MONTHLY"
+            : indicator.frequency === "Quarterly"
+              ? "QUARTERLY"
+              : "YEARLY";
     api
       .getReportingGaps(indicator.id, reportingFrequency)
       .then((result) => setReportingGaps(result.gaps || []))
       .catch(() => setReportingGaps([]));
-  }, [indicator?.id, reportingFrequency]);
+  }, [indicator?.id, indicator?.frequency]);
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -694,6 +693,28 @@ export const IndicatorDetail: React.FC = () => {
 
             )}
 
+
+            <MLEvaluationPanel indicator={indicator} />
+
+          <AnomalyReviewPanel indicator={indicator} anomalies={anomalies} />
+
+          <ReportingHealthCard
+            indicator={indicator}
+            project={project}
+            reportingGaps={reportingGaps}
+            anomalies={anomalies}
+          />
+
+          <ReminderSettingsCard
+            indicator={indicator}
+            isEditingSettings={isEditingSettings}
+            setIsEditingSettings={setIsEditingSettings}
+            settingsForm={settingsForm}
+            setSettingsForm={setSettingsForm}
+            handleUpdateSettings={handleUpdateSettings}
+            saving={saving}
+          />
+
           {indicator.type === IndicatorType.CATEGORICAL &&
             indicator.categories &&
             indicator.categories.length > 0 &&
@@ -710,7 +731,6 @@ export const IndicatorDetail: React.FC = () => {
                 selectedKey={filterDisaggregation}
                 refreshCounter={refreshCounter}
               />
-
             )}
 
           {filterDisaggregation && (
@@ -735,29 +755,6 @@ export const IndicatorDetail: React.FC = () => {
               </button>
             </div>
           )}
-
-            <MLEvaluationPanel indicator={indicator} />
-
-          <AnomalyReviewPanel indicator={indicator} anomalies={anomalies} />
-
-          <ReportingHealthCard
-            indicator={indicator}
-            project={project}
-            reportingFrequency={reportingFrequency}
-            setReportingFrequency={setReportingFrequency}
-            reportingGaps={reportingGaps}
-            anomalies={anomalies}
-          />
-
-          <ReminderSettingsCard
-            indicator={indicator}
-            isEditingSettings={isEditingSettings}
-            setIsEditingSettings={setIsEditingSettings}
-            settingsForm={settingsForm}
-            setSettingsForm={setSettingsForm}
-            handleUpdateSettings={handleUpdateSettings}
-            saving={saving}
-          />
 
           <SubmissionHistoryTable
             indicator={indicator}

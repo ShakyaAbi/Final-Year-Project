@@ -129,7 +129,13 @@ export const RecentSubmissionsList: React.FC<RecentSubmissionsListProps> = ({
                   row.evidence || "-"
                 )}
               </div>
-              <div className="col-span-4 flex justify-end gap-1">
+              <div className="col-span-4 flex flex-col items-end gap-1">
+                {row.deletedAt && (
+                  <div className="text-xs text-amber-700 mb-1">
+                    Deleted {row.deletedAt ? `on ${new Date(row.deletedAt).toLocaleString()}` : ""}
+                    {row.deletedByUserId ? ` by User ${row.deletedByUserId}` : ""}
+                  </div>
+                )}
                 {edit ? (
                   <>
                     <button

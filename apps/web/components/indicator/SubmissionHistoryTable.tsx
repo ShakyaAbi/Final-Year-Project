@@ -113,6 +113,8 @@ export const SubmissionHistoryTable: React.FC<SubmissionHistoryTableProps> = ({
   const primaryDim =
     dims.find((d) => d.required) || (dims.length > 0 ? dims[0] : null);
   const dimensionLabel = primaryDim?.label || "Disaggregation";
+  const baseColCount = indicator.type === IndicatorType.CATEGORICAL ? 9 : 8;
+  const totalColCount = baseColCount + (showDeleted ? 1 : 0);
 
   return (
     <div className="space-y-4">
@@ -210,6 +212,7 @@ export const SubmissionHistoryTable: React.FC<SubmissionHistoryTableProps> = ({
                 <th className="px-6 py-3">Status</th>
                 <th className="px-6 py-3">Anomaly Reason</th>
                 <th className="px-6 py-3">Verification</th>
+                {showDeleted && <th className="px-6 py-3">Deleted</th>}
                 <th className="px-6 py-3 sticky right-0 bg-slate-50 z-10">
                   Actions
                 </th>
@@ -246,8 +249,9 @@ export const SubmissionHistoryTable: React.FC<SubmissionHistoryTableProps> = ({
                   return (
                     <tr
                       key={row.id}
-                      className={`hover:bg-slate-50 transition-colors ${row.isAnomaly ? "bg-red-50/30" : ""} ${row.deletedAt ? "opacity-60" : ""}`}
+                      className={`hover:bg-slate-50 transition-colors ${row.isAnomaly ? "bg-red-50/30" : ""} ${row.deletedAt ? "bg-gray-100 text-gray-400" : ""}`}
                     >
+                      {/* Deleted metadata moved to dedicated column when `showDeleted` is true */}
                       <td className="px-4 py-4">
                         <input
                           type="checkbox"
@@ -534,6 +538,20 @@ export const SubmissionHistoryTable: React.FC<SubmissionHistoryTableProps> = ({
                           <span className="text-xs text-slate-300">-</span>
                         )}
                       </td>
+                      {showDeleted && (
+                        <td className="px-6 py-4">
+                          {row.deletedAt ? (
+                            <span
+                              className="text-xs text-gray-500 italic max-w-[220px] truncate block"
+                              title={`Deleted on ${new Date(row.deletedAt).toLocaleString()}${row.deletedByUserId ? ` by User ${row.deletedByUserId}` : ""}`}>
+                              Deleted on {new Date(row.deletedAt).toLocaleString()}
+                              {row.deletedByUserId ? ` by User ${row.deletedByUserId}` : ""}
+                            </span>
+                          ) : (
+                            <span className="text-xs text-slate-300">-</span>
+                          )}
+                        </td>
+                      )}
                       <td className="px-6 py-4 sticky right-0 bg-white z-10 shadow-[-8px_0_8px_-8px_rgba(15,23,42,0.15)]">
                         <div className="flex items-center gap-2">
                           {edit ? (
