@@ -1,0 +1,7 @@
+Date,Value,Evidence
+2023-01-01,100,initial baseline
+2023-02-01,105,normal variation
+2023-03-01,98,normal variation
+2023-04-01,102,normal variation
+2023-05-01,500,spike anomaly
+2023-06-01,110,back to normal

@@ -6,7 +6,7 @@
   ],
   "scripts": {
     "dev:web": "npm --workspace apps/web run dev",
-    "dev:ml": "cd apps/ml && uvicorn app:app --host 0.0.0.0 --port 8000",
+    "dev:ml": "cd apps/ml && uvicorn app:app --host 0.0.0.0 --port 8000 --loop asyncio",
     "dev:api": "npx concurrently -n \"api,ml\" -c \"bgBlue.bold,bgGreen.bold\" \"npm --workspace apps/api run dev\" \"npm run dev:ml\"",
     "dev": "npx concurrently -n \"api,web,ml\" -c \"bgBlue.bold,bgMagenta.bold,bgGreen.bold\" \"npm run dev:api\" \"npm run dev:web\"",
     "build:web": "npm --workspace apps/web run build",
