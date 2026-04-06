@@ -12,7 +12,16 @@ const prisma = new PrismaClient();
 async function main() {
   console.log("🚀 Starting ML Testing Seed...");
 
-  // 1. Get or create Admin user
+  // 1. Get or use existing Organization (Seed Test Organization)
+  const orgId = 1; // Use existing org for user
+  const org = await prisma.organization.findUnique({ where: { id: orgId } });
+  if (!org) {
+    console.error("Organization with ID 1 not found!");
+    process.exit(1);
+  }
+  console.log(`✓ Using Organization: ${org.name}`);
+
+  // 2. Get or create Admin user
   const adminEmail = "admin@gmail.com";
   let adminUser = await prisma.user.findUnique({ where: { email: adminEmail } });
   if (!adminUser) {
@@ -22,12 +31,14 @@ async function main() {
         email: adminEmail,
         passwordHash,
         role: Role.ADMIN,
-        name: "ML Testing Admin"
+        name: "ML Testing Admin",
+        organizationId: orgId,
       },
     });
+    console.log(`✓ Created User: ${adminEmail}`);
   }
 
-  // 2. Create ML Validation Project
+  // 3. Create ML Validation Project
   const projectName = "ML Service Validation Project";
   let project = await prisma.project.findFirst({ where: { name: projectName } });
   if (!project) {
@@ -37,12 +48,13 @@ async function main() {
         description: "A project dedicated to testing and validating anomaly detection algorithms.",
         status: ProjectStatus.ACTIVE,
         startDate: new Date("2026-01-01"),
+        organizationId: orgId,
       },
     });
     console.log(`✓ Created Project: ${projectName}`);
   }
 
-  // 3. Create Logframe Node
+  // 4. Create Logframe Node
   let node = await prisma.logframeNode.findFirst({ 
     where: { projectId: project.id, title: "ML Testing Node" } 
   });
@@ -55,91 +67,185 @@ async function main() {
         description: "Node for high-density testing indicators",
       },
     });
+    console.log(`✓ Created Logframe Node: ML Testing Node`);
   }
 
-  // 4. Create ML Testing Indicator
-  const indicatorName = "High-Density Productivity Score";
-  let indicator = await prisma.indicator.findFirst({ 
-    where: { projectId: project.id, name: indicatorName } 
-  });
-  if (!indicator) {
-    indicator = await prisma.indicator.create({
-      data: {
-        projectId: project.id,
-        logframeNodeId: node.id,
-        name: indicatorName,
-        unit: "points",
-        dataType: IndicatorDataType.NUMBER,
-        baselineValue: 50,
-        targetValue: 90,
-        anomalyConfig: {
-          method: "ISOLATION_FOREST",
-          contamination: 0.05,
-          minPoints: 10,
-          windowSize: 100
-        }
+  // 5. Create ML Testing Indicators
+  const indicatorConfigs = [
+    {
+      name: "High-Density Productivity Score",
+      unit: "points",
+      baselineValue: 50,
+      targetValue: 90,
+      anomalyConfig: {
+        method: "ISOLATION_FOREST",
+        contamination: 0.05,
+        minPoints: 10,
+        windowSize: 100
       },
+      dataPattern: "productivity"
+    },
+    {
+      name: "Health Facility Attendance Rate",
+      unit: "visits",
+      baselineValue: 120,
+      targetValue: 200,
+      anomalyConfig: {
+        method: "Z_SCORE",
+        contamination: 0.03,
+        minPoints: 15,
+        windowSize: 50,
+        zscore_threshold: 3.0
+      },
+      dataPattern: "health"
+    },
+    {
+      name: "School Enrollment Count",
+      unit: "students",
+      baselineValue: 300,
+      targetValue: 500,
+      anomalyConfig: {
+        method: "LOF",
+        contamination: 0.08,
+        minPoints: 20,
+        windowSize: 80
+      },
+      dataPattern: "education"
+    },
+    {
+      name: "Water Point Functionality Index",
+      unit: "index",
+      baselineValue: 75,
+      targetValue: 95,
+      anomalyConfig: {
+        method: "DBSCAN",
+        contamination: 0.04,
+        minPoints: 25,
+        windowSize: 60
+      },
+      dataPattern: "wash"
+    },
+    {
+      name: "Monthly Revenue Collection",
+      unit: "USD",
+      baselineValue: 5000,
+      targetValue: 10000,
+      anomalyConfig: {
+        method: "ISOLATION_FOREST",
+        contamination: 0.02,
+        minPoints: 10,
+        windowSize: 120
+      },
+      dataPattern: "finance"
+    }
+  ];
+
+  const indicators: { indicator: { id: number; name: string }; dataPattern: string; baselineValue: number }[] = [];
+  for (const cfg of indicatorConfigs) {
+    let indicator = await prisma.indicator.findFirst({ 
+      where: { projectId: project.id, name: cfg.name } 
     });
-    console.log(`✓ Created Indicator: ${indicatorName}`);
+    if (!indicator) {
+      indicator = await prisma.indicator.create({
+        data: {
+          projectId: project.id,
+          logframeNodeId: node.id,
+          name: cfg.name,
+          unit: cfg.unit,
+          dataType: IndicatorDataType.NUMBER,
+          baselineValue: cfg.baselineValue,
+          targetValue: cfg.targetValue,
+          createdByUserId: adminUser.id,
+          anomalyConfig: cfg.anomalyConfig
+        },
+      });
+      console.log(`✓ Created Indicator: ${cfg.name}`);
+    }
+    indicators.push({ ...cfg, indicator });
   }
 
-  // 5. Generate 60 days of data
-  console.log("📊 Generating 60 days of data...");
-  const submissions = [];
+  // 6. Generate submissions for each indicator
   const baseDate = new Date("2026-01-01");
 
-  for (let i = 0; i < 250; i++) {
-    const reportedAt = new Date(baseDate);
-    reportedAt.setDate(baseDate.getDate() + i);
+  function generateData(pattern: string, i: number, baseline: number): number {
+    let value = baseline + (Math.random() * 6 - 3);
 
-    let value = 50 + (Math.random() * 6 - 3); // Normal jitter (47-53)
-
-    // Gradual trend upwards after day 30
-    if (i > 30) {
-      value += (i - 30) * 0.5;
+    switch (pattern) {
+      case "productivity":
+        if (i > 30) value += (i - 30) * 0.5;
+        if (i === 15) value = baseline + 25;
+        if (i === 42) value = baseline + 60;
+        if (i === 55) value = baseline - 25;
+        break;
+      case "health":
+        if (i % 30 < 5) value += 20;
+        if (i === 20) value = baseline + 80;
+        if (i === 75) value = baseline - 40;
+        if (i === 100) value = 0;
+        break;
+      case "education":
+        if (i > 50) value += (i - 50) * 0.3;
+        if (i === 25) value = baseline + 100;
+        if (i === 60) value = baseline - 50;
+        if (i === 90) value = baseline + 150;
+        break;
+      case "wash":
+        value = baseline + Math.sin(i / 10) * 10;
+        if (i === 35) value = baseline - 40;
+        if (i === 80) value = baseline + 35;
+        break;
+      case "finance":
+        if (i > 40) value += (i - 40) * 1.2;
+        if (i === 10) value = baseline * 2.5;
+        if (i === 50) value = baseline * 0.1;
+        if (i === 120) value = baseline * 3;
+        break;
     }
 
-    // Explicit anomalies
-    if (i === 15) {
-      value = 75; // Small anomaly
-    }
-    if (i === 42) {
-      value = 110; // Major anomaly (outside target/baseline range)
-    }
-    if (i === 55) {
-      value = 25; // Negative anomaly
-    }
-
-    submissions.push({
-      indicatorId: indicator.id,
-      reportedAt,
-      value: value.toFixed(2),
-      createdByUserId: adminUser.id,
-      evidence: `Daily automated score - Day ${i + 1}`,
-      isAnomaly: false, // Will be calculated by system on backfill if needed
-    });
+    return value;
   }
 
-  // 6. Upsert submissions
-  let count = 0;
-  for (const sub of submissions) {
-    await prisma.submission.upsert({
-      where: {
-        indicatorId_reportedAt_disaggregationKey: {
-          indicatorId: sub.indicatorId,
-          reportedAt: sub.reportedAt,
-          disaggregationKey: "",
+  for (const { indicator, dataPattern, baselineValue } of indicators) {
+    console.log(`📊 Generating data for "${indicator.name}"...`);
+    const submissions: { indicatorId: number; reportedAt: Date; value: string; createdByUserId: number; evidence: string; isAnomaly: boolean }[] = [];
+
+    for (let i = 0; i < 250; i++) {
+      const reportedAt = new Date(baseDate);
+      reportedAt.setDate(baseDate.getDate() + i);
+
+      const value = generateData(dataPattern, i, baselineValue);
+
+      submissions.push({
+        indicatorId: indicator.id,
+        reportedAt,
+        value: value.toFixed(2),
+        createdByUserId: adminUser.id,
+        evidence: `Daily automated score - Day ${i + 1}`,
+        isAnomaly: false,
+      });
+    }
+
+    let count = 0;
+    for (const sub of submissions) {
+      await prisma.submission.upsert({
+        where: {
+          indicatorId_reportedAt_disaggregationKey: {
+            indicatorId: sub.indicatorId,
+            reportedAt: sub.reportedAt,
+            disaggregationKey: "",
+          },
         },
-      },
-      update: sub,
-      create: sub,
-    });
-    count++;
+        update: sub,
+        create: sub,
+      });
+      count++;
+    }
+
+    console.log(`✅ Seeded ${count} entries for indicator "${indicator.name}"`);
   }
 
-  console.log(`✅ Success! Seeded ${count} entries for indicator "${indicatorName}"`);
   console.log(`🔗 Project ID: ${project.id}`);
-  console.log(`🔗 Indicator ID: ${indicator.id}`);
+  console.log(`🔗 Indicator IDs: ${indicators.map(i => i.indicator.id).join(", ")}`);
 }
 
 main()
