@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import * as logframeService from '../services/logframeService';
+import { deleteNodeCascade } from '../services/logframeService';
 import { asyncHandler } from '../utils/asyncHandler';
 
 export const createLogframeNode = asyncHandler(async (req: Request, res: Response) => {
@@ -22,6 +23,13 @@ export const updateLogframeNode = asyncHandler(async (req: Request, res: Respons
 });
 
 export const deleteLogframeNode = asyncHandler(async (req: Request, res: Response) => {
+  const cascade = req.query.cascade === 'true';
+  if (cascade) {
+    await deleteNodeCascade(Number(req.params.id));
+    res.status(204).send();
+    return;
+  }
+
   await logframeService.deleteNode(Number(req.params.id));
   res.status(204).send();
 });

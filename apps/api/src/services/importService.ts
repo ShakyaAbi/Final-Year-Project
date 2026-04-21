@@ -536,16 +536,22 @@ export class ImportService {
   private async checkDuplicate(
     indicatorId: number,
     reportedAt: string,
-    disaggregationKey?: string,
+    disaggregationKey?: string | null,
   ): Promise<boolean> {
-    const existing = await this.prisma.submission.findUnique({
+    // Use null for missing disaggregationKey so the lookup matches how
+    // submissions are stored (null vs empty string). This prevents false
+    // negatives when detecting duplicates for rows without disaggregation.
+    // Use findFirst with a where clause (matches repository usage) so we can
+    // compare against null for missing disaggregationKey. This mirrors
+    // submissionRepository.findUniqueSubmission which also compares against
+    // null. We cast to any for the where clause to avoid TypeScript's strict
+    // generated type for the compound unique input.
+    const existing = await this.prisma.submission.findFirst({
       where: {
-        indicatorId_reportedAt_disaggregationKey: {
-          indicatorId,
-          reportedAt: new Date(reportedAt),
-          disaggregationKey: disaggregationKey || "",
-        },
-      },
+        indicatorId,
+        reportedAt: new Date(reportedAt),
+        disaggregationKey: disaggregationKey ?? null,
+      } as any,
     });
     return existing !== null;
   }

@@ -12,10 +12,10 @@ export const createNode = (data: {
   sortOrder: number;
 }) => prisma.logframeNode.create({ data });
 
+export const getById = (id: number) => prisma.logframeNode.findUnique({ where: { id } });
+
 export const getByProject = (projectId: number) =>
   prisma.logframeNode.findMany({ where: { projectId }, orderBy: { sortOrder: 'asc' } });
-
-export const getById = (id: number) => prisma.logframeNode.findUnique({ where: { id } });
 
 export const updateNode = (
   id: number,
@@ -33,3 +33,5 @@ export const updateNode = (
 export const deleteNode = (id: number) => prisma.logframeNode.delete({ where: { id } });
 
 export const getChildrenCount = (id: number) => prisma.logframeNode.count({ where: { parentId: id } });
+
+export const deleteNodes = (ids: number[]) => prisma.logframeNode.deleteMany({ where: { id: { in: ids } } });

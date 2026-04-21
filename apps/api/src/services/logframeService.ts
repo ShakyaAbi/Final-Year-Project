@@ -128,3 +128,32 @@ export const deleteNode = async (id: number) => {
 
   await logframeRepo.deleteNode(id);
 };
+
+// Cascade delete: delete node and all descendants and their indicators/submissions
+export const deleteNodeCascade = async (id: number) => {
+  const existing = await logframeRepo.getById(id);
+  if (!existing) throw new NotFoundError('NODE_NOT_FOUND', 'Logframe node not found');
+
+  // Collect all descendant node ids using a queue
+  const nodes = await logframeRepo.getByProject(existing.projectId);
+  const idSet = new Set<number>();
+  const map = new Map<number, { parentId?: number | null }>();
+  nodes.forEach((n: any) => map.set(n.id, { parentId: n.parentId }));
+
+  const queue = [existing.id];
+  while (queue.length > 0) {
+    const cur = queue.shift()!;
+    idSet.add(cur);
+    for (const [nid, meta] of map.entries()) {
+      if (meta.parentId === cur && !idSet.has(nid)) queue.push(nid);
+    }
+  }
+
+  const ids = Array.from(idSet);
+
+  // Delete indicators that belong to these nodes (this will cascade to submissions via FK onDelete: Cascade)
+  await logframeRepo.deleteNodes(ids);
+
+  // Note: indicators have onDelete: Cascade in schema so deleting nodes will delete indicators.
+  return;
+};
