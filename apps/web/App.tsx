@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { HashRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { HashRouter as Router, Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import { Login } from './pages/Login';
 import { ProjectList } from './pages/ProjectList';
 import { ProjectDetail } from './pages/ProjectDetail';
@@ -11,6 +11,7 @@ import { Register } from './pages/Register';
 import { AdminUsers } from './pages/AdminUsers';
 import { AdminInvitations } from './pages/AdminInvitations';
 import { GoogleCallback } from './pages/GoogleCallback';
+import { Layout } from './components/Layout';
 
 import { PrivateRoute } from './components/PrivateRoute';
 
@@ -20,16 +21,19 @@ const App: React.FC = () => {
       <Routes>
         <Route path="/" element={<Login />} />
         <Route path="/register" element={<Register />} />
-        <Route path="/projects" element={<PrivateRoute><ProjectList /></PrivateRoute>} />
-        <Route path="/projects/:id" element={<PrivateRoute><ProjectDetail /></PrivateRoute>} />
-        <Route path="/indicators/:id" element={<PrivateRoute><IndicatorDetail /></PrivateRoute>} />
-        <Route path="/data-entry" element={<PrivateRoute><DataEntry /></PrivateRoute>} />
-        <Route path="/settings" element={<PrivateRoute><Settings /></PrivateRoute>} />
-        <Route path="/admin/users" element={<PrivateRoute><AdminUsers /></PrivateRoute>} />
-        <Route path="/admin/invitations" element={<PrivateRoute><AdminInvitations /></PrivateRoute>} />
         <Route path="/google-callback" element={<GoogleCallback />} />
-        <Route path="/indicators" element={<PrivateRoute><Navigate to="/projects" replace /></PrivateRoute>} />
-        
+
+        <Route element={<PrivateRoute><Layout><Outlet /></Layout></PrivateRoute>}>
+            <Route path="/projects" element={<ProjectList />} />
+            <Route path="/projects/:id" element={<ProjectDetail />} />
+            <Route path="/indicators/:id" element={<IndicatorDetail />} />
+            <Route path="/data-entry" element={<DataEntry />} />
+            <Route path="/settings" element={<Settings />} />
+            <Route path="/admin/users" element={<AdminUsers />} />
+            <Route path="/admin/invitations" element={<AdminInvitations />} />
+            <Route path="/indicators" element={<Navigate to="/projects" replace />} />
+        </Route>
+
         {/* Fallback */}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

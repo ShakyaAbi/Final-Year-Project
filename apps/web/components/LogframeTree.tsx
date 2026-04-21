@@ -6,9 +6,9 @@ import { Link } from 'react-router-dom';
 interface LogframeTreeProps {
   node: LogframeNode;
   indicators: Indicator[];
-  onEdit: (node: LogframeNode) => void;
-  onAddChild: (parentNode: LogframeNode) => void;
-  onAddIndicator: (parentNode: LogframeNode) => void;
+  onEdit?: (node: LogframeNode) => void;
+  onAddChild?: (parentNode: LogframeNode) => void;
+  onAddIndicator?: (parentNode: LogframeNode) => void;
   isRoot?: boolean;
 }
 
@@ -78,27 +78,46 @@ export const LogframeTree: React.FC<LogframeTreeProps> = ({ node, indicators, on
               </div>
               
               <div className="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                <button 
-                  onClick={() => onAddIndicator(node)}
-                  className="p-1.5 text-slate-400 hover:text-violet-600 hover:bg-violet-50 rounded transition-colors"
-                  title="Add Indicator"
-                >
-                  <BarChart2 className="w-4 h-4" />
-                </button>
-                <button 
-                  onClick={() => onEdit(node)}
-                  className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
-                  title="Edit details"
-                >
-                  <Edit2 className="w-4 h-4" />
-                </button>
-                {canHaveChildren && (
+                {onAddIndicator && (
+                  <button 
+                    onClick={() => onAddIndicator(node)}
+                    className="p-1.5 text-slate-400 hover:text-violet-600 hover:bg-violet-50 rounded transition-colors"
+                    title="Add Indicator"
+                  >
+                    <BarChart2 className="w-4 h-4" />
+                  </button>
+                )}
+                {onEdit && (
+                  <button 
+                    onClick={() => onEdit(node)}
+                    className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                    title="Edit details"
+                  >
+                    <Edit2 className="w-4 h-4" />
+                  </button>
+                )}
+                {canHaveChildren && onAddChild && (
                   <button 
                     onClick={() => onAddChild(node)}
                     className="p-1.5 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded transition-colors"
                     title={`Add ${childLabel}`}
                   >
                     <Plus className="w-4 h-4" />
+                  </button>
+                )}
+                {/* Delete button: show when parent provided delete handler exists via onEdit prop presence and user will be allowed by caller */}
+                {onEdit && (
+                  <button
+                    onClick={() => {
+                      // Bubble a synthetic delete request via onEdit (caller will implement actual delete)
+                      // We use onEdit for edit modal; to avoid changing props list, emit a custom event on window with node id
+                      const ev = new CustomEvent('logframe-delete-request', { detail: { node } });
+                      window.dispatchEvent(ev);
+                    }}
+                    className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
+                    title="Delete node"
+                  >
+                    <AlertCircle className="w-4 h-4" />
                   </button>
                 )}
               </div>
@@ -164,12 +183,14 @@ export const LogframeTree: React.FC<LogframeTreeProps> = ({ node, indicators, on
             {/* Empty state for indicators if none exist but user might want to add */}
             {nodeIndicators.length === 0 && (
                <div className="mt-3 pt-2 border-t border-slate-50 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <button 
-                    onClick={() => onAddIndicator(node)}
-                    className="text-xs flex items-center font-medium text-slate-500 hover:text-violet-600 transition-colors"
-                  >
-                    <Plus className="w-3 h-3 mr-1" /> Add measure/indicator
-                  </button>
+                   {onAddIndicator && (
+                     <button 
+                       onClick={() => onAddIndicator(node)}
+                       className="text-xs flex items-center font-medium text-slate-500 hover:text-violet-600 transition-colors"
+                     >
+                       <Plus className="w-3 h-3 mr-1" /> Add measure/indicator
+                     </button>
+                   )}
                </div>
             )}
           </div>
@@ -201,16 +222,17 @@ export const LogframeTree: React.FC<LogframeTreeProps> = ({ node, indicators, on
         <div className="pl-12 sm:pl-16 py-2 relative">
           <div className="absolute left-[11px] top-[-12px] bottom-1/2 w-0.5 bg-slate-200"></div>
           <div className="absolute left-[11px] top-1/2 w-6 sm:w-8 border-t-2 border-slate-200"></div>
-          <button 
-            onClick={() => onAddChild(node)}
-            className="relative flex items-center text-xs font-medium text-slate-500 hover:text-blue-600 transition-colors border border-dashed border-slate-300 rounded-lg px-3 py-2.5 w-full sm:w-auto bg-slate-50/50 hover:bg-blue-50 hover:border-blue-300 shadow-sm"
-          >
-            <Plus className="w-3.5 h-3.5 mr-1.5 text-slate-400" />
-            Add {childLabel}
-          </button>
+          {onAddChild && (
+            <button 
+              onClick={() => onAddChild(node)}
+              className="relative flex items-center text-xs font-medium text-slate-500 hover:text-blue-600 transition-colors border border-dashed border-slate-300 rounded-lg px-3 py-2.5 w-full sm:w-auto bg-slate-50/50 hover:bg-blue-50 hover:border-blue-300 shadow-sm"
+            >
+              <Plus className="w-3.5 h-3.5 mr-1.5 text-slate-400" />
+              Add {childLabel}
+            </button>
+          )}
         </div>
       )}
     </div>
   );
 };
-
