@@ -2,6 +2,7 @@ import request from "supertest";
 import app from "../src/app";
 import { prisma } from "../src/prisma";
 import { Role, IndicatorDataType } from "@prisma/client";
+import { hashPassword } from "../src/utils/password";
 
 describe("Reporting Gap Detection", () => {
   let authToken: string;
@@ -10,23 +11,25 @@ describe("Reporting Gap Detection", () => {
   let nodeId: number;
 
   beforeAll(async () => {
+    const passwordHash = await hashPassword("password123");
     const user = await prisma.user.create({
       data: {
         email: "gap-test@test.com",
-        passwordHash: "$2b$10$validhash",
+        passwordHash,
         role: Role.ADMIN,
         name: "Gap Tester",
+        organization: { create: { name: "Gap Test Org" } },
       },
     });
     userId = user.id;
 
     const loginRes = await request(app)
-      .post("/api/auth/login")
+      .post("/api/v1/auth/login")
       .send({ email: "gap-test@test.com", password: "password123" });
     authToken = loginRes.body.token;
 
     const project = await prisma.project.create({
-      data: { name: "Gap Test Project", status: "ACTIVE" },
+      data: { name: "Gap Test Project", status: "ACTIVE", organization: { connect: { id: user.organizationId } } },
     });
     projectId = project.id;
 
@@ -53,13 +56,14 @@ describe("Reporting Gap Detection", () => {
   describe("GET /indicators/:id/gaps", () => {
     test("should detect monthly reporting gaps", async () => {
       const indicator = await prisma.indicator.create({
-        data: {
-          projectId,
-          logframeNodeId: nodeId,
-          name: "Monthly Gap Indicator",
-          unit: "units",
-          dataType: IndicatorDataType.NUMBER,
-        },
+      data: {
+           projectId,
+           logframeNodeId: nodeId,
+           name: "Monthly Gap Indicator",
+           unit: "units",
+           dataType: IndicatorDataType.NUMBER,
+           createdByUserId: userId,
+         },
       });
 
       // Create submissions with a 3-month gap
@@ -82,7 +86,7 @@ describe("Reporting Gap Detection", () => {
       });
 
       const res = await request(app)
-        .get(`/api/indicators/${indicator.id}/gaps?frequency=MONTHLY`)
+        .get(`/api/v1/indicators/${indicator.id}/gaps?frequency=MONTHLY`)
         .set("Authorization", `Bearer ${authToken}`);
 
       expect(res.status).toBe(200);
@@ -99,13 +103,14 @@ describe("Reporting Gap Detection", () => {
 
     test("should detect weekly reporting gaps", async () => {
       const indicator = await prisma.indicator.create({
-        data: {
-          projectId,
-          logframeNodeId: nodeId,
-          name: "Weekly Gap Indicator",
-          unit: "units",
-          dataType: IndicatorDataType.NUMBER,
-        },
+      data: {
+           projectId,
+           logframeNodeId: nodeId,
+           name: "Weekly Gap Indicator",
+           unit: "units",
+           dataType: IndicatorDataType.NUMBER,
+           createdByUserId: userId,
+         },
       });
 
       // Create submissions with a 4-week gap
@@ -128,7 +133,7 @@ describe("Reporting Gap Detection", () => {
       });
 
       const res = await request(app)
-        .get(`/api/indicators/${indicator.id}/gaps?frequency=WEEKLY`)
+        .get(`/api/v1/indicators/${indicator.id}/gaps?frequency=WEEKLY`)
         .set("Authorization", `Bearer ${authToken}`);
 
       expect(res.status).toBe(200);
@@ -143,13 +148,14 @@ describe("Reporting Gap Detection", () => {
 
     test("should detect daily reporting gaps", async () => {
       const indicator = await prisma.indicator.create({
-        data: {
-          projectId,
-          logframeNodeId: nodeId,
-          name: "Daily Gap Indicator",
-          unit: "units",
-          dataType: IndicatorDataType.NUMBER,
-        },
+      data: {
+           projectId,
+           logframeNodeId: nodeId,
+           name: "Daily Gap Indicator",
+           unit: "units",
+           dataType: IndicatorDataType.NUMBER,
+           createdByUserId: userId,
+         },
       });
 
       // Create submissions with a 5-day gap
@@ -172,7 +178,7 @@ describe("Reporting Gap Detection", () => {
       });
 
       const res = await request(app)
-        .get(`/api/indicators/${indicator.id}/gaps?frequency=DAILY`)
+        .get(`/api/v1/indicators/${indicator.id}/gaps?frequency=DAILY`)
         .set("Authorization", `Bearer ${authToken}`);
 
       expect(res.status).toBe(200);
@@ -187,13 +193,14 @@ describe("Reporting Gap Detection", () => {
 
     test("should return no gaps for consistent reporting", async () => {
       const indicator = await prisma.indicator.create({
-        data: {
-          projectId,
-          logframeNodeId: nodeId,
-          name: "Consistent Indicator",
-          unit: "units",
-          dataType: IndicatorDataType.NUMBER,
-        },
+      data: {
+           projectId,
+           logframeNodeId: nodeId,
+           name: "Consistent Indicator",
+           unit: "units",
+           dataType: IndicatorDataType.NUMBER,
+           createdByUserId: userId,
+         },
       });
 
       // Create weekly submissions without gaps
@@ -209,7 +216,7 @@ describe("Reporting Gap Detection", () => {
       }
 
       const res = await request(app)
-        .get(`/api/indicators/${indicator.id}/gaps?frequency=WEEKLY`)
+        .get(`/api/v1/indicators/${indicator.id}/gaps?frequency=WEEKLY`)
         .set("Authorization", `Bearer ${authToken}`);
 
       expect(res.status).toBe(200);
@@ -224,13 +231,14 @@ describe("Reporting Gap Detection", () => {
 
     test("should return empty array for insufficient data", async () => {
       const indicator = await prisma.indicator.create({
-        data: {
-          projectId,
-          logframeNodeId: nodeId,
-          name: "Single Submission Indicator",
-          unit: "units",
-          dataType: IndicatorDataType.NUMBER,
-        },
+      data: {
+           projectId,
+           logframeNodeId: nodeId,
+           name: "Single Submission Indicator",
+           unit: "units",
+           dataType: IndicatorDataType.NUMBER,
+           createdByUserId: userId,
+         },
       });
 
       await prisma.submission.create({
@@ -243,7 +251,7 @@ describe("Reporting Gap Detection", () => {
       });
 
       const res = await request(app)
-        .get(`/api/indicators/${indicator.id}/gaps?frequency=MONTHLY`)
+        .get(`/api/v1/indicators/${indicator.id}/gaps?frequency=MONTHLY`)
         .set("Authorization", `Bearer ${authToken}`);
 
       expect(res.status).toBe(200);
@@ -257,13 +265,14 @@ describe("Reporting Gap Detection", () => {
 
     test("should include gap metadata", async () => {
       const indicator = await prisma.indicator.create({
-        data: {
-          projectId,
-          logframeNodeId: nodeId,
-          name: "Gap Metadata Indicator",
-          unit: "units",
-          dataType: IndicatorDataType.NUMBER,
-        },
+      data: {
+           projectId,
+           logframeNodeId: nodeId,
+           name: "Gap Metadata Indicator",
+           unit: "units",
+           dataType: IndicatorDataType.NUMBER,
+           createdByUserId: userId,
+         },
       });
 
       await prisma.submission.create({
@@ -285,7 +294,7 @@ describe("Reporting Gap Detection", () => {
       });
 
       const res = await request(app)
-        .get(`/api/indicators/${indicator.id}/gaps?frequency=MONTHLY`)
+        .get(`/api/v1/indicators/${indicator.id}/gaps?frequency=MONTHLY`)
         .set("Authorization", `Bearer ${authToken}`);
 
       expect(res.status).toBe(200);

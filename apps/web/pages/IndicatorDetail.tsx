@@ -2,7 +2,6 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { Indicator, IndicatorType, CategoryDefinition } from "../types";
 import { api } from "../services/api";
-import { Layout } from "../components/Layout";
 import { Button } from "../components/ui/Button";
 import { IndicatorCharts } from "../components/IndicatorCharts";
 import { ImportWizard } from "../components/ImportWizard";
@@ -553,6 +552,66 @@ export const IndicatorDetail: React.FC = () => {
     await reloadIndicator(showDeleted);
   };
 
+  const disaggregationDimensions =
+    indicator?.categoryConfig?.disaggregationDimensions || [];
+  const hasDisaggregationDimensions = disaggregationDimensions.length > 0;
+
+  const numericDisaggregationRows = useMemo(() => {
+    if (!indicator || indicator.type === IndicatorType.CATEGORICAL) {
+      return [];
+    }
+
+    const grouped = new Map<
+      string,
+      {
+        disaggregationKey: string;
+        disaggregationLabel: string;
+        categoryDistribution: never[];
+        totalSubmissions: number;
+        lastReportedAt: string | null;
+      }
+    >();
+
+    indicator.values.forEach((row) => {
+      const key = row.disaggregationKey?.trim();
+      if (!key) return;
+
+      const existing = grouped.get(key);
+      const reportedAt = row.date ?? "";
+      const nextLastReportedAt =
+        !existing?.lastReportedAt ||
+        (reportedAt &&
+          new Date(reportedAt).getTime() >
+            new Date(existing.lastReportedAt).getTime())
+          ? reportedAt
+          : existing?.lastReportedAt ?? null;
+
+      grouped.set(key, {
+        disaggregationKey: key,
+        disaggregationLabel:
+          key.includes("|")
+            ? key
+                .split("|")
+                .map((part) => {
+                  const colonIndex = part.indexOf(":");
+                  return colonIndex >= 0
+                    ? part.slice(colonIndex + 1).trim()
+                    : part.trim();
+                })
+                .filter(Boolean)
+                .join(" / ")
+            : key,
+        categoryDistribution: [],
+        totalSubmissions: (existing?.totalSubmissions ?? 0) + 1,
+        lastReportedAt: nextLastReportedAt || null,
+      });
+    });
+
+    return Array.from(grouped.values()).sort((a, b) =>
+      a.disaggregationLabel.localeCompare(b.disaggregationLabel),
+    );
+  }, [indicator]);
+
   const isNumeric =
     indicator?.type === IndicatorType.NUMBER ||
     indicator?.type === IndicatorType.PERCENTAGE ||
@@ -615,15 +674,11 @@ export const IndicatorDetail: React.FC = () => {
 
   if (loading)
     return (
-      <Layout>
-        <div className="p-8 text-center">Loading...</div>
-      </Layout>
+        <div className="p-8 text-center text-slate-500">Loading indicator...</div>
     );
   if (!indicator)
     return (
-      <Layout>
         <div className="p-8 text-center text-red-500">Indicator not found</div>
-      </Layout>
     );
 
   const anomalies = indicator.values.filter((v) => v.isAnomaly);
@@ -631,7 +686,7 @@ export const IndicatorDetail: React.FC = () => {
 
 
   return (
-    <Layout>
+    <>
       {/* Header */}
       <div className="mb-6">
         <Link
@@ -724,18 +779,35 @@ export const IndicatorDetail: React.FC = () => {
           {indicator.type === IndicatorType.CATEGORICAL &&
             indicator.categories &&
             indicator.categories.length > 0 &&
-            indicator.categoryConfig?.disaggregationDimensions &&
-            indicator.categoryConfig.disaggregationDimensions.length > 0 && (
+            hasDisaggregationDimensions && (
               <DisaggregationComparison
                 indicatorId={indicator.id}
                 categories={indicator.categories as any}
                 dimensionLabel={
-                  indicator.categoryConfig.disaggregationDimensions[0].label ||
+                  disaggregationDimensions[0].label ||
                   "Entity"
                 }
                 onSelectDisaggregation={setFilterDisaggregation}
                 selectedKey={filterDisaggregation}
                 refreshCounter={refreshCounter}
+              />
+            )}
+
+          {indicator.type !== IndicatorType.CATEGORICAL &&
+            hasDisaggregationDimensions && (
+              <DisaggregationComparison
+                indicatorId={indicator.id}
+                categories={[]}
+                dimensionLabel={
+                  disaggregationDimensions[0].label || "Entity"
+                }
+                onSelectDisaggregation={setFilterDisaggregation}
+                selectedKey={filterDisaggregation}
+                rows={numericDisaggregationRows}
+                totalSubmissions={numericDisaggregationRows.reduce(
+                  (sum, row) => sum + row.totalSubmissions,
+                  0,
+                )}
               />
             )}
 
@@ -846,7 +918,6 @@ export const IndicatorDetail: React.FC = () => {
         onClose={() => setShowExportDialog(false)}
         categories={indicator.categories}
       />
-    </Layout>
+    </>
   );
 };
-

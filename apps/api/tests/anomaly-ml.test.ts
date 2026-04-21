@@ -13,6 +13,25 @@ describe("ML Anomaly Detection", () => {
   let userId: number;
   let fetchSpy: jest.SpyInstance;
 
+  // Helper: poll the submissions for an indicator until all have the expected anomalyMethod
+  async function waitForSubmissionsMethod(
+    indicatorId: number,
+    expectedMethod: string,
+    timeoutMs = 5000,
+    intervalMs = 200
+  ) {
+    const start = Date.now();
+    while (Date.now() - start < timeoutMs) {
+      const subs = await prisma.submission.findMany({ where: { indicatorId } });
+      if (subs.length > 0 && subs.every((s) => s.anomalyMethod === expectedMethod)) {
+        return subs;
+      }
+      await new Promise((r) => setTimeout(r, intervalMs));
+    }
+    // final fetch for clearer assertion errors
+    return await prisma.submission.findMany({ where: { indicatorId } });
+  }
+
   beforeAll(async () => {
     jest.resetModules();
     process.env.ML_SERVICE_URL = "http://ml.mock";
@@ -256,11 +275,10 @@ describe("ML Anomaly Detection", () => {
     expect(updateRes.status).toBe(200);
     expect(updateRes.body.anomalyConfig.mode).toBe("ML");
 
-    const submissions = await prisma.submission.findMany({
-      where: { indicatorId: ruleIndicator.id },
-      orderBy: { reportedAt: "asc" },
-    });
+    // Poll until the ML rescoring has updated submissions (background job may be async)
+    const submissions = await waitForSubmissionsMethod(ruleIndicator.id, "ISOLATION_FOREST", 5000, 200);
 
+    expect(submissions.length).toBeGreaterThan(0);
     expect(submissions.some((s) => s.anomalyMethod === "ISOLATION_FOREST")).toBe(true);
   });
 
@@ -272,10 +290,10 @@ describe("ML Anomaly Detection", () => {
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
 
-    const submissions = await prisma.submission.findMany({
-      where: { indicatorId },
-      orderBy: { reportedAt: "asc" },
-    });
+    // Wait for async recalculation to complete and check submissions
+    const submissions = await waitForSubmissionsMethod(indicatorId, "ISOLATION_FOREST", 5000, 200);
+    // Order by reportedAt to preserve original expectations
+    submissions.sort((a, b) => new Date(a.reportedAt).getTime() - new Date(b.reportedAt).getTime());
 
     expect(submissions).toHaveLength(4);
     expect(submissions[0].isAnomaly).toBe(false);

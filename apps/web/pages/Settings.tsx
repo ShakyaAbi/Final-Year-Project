@@ -1,6 +1,5 @@
 
 import React, { useEffect, useState } from 'react';
-import { Layout } from '../components/Layout';
 import { CurrentUser } from '../types';
 import { api } from '../services/api';
 import { User, Lock, Mail, Shield, Calendar } from 'lucide-react';
@@ -33,11 +32,11 @@ export const Settings: React.FC = () => {
     return parsed.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: '2-digit' });
   };
 
-  if (loading) return <Layout><div className="p-8 text-center text-slate-500">Loading settings...</div></Layout>;
+  if (loading) return <div className="p-8 text-center text-slate-500">Loading settings...</div>;
 
   return (
-    <Layout>
-      <div className="mb-8">
+      <>
+        <div className="mb-8">
         <h1 className="text-2xl font-bold text-slate-900">Account Settings</h1>
         <p className="text-slate-500 mt-1">View your account details and system settings status.</p>
       </div>
@@ -234,6 +233,6 @@ export const Settings: React.FC = () => {
            </div>
         </div>
       </div>
-    </Layout>
+    </>
   );
 };

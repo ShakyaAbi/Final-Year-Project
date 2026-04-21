@@ -40,6 +40,7 @@ __pycache__/
 .venv/
 venv/
 
+/private_docs/
 
 .PROJECT_FEATURES.md
 .AGENTS.md
@@ -48,3 +49,4 @@ venv/
 AGENTS.md
 .gitignore
 APP_OVERVIEW.md
+

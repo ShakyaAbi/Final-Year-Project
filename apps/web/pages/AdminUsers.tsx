@@ -1,5 +1,4 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { Layout } from '../components/Layout';
 import { authApi, OrganizationUser } from '../services/authApi';
 import { Users as UsersIcon, Shield, Mail, Calendar, ChevronDown, Trash2 } from 'lucide-react';
 
@@ -86,10 +85,10 @@ export const AdminUsers: React.FC = () => {
     );
   };
 
-  if (loading) return <Layout><div className="p-8 text-center text-slate-500">Loading...</div></Layout>;
+  if (loading) return <div className="p-8 text-center text-slate-500">Loading...</div>;
 
   return (
-    <Layout>
+    <>
       <div className="mb-8">
         <h1 className="text-2xl font-bold text-slate-900">Team Members</h1>
         <p className="text-slate-500 mt-1">Manage your organization's team members and roles.</p>
@@ -187,6 +186,6 @@ export const AdminUsers: React.FC = () => {
           <p>No team members found</p>
         </div>
       )}
-    </Layout>
+    </>
   );
 };

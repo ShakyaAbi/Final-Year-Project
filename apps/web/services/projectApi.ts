@@ -177,4 +177,8 @@ export const projectApi = {
         type: payload.type ? payload.type.toUpperCase() : undefined,
       },
     }),
+  deleteLogframeNode: async (nodeId: string) =>
+    request(`/logframe/nodes/${nodeId}`, { method: "DELETE" }),
+  deleteLogframeNodeCascade: async (nodeId: string) =>
+    request(`/logframe/nodes/${nodeId}?cascade=true`, { method: "DELETE" }),
 };

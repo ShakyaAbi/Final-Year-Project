@@ -13,11 +13,19 @@ describe('Auth flows', () => {
     await prisma.indicator.deleteMany();
     await prisma.logframeNode.deleteMany();
     await prisma.project.deleteMany();
+    // Invitations reference users; remove them first to avoid FK constraint errors
+    await prisma.invitation.deleteMany();
     await prisma.user.deleteMany();
 
     const passwordHash = await hashPassword(password);
     await prisma.user.create({
-      data: { email: adminEmail, passwordHash, role: Role.ADMIN }
+      data: {
+        email: adminEmail,
+        passwordHash,
+        role: Role.ADMIN,
+        // create a minimal organization required by the Prisma schema
+        organization: { create: { name: "Auth Test Org" } }
+      }
     });
   });
 

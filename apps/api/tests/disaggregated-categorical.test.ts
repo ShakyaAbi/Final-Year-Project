@@ -8,11 +8,10 @@ describe("Disaggregated Categorical Indicators - District Reporting", () => {
   let indicatorId: number;
 
   beforeAll(async () => {
-    // Login to get auth token
-    const loginRes = await request(app)
-      .post("/api/v1/auth/login")
-      .send({ email: "admin@gmail.com", password: "admin1234" });
-    authToken = loginRes.body.token;
+    // Ensure admin exists and obtain token
+    const { createAdminAndToken } = await import('./helpers/createAdminAndToken');
+    const admin = await createAdminAndToken('admin@gmail.com', 'admin1234');
+    authToken = admin.token;
 
     // Create a test project
     const projectRes = await request(app)

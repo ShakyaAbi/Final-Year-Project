@@ -4,15 +4,14 @@ import app from "../src/app";
 describe("Categorical Indicators", () => {
   let authToken: string;
   let projectId: number;
+  let logframeNodeId: number;
   let categoricalIndicatorId: number;
 
   beforeAll(async () => {
-    // Login as admin
-    const loginRes = await request(app)
-      .post("/api/v1/auth/login")
-      .send({ email: "admin@gmail.com", password: "admin1234" });
-
-    authToken = loginRes.body.token;
+    // Ensure admin exists and obtain token
+    const { createAdminAndToken } = await import('./helpers/createAdminAndToken');
+    const admin = await createAdminAndToken('admin@gmail.com', 'admin1234');
+    authToken = admin.token;
 
     // Create a test project
     const projectRes = await request(app)
@@ -25,6 +24,12 @@ describe("Categorical Indicators", () => {
       });
 
     projectId = projectRes.body.id;
+    // Create a logframe node for this project and use its id in tests
+    const logframeRes = await request(app)
+      .post(`/api/v1/projects/${projectId}/logframe/nodes`)
+      .set("Authorization", `Bearer ${authToken}`)
+      .send({ title: "Test Output", type: "OUTPUT" });
+    logframeNodeId = logframeRes.body.id;
   });
 
   describe("Creating Categorical Indicators", () => {
@@ -33,7 +38,7 @@ describe("Categorical Indicators", () => {
         .post(`/api/v1/projects/${projectId}/indicators`)
         .set("Authorization", `Bearer ${authToken}`)
         .send({
-          logframeNodeId: 1,
+          logframeNodeId: logframeNodeId,
           name: "Project Status",
           unit: "status",
           dataType: "CATEGORICAL",
@@ -60,7 +65,7 @@ describe("Categorical Indicators", () => {
         .post(`/api/v1/projects/${projectId}/indicators`)
         .set("Authorization", `Bearer ${authToken}`)
         .send({
-          logframeNodeId: 1,
+          logframeNodeId: logframeNodeId,
           name: "Invalid Categorical",
           unit: "status",
           dataType: "CATEGORICAL",
@@ -75,7 +80,7 @@ describe("Categorical Indicators", () => {
         .post(`/api/v1/projects/${projectId}/indicators`)
         .set("Authorization", `Bearer ${authToken}`)
         .send({
-          logframeNodeId: 1,
+          logframeNodeId: logframeNodeId,
           name: "Invalid Categories",
           unit: "status",
           dataType: "CATEGORICAL",
@@ -140,7 +145,7 @@ describe("Categorical Indicators", () => {
         .post(`/api/v1/projects/${projectId}/indicators`)
         .set("Authorization", `Bearer ${authToken}`)
         .send({
-          logframeNodeId: 1,
+          logframeNodeId: logframeNodeId,
           name: "Project Challenges",
           unit: "challenges",
           dataType: "CATEGORICAL",
@@ -223,7 +228,7 @@ describe("Categorical Indicators", () => {
         .post(`/api/v1/projects/${projectId}/indicators`)
         .set("Authorization", `Bearer ${authToken}`)
         .send({
-          logframeNodeId: 1,
+          logframeNodeId: logframeNodeId,
           name: "Numeric Indicator",
           unit: "count",
           dataType: "NUMBER",

@@ -1,7 +1,11 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 const client_1 = require("@prisma/client");
-const password_1 = require("../src/utils/password");
+// The original seed.ts imports a TypeScript helper for password hashing.
+// When running the compiled seed.js directly with node, requiring TS files
+// (../src/utils/password) fails. Inline bcrypt here to avoid that runtime
+// dependency and keep the seed runnable without a TS toolchain.
+const bcrypt = require("bcryptjs");
 const prisma = new client_1.PrismaClient();
 // Static seed credentials so reseeding doesn't depend on .env
 const SEED_ADMIN_EMAIL = "admin@gmail.com";
@@ -325,7 +329,8 @@ async function main() {
     const password = SEED_ADMIN_PASSWORD;
     const existing = await prisma.user.findUnique({ where: { email } });
     if (!existing) {
-        const passwordHash = await (0, password_1.hashPassword)(password);
+        // Inline bcrypt hash to avoid importing TypeScript utils at runtime
+        const passwordHash = await bcrypt.hash(password, 10);
         await prisma.user.create({
             data: {
                 email,

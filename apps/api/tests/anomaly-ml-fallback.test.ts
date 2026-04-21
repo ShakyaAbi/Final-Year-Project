@@ -1,6 +1,7 @@
 import request from "supertest";
 import { prisma } from "../src/prisma";
 import { Role, IndicatorDataType } from "@prisma/client";
+import { hashPassword } from "../src/utils/password";
 
 let app: any;
 
@@ -45,12 +46,14 @@ describe("ML fallback behavior", () => {
 
     app = (await import("../src/app")).default;
 
+    const passwordHash = await hashPassword("password123");
     const user = await prisma.user.create({
       data: {
         email: "anomaly-ml-fallback@test.com",
-        passwordHash: "$2b$10$validhash",
+        passwordHash,
         role: Role.ADMIN,
         name: "Fallback Tester",
+        organization: { create: { name: "ML Fallback Org" } },
       },
     });
     adminUserId = user.id;
@@ -61,7 +64,7 @@ describe("ML fallback behavior", () => {
     authToken = loginRes.body.token;
 
     const project = await prisma.project.create({
-      data: { name: "ML Fallback Project", status: "ACTIVE" },
+      data: { name: "ML Fallback Project", status: "ACTIVE", organization: { connect: { id: user.organizationId } } },
     });
     projectId = project.id;
 
@@ -101,6 +104,7 @@ describe("ML fallback behavior", () => {
           ml: { windowSize: 50, minPoints: 2, contamination: 0.05, seed: 42 },
           fallback: { useRulesOnServiceError: true },
         },
+        createdByUserId: adminUserId,
       },
     });
 
@@ -149,6 +153,7 @@ describe("ML fallback behavior", () => {
             useRulesWhenInsufficientData: false,
           },
         },
+        createdByUserId: adminUserId,
       },
     });
 

@@ -73,7 +73,7 @@ export const Register: React.FC = () => {
       setSuccess(true);
       setTimeout(() => {
         navigate("/projects");
-      }, 1500);
+      }, 4000);
     } catch (err: any) {
       setError(err?.message || "Registration failed");
     } finally {

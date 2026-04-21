@@ -22,7 +22,6 @@ import {
 } from "lucide-react";
 import { Link, useSearchParams } from "react-router-dom";
 import { extractTextFromPDF, parseDataFromText } from "../utils/pdfParser";
-import { Layout } from "../components/Layout";
 import { DataEntryToolbar } from "../components/indicator/DataEntryToolbar";
 import { IndicatorEntryCard } from "../components/indicator/IndicatorEntryCard";
 
@@ -610,7 +609,7 @@ export const DataEntry: React.FC = () => {
   };
 
   return (
-    <Layout>
+    <>
       <div className="mb-8">
         <h1 className="text-2xl font-bold text-slate-900">
           Data Entry & Verification
@@ -698,6 +697,6 @@ export const DataEntry: React.FC = () => {
           })}
         </div>
       )}
-    </Layout>
+    </>
   );
 };

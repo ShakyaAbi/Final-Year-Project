@@ -2,6 +2,7 @@ import request from "supertest";
 import app from "../src/app";
 import { prisma } from "../src/prisma";
 import { Role, IndicatorDataType } from "@prisma/client";
+import { hashPassword } from "../src/utils/password";
 
 describe("Indicator Statistics", () => {
   let authToken: string;
@@ -11,23 +12,25 @@ describe("Indicator Statistics", () => {
   let indicatorId: number;
 
   beforeAll(async () => {
+    const passwordHash = await hashPassword("password123");
     const user = await prisma.user.create({
       data: {
         email: "stats-test@test.com",
-        passwordHash: "$2b$10$validhash",
+        passwordHash,
         role: Role.ADMIN,
         name: "Stats Tester",
+        organization: { create: { name: "Stats Test Org" } },
       },
     });
     userId = user.id;
 
     const loginRes = await request(app)
-      .post("/api/auth/login")
+      .post("/api/v1/auth/login")
       .send({ email: "stats-test@test.com", password: "password123" });
     authToken = loginRes.body.token;
 
     const project = await prisma.project.create({
-      data: { name: "Stats Test Project", status: "ACTIVE" },
+      data: { name: "Stats Test Project", status: "ACTIVE", organization: { connect: { id: user.organizationId } } },
     });
     projectId = project.id;
 
@@ -55,14 +58,15 @@ describe("Indicator Statistics", () => {
     beforeEach(async () => {
       const indicator = await prisma.indicator.create({
         data: {
-          projectId,
-          logframeNodeId: nodeId,
-          name: "Stats Indicator",
-          unit: "units",
-          dataType: IndicatorDataType.NUMBER,
-          baselineValue: 50,
-          targetValue: 100,
-        },
+           projectId,
+           logframeNodeId: nodeId,
+           name: "Stats Indicator",
+           unit: "units",
+           dataType: IndicatorDataType.NUMBER,
+           baselineValue: 50,
+           targetValue: 100,
+           createdByUserId: userId,
+         },
       });
       indicatorId = indicator.id;
 
@@ -99,7 +103,7 @@ describe("Indicator Statistics", () => {
 
     test("should return comprehensive statistics", async () => {
       const res = await request(app)
-        .get(`/api/indicators/${indicatorId}/stats`)
+        .get(`/api/v1/indicators/${indicatorId}/stats`)
         .set("Authorization", `Bearer ${authToken}`);
 
       expect(res.status).toBe(200);
@@ -118,7 +122,7 @@ describe("Indicator Statistics", () => {
 
     test("should calculate progress to target correctly", async () => {
       const res = await request(app)
-        .get(`/api/indicators/${indicatorId}/stats`)
+        .get(`/api/v1/indicators/${indicatorId}/stats`)
         .set("Authorization", `Bearer ${authToken}`);
 
       // Current value is 200, target is 100
@@ -127,7 +131,7 @@ describe("Indicator Statistics", () => {
 
     test("should calculate progress from baseline correctly", async () => {
       const res = await request(app)
-        .get(`/api/indicators/${indicatorId}/stats`)
+        .get(`/api/v1/indicators/${indicatorId}/stats`)
         .set("Authorization", `Bearer ${authToken}`);
 
       // Current value is 200, baseline is 50
@@ -136,7 +140,7 @@ describe("Indicator Statistics", () => {
 
     test("should detect increasing trend", async () => {
       const res = await request(app)
-        .get(`/api/indicators/${indicatorId}/stats`)
+        .get(`/api/v1/indicators/${indicatorId}/stats`)
         .set("Authorization", `Bearer ${authToken}`);
 
       expect(res.body.stats.trend).toBe("increasing");
@@ -146,14 +150,15 @@ describe("Indicator Statistics", () => {
   describe("Trend Detection", () => {
     test("should detect decreasing trend", async () => {
       const indicator = await prisma.indicator.create({
-        data: {
-          projectId,
-          logframeNodeId: nodeId,
-          name: "Decreasing Trend Indicator",
-          unit: "units",
-          dataType: IndicatorDataType.NUMBER,
-          targetValue: 100,
-        },
+          data: {
+            projectId,
+            logframeNodeId: nodeId,
+            name: "Decreasing Trend Indicator",
+            unit: "units",
+            dataType: IndicatorDataType.NUMBER,
+            targetValue: 100,
+            createdByUserId: userId,
+          },
       });
 
       const values = [100, 90, 80, 70, 60, 50];
@@ -169,7 +174,7 @@ describe("Indicator Statistics", () => {
       }
 
       const res = await request(app)
-        .get(`/api/indicators/${indicator.id}/stats`)
+        .get(`/api/v1/indicators/${indicator.id}/stats`)
         .set("Authorization", `Bearer ${authToken}`);
 
       expect(res.status).toBe(200);
@@ -183,14 +188,15 @@ describe("Indicator Statistics", () => {
 
     test("should detect stable trend", async () => {
       const indicator = await prisma.indicator.create({
-        data: {
-          projectId,
-          logframeNodeId: nodeId,
-          name: "Stable Trend Indicator",
-          unit: "units",
-          dataType: IndicatorDataType.NUMBER,
-          targetValue: 100,
-        },
+          data: {
+            projectId,
+            logframeNodeId: nodeId,
+            name: "Stable Trend Indicator",
+            unit: "units",
+            dataType: IndicatorDataType.NUMBER,
+            targetValue: 100,
+            createdByUserId: userId,
+          },
       });
 
       const values = [50, 52, 48, 51, 49, 50, 51];
@@ -206,7 +212,7 @@ describe("Indicator Statistics", () => {
       }
 
       const res = await request(app)
-        .get(`/api/indicators/${indicator.id}/stats`)
+        .get(`/api/v1/indicators/${indicator.id}/stats`)
         .set("Authorization", `Bearer ${authToken}`);
 
       expect(res.status).toBe(200);
@@ -222,17 +228,18 @@ describe("Indicator Statistics", () => {
   describe("Empty Indicator Stats", () => {
     test("should return null stats for indicator with no submissions", async () => {
       const indicator = await prisma.indicator.create({
-        data: {
-          projectId,
-          logframeNodeId: nodeId,
-          name: "Empty Indicator",
-          unit: "units",
-          dataType: IndicatorDataType.NUMBER,
-        },
+          data: {
+            projectId,
+            logframeNodeId: nodeId,
+            name: "Empty Indicator",
+            unit: "units",
+            dataType: IndicatorDataType.NUMBER,
+            createdByUserId: userId,
+          },
       });
 
       const res = await request(app)
-        .get(`/api/indicators/${indicator.id}/stats`)
+        .get(`/api/v1/indicators/${indicator.id}/stats`)
         .set("Authorization", `Bearer ${authToken}`);
 
       expect(res.status).toBe(200);

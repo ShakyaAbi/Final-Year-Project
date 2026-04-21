@@ -1,5 +1,4 @@
 import React, { useEffect, useState } from 'react';
-import { Layout } from '../components/Layout';
 import { authApi, Invitation } from '../services/authApi';
 import { Mail, Users, Clock, Trash2, Plus, AlertCircle } from 'lucide-react';
 
@@ -68,11 +67,11 @@ export const AdminInvitations: React.FC = () => {
   const pendingInvitations = invitations.filter(i => !i.acceptedAt);
   const acceptedInvitations = invitations.filter(i => i.acceptedAt);
 
-  if (loading) return <Layout><div className="p-8 text-center text-slate-500">Loading...</div></Layout>;
+  if (loading) return <div className="p-8 text-center text-slate-500">Loading...</div>;
 
   return (
-    <Layout>
-      <div className="mb-8">
+      <>
+        <div className="mb-8">
         <h1 className="text-2xl font-bold text-slate-900">Invitations</h1>
         <p className="text-slate-500 mt-1">Invite new members to your organization.</p>
       </div>
@@ -245,6 +244,6 @@ export const AdminInvitations: React.FC = () => {
           <p>No invitations yet</p>
         </div>
       )}
-    </Layout>
+    </>
   );
 };

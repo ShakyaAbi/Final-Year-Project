@@ -27,6 +27,8 @@ interface IndicatorWizardProps {
   onClose: () => void;
   initialNodeId?: string | null;
   editingIndicator?: Indicator | null;
+  // Whether the current user can create/edit/delete indicators
+  canManage?: boolean;
 }
 
 export const IndicatorWizard: React.FC<IndicatorWizardProps> = ({
@@ -34,6 +36,7 @@ export const IndicatorWizard: React.FC<IndicatorWizardProps> = ({
   onClose,
   initialNodeId,
   editingIndicator,
+  canManage = false,
 }) => {
   const navigate = useNavigate();
   const [step, setStep] = useState(0);
@@ -291,7 +294,7 @@ const updateAnomalyConfig = (patch: Partial<AnomalyConfig>) => {
       {/* Sticky Footer */}
       <div className="p-4 border-t border-slate-200 bg-slate-50 flex justify-between items-center rounded-b-xl">
         <div className="flex items-center gap-2">
-          {editingIndicator && (
+          {editingIndicator && canManage && (
             <Button
               variant="danger"
               onClick={handleDeleteIndicator}

@@ -1,6 +1,5 @@
 
 import React, { useEffect, useState, useMemo } from 'react';
-import { Layout } from '../components/Layout';
 import { Button } from '../components/ui/Button';
 import { Project } from '../types';
 import { api } from '../services/api';
@@ -15,6 +14,7 @@ type SortOrder = 'asc' | 'desc';
 
 export const ProjectList: React.FC = () => {
   const [projects, setProjects] = useState<Project[]>([]);
+  const [currentUser, setCurrentUser] = useState<{ role: string } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -36,6 +36,14 @@ export const ProjectList: React.FC = () => {
       .catch((err) => setError(err?.message || 'Failed to load projects'))
       .finally(() => setLoading(false));
   }, [isWizardOpen]); // Refresh when wizard closes/saves
+
+  useEffect(() => {
+    api.me()
+      .then((user) => setCurrentUser({ role: user.role }))
+      .catch(() => setCurrentUser(null));
+  }, []);
+
+  const isManagerOrAdmin = currentUser?.role === 'ADMIN' || currentUser?.role === 'MANAGER';
 
   const filteredAndSortedProjects = useMemo(() => {
     let result = [...projects];
@@ -76,7 +84,7 @@ export const ProjectList: React.FC = () => {
 
 
   return (
-    <Layout>
+    <>
 
         <div className="relative z-10 px-4 sm:px-6 lg:px-8 py-8">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
@@ -89,13 +97,15 @@ export const ProjectList: React.FC = () => {
               </p>
             </div>
             <div>
-              <Button 
-                onClick={() => setIsWizardOpen(true)}
-                className="shadow-sm"
-              >
-                <Plus className="w-4 h-4 mr-2" />
-                New Project
-              </Button>
+              {isManagerOrAdmin && (
+                <Button 
+                  onClick={() => setIsWizardOpen(true)}
+                  className="shadow-sm"
+                >
+                  <Plus className="w-4 h-4 mr-2" />
+                  New Project
+                </Button>
+              )}
             </div>
           </div>
 
@@ -262,6 +272,6 @@ export const ProjectList: React.FC = () => {
             <ProjectWizard onClose={() => setIsWizardOpen(false)} />
           </Modal>
         </div>
-    </Layout>
+    </>
   );
 };

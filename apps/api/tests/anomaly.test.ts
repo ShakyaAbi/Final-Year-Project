@@ -2,6 +2,7 @@ import request from "supertest";
 import app from "../src/app";
 import { prisma } from "../src/prisma";
 import { Role, IndicatorDataType, AnomalyStatus } from "@prisma/client";
+import { hashPassword } from "../src/utils/password";
 
 describe("Anomaly Detection System", () => {
   let authToken: string;
@@ -11,18 +12,20 @@ describe("Anomaly Detection System", () => {
   let indicatorId: number;
 
   beforeAll(async () => {
+    const passwordHash = await hashPassword("password123");
     const user = await prisma.user.create({
       data: {
         email: "anomaly-test@test.com",
-        passwordHash: "$2b$10$validhash",
+        passwordHash,
         role: Role.ADMIN,
         name: "Anomaly Tester",
+        organization: { create: { name: "Anomaly Test Org" } },
       },
     });
     userId = user.id;
 
     const loginRes = await request(app)
-      .post("/api/auth/login")
+      .post("/api/v1/auth/login")
       .send({ email: "anomaly-test@test.com", password: "password123" });
     authToken = loginRes.body.token;
 
@@ -30,6 +33,7 @@ describe("Anomaly Detection System", () => {
       data: {
         name: "Anomaly Test Project",
         status: "ACTIVE",
+        organization: { connect: { id: user.organizationId } },
       },
     });
     projectId = project.id;
@@ -57,20 +61,21 @@ describe("Anomaly Detection System", () => {
   describe("Rule-based Range Detection", () => {
     beforeEach(async () => {
       const indicator = await prisma.indicator.create({
-        data: {
-          projectId,
-          logframeNodeId: nodeId,
-          name: "Range Test Indicator",
-          unit: "units",
-          dataType: IndicatorDataType.NUMBER,
-          minValue: 10,
-          maxValue: 100,
-          anomalyConfig: {
-            enabled: true,
-            mode: "RULES",
-            rules: { range: true, maxChangePercent: 0 },
-          },
-        },
+      data: {
+           projectId,
+           logframeNodeId: nodeId,
+           name: "Range Test Indicator",
+           unit: "units",
+           dataType: IndicatorDataType.NUMBER,
+           minValue: 10,
+           maxValue: 100,
+           anomalyConfig: {
+             enabled: true,
+             mode: "RULES",
+             rules: { range: true, maxChangePercent: 0 },
+           },
+           createdByUserId: userId,
+         },
       });
       indicatorId = indicator.id;
     });
@@ -82,7 +87,7 @@ describe("Anomaly Detection System", () => {
 
     test("should flag values below minimum as anomaly", async () => {
       const res = await request(app)
-        .post(`/api/indicators/${indicatorId}/submissions`)
+        .post(`/api/v1/indicators/${indicatorId}/submissions`)
         .set("Authorization", `Bearer ${authToken}`)
         .send({
           reportedAt: new Date(2025, 0, 1).toISOString(),
@@ -97,7 +102,7 @@ describe("Anomaly Detection System", () => {
 
     test("should flag values above maximum as anomaly", async () => {
       const res = await request(app)
-        .post(`/api/indicators/${indicatorId}/submissions`)
+        .post(`/api/v1/indicators/${indicatorId}/submissions`)
         .set("Authorization", `Bearer ${authToken}`)
         .send({
           reportedAt: new Date(2025, 0, 2).toISOString(),
@@ -113,23 +118,24 @@ describe("Anomaly Detection System", () => {
   describe("Rule-based Change Detection", () => {
     beforeEach(async () => {
       const indicator = await prisma.indicator.create({
-        data: {
-          projectId,
-          logframeNodeId: nodeId,
-          name: "Change Test Indicator",
-          unit: "units",
-          dataType: IndicatorDataType.NUMBER,
-          anomalyConfig: {
-            enabled: true,
-            mode: "RULES",
-            rules: { range: false, maxChangePercent: 50 },
+          data: {
+            projectId,
+            logframeNodeId: nodeId,
+            name: "Change Test Indicator",
+            unit: "units",
+            dataType: IndicatorDataType.NUMBER,
+            anomalyConfig: {
+              enabled: true,
+              mode: "RULES",
+              rules: { range: false, maxChangePercent: 50 },
+            },
+            createdByUserId: userId,
           },
-        },
       });
       indicatorId = indicator.id;
 
       await request(app)
-        .post(`/api/indicators/${indicatorId}/submissions`)
+        .post(`/api/v1/indicators/${indicatorId}/submissions`)
         .set("Authorization", `Bearer ${authToken}`)
         .send({
           reportedAt: new Date(2025, 0, 1).toISOString(),
@@ -144,7 +150,7 @@ describe("Anomaly Detection System", () => {
 
     test("should flag large percent change as anomaly", async () => {
       const res = await request(app)
-        .post(`/api/indicators/${indicatorId}/submissions`)
+        .post(`/api/v1/indicators/${indicatorId}/submissions`)
         .set("Authorization", `Bearer ${authToken}`)
         .send({
           reportedAt: new Date(2025, 0, 2).toISOString(),
@@ -158,7 +164,7 @@ describe("Anomaly Detection System", () => {
 
     test("should not flag small change", async () => {
       const res = await request(app)
-        .post(`/api/indicators/${indicatorId}/submissions`)
+        .post(`/api/v1/indicators/${indicatorId}/submissions`)
         .set("Authorization", `Bearer ${authToken}`)
         .send({
           reportedAt: new Date(2025, 0, 3).toISOString(),
@@ -176,12 +182,13 @@ describe("Anomaly Detection System", () => {
     beforeEach(async () => {
       const indicator = await prisma.indicator.create({
         data: {
-          projectId,
-          logframeNodeId: nodeId,
-          name: "Management Test Indicator",
-          unit: "units",
-          dataType: IndicatorDataType.NUMBER,
-        },
+            projectId,
+            logframeNodeId: nodeId,
+            name: "Management Test Indicator",
+            unit: "units",
+            dataType: IndicatorDataType.NUMBER,
+            createdByUserId: userId,
+          },
       });
       indicatorId = indicator.id;
 
@@ -205,10 +212,10 @@ describe("Anomaly Detection System", () => {
     });
 
     test("should acknowledge anomaly", async () => {
-      const res = await request(app)
-        .post(`/api/submissions/${anomalySubmissionId}/anomaly/acknowledge`)
-        .set("Authorization", `Bearer ${authToken}`)
-        .send({ notes: "Data entry error confirmed" });
+    const res = await request(app)
+      .post(`/api/v1/submissions/${anomalySubmissionId}/anomaly/acknowledge`)
+      .set("Authorization", `Bearer ${authToken}`)
+      .send({ notes: "Data entry error confirmed" });
 
       expect(res.status).toBe(200);
       expect(res.body.anomalyStatus).toBe(AnomalyStatus.ACKNOWLEDGED);
@@ -217,33 +224,33 @@ describe("Anomaly Detection System", () => {
     });
 
     test("should resolve anomaly", async () => {
-      const res = await request(app)
-        .post(`/api/submissions/${anomalySubmissionId}/anomaly/resolve`)
-        .set("Authorization", `Bearer ${authToken}`)
-        .send({ notes: "Corrected in system" });
+    const res = await request(app)
+      .post(`/api/v1/submissions/${anomalySubmissionId}/anomaly/resolve`)
+      .set("Authorization", `Bearer ${authToken}`)
+      .send({ notes: "Corrected in system" });
 
       expect(res.status).toBe(200);
       expect(res.body.anomalyStatus).toBe(AnomalyStatus.RESOLVED);
     });
 
     test("should mark anomaly as false positive", async () => {
-      const res = await request(app)
-        .post(`/api/submissions/${anomalySubmissionId}/anomaly/false-positive`)
-        .set("Authorization", `Bearer ${authToken}`)
-        .send({ notes: "Actually valid data" });
+    const res = await request(app)
+      .post(`/api/v1/submissions/${anomalySubmissionId}/anomaly/false-positive`)
+      .set("Authorization", `Bearer ${authToken}`)
+      .send({ notes: "Actually valid data" });
 
       expect(res.status).toBe(200);
       expect(res.body.anomalyStatus).toBe(AnomalyStatus.FALSE_POSITIVE);
     });
 
     test("should update anomaly status", async () => {
-      const res = await request(app)
-        .put(`/api/submissions/${anomalySubmissionId}/anomaly/status`)
-        .set("Authorization", `Bearer ${authToken}`)
-        .send({
-          status: AnomalyStatus.RESOLVED,
-          notes: "Updated status",
-        });
+    const res = await request(app)
+      .put(`/api/v1/submissions/${anomalySubmissionId}/anomaly/status`)
+      .set("Authorization", `Bearer ${authToken}`)
+      .send({
+        status: AnomalyStatus.RESOLVED,
+        notes: "Updated status",
+      });
 
       expect(res.status).toBe(200);
       expect(res.body.anomalyStatus).toBe(AnomalyStatus.RESOLVED);
@@ -261,7 +268,7 @@ describe("Anomaly Detection System", () => {
       });
 
       const res = await request(app)
-        .post(`/api/submissions/${normalSubmission.id}/anomaly/acknowledge`)
+        .post(`/api/v1/submissions/${normalSubmission.id}/anomaly/acknowledge`)
         .set("Authorization", `Bearer ${authToken}`)
         .send({ notes: "Test" });
 
@@ -274,19 +281,20 @@ describe("Anomaly Detection System", () => {
     test("should not detect anomalies when disabled", async () => {
       const indicator = await prisma.indicator.create({
         data: {
-          projectId,
-          logframeNodeId: nodeId,
-          name: "Disabled Anomaly Indicator",
-          unit: "units",
-          dataType: IndicatorDataType.NUMBER,
-          anomalyConfig: {
-            enabled: false,
+            projectId,
+            logframeNodeId: nodeId,
+            name: "Disabled Anomaly Indicator",
+            unit: "units",
+            dataType: IndicatorDataType.NUMBER,
+            anomalyConfig: {
+              enabled: false,
+            },
+            createdByUserId: userId,
           },
-        },
       });
 
       const res = await request(app)
-        .post(`/api/indicators/${indicator.id}/submissions`)
+        .post(`/api/v1/indicators/${indicator.id}/submissions`)
         .set("Authorization", `Bearer ${authToken}`)
         .send({
           reportedAt: new Date().toISOString(),

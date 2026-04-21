@@ -30,6 +30,8 @@ interface DisaggregationComparisonProps {
   onSelectDisaggregation?: (key: string | null) => void;
   selectedKey?: string | null;
   refreshCounter?: number;
+  rows?: DisaggregatedRow[];
+  totalSubmissions?: number;
 }
 
 const formatDate = (value: string | null) => {
@@ -53,6 +55,8 @@ export const DisaggregationComparison: React.FC<
   onSelectDisaggregation,
   selectedKey,
   refreshCounter,
+  rows: controlledRows,
+  totalSubmissions: controlledTotalSubmissions,
 }) => {
   const [rows, setRows] = useState<DisaggregatedRow[]>([]);
   const [totalSubmissions, setTotalSubmissions] = useState(0);
@@ -60,6 +64,14 @@ export const DisaggregationComparison: React.FC<
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (controlledRows) {
+      setRows(controlledRows);
+      setTotalSubmissions(controlledTotalSubmissions ?? controlledRows.reduce((sum, row) => sum + row.totalSubmissions, 0));
+      setLoading(false);
+      setError(null);
+      return;
+    }
+
     const fetchStats = async () => {
       setLoading(true);
       setError(null);
@@ -77,7 +89,7 @@ export const DisaggregationComparison: React.FC<
     };
 
     fetchStats();
-  }, [indicatorId, refreshCounter]);
+  }, [indicatorId, refreshCounter, controlledRows, controlledTotalSubmissions]);
 
   if (loading) {
     return (

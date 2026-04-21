@@ -1,5 +1,4 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Layout } from "../components/Layout";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import {
   Project,
@@ -14,6 +13,8 @@ import { Button } from "../components/ui/Button";
 import { LogframeTree } from "../components/LogframeTree";
 import { Modal } from "../components/ui/Modal";
 import { LogframeNodeForm } from "../components/LogframeNodeForm";
+// (LogframeWizard removed)
+import ConfirmCascadeModal from "../components/ConfirmCascadeModal";
 import { IndicatorCard } from "../components/IndicatorCard";
 import { IndicatorWizard } from "../components/IndicatorWizard";
 import {
@@ -82,6 +83,7 @@ export const ProjectDetail: React.FC = () => {
   // Modal States
   const [isNodeModalOpen, setIsNodeModalOpen] = useState(false);
   const [isWizardOpen, setIsWizardOpen] = useState(false);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [nodeModalMode, setNodeModalMode] = useState<"create" | "edit">(
     "create",
   );
@@ -138,6 +140,8 @@ export const ProjectDetail: React.FC = () => {
   useEffect(() => {
     refreshData();
   }, [id, isWizardOpen]); // Also refresh when wizard closes (assuming success)
+
+  const isManagerOrAdmin = currentUser?.role === "ADMIN" || currentUser?.role === "MANAGER";
 
   useEffect(() => {
     const loadOutcomeProgress = async () => {
@@ -241,6 +245,38 @@ export const ProjectDetail: React.FC = () => {
     setSelectedNode(node);
     setNodeModalMode("edit");
     setIsNodeModalOpen(true);
+  };
+
+  // Listen for delete events from LogframeTree
+  // Listen for delete events from LogframeTree -> open confirmation modal
+  useEffect(() => {
+    const handler = (e: any) => {
+      const node: LogframeNode = e.detail.node;
+      setSelectedNode(node);
+      // Open our modal (we centralize delete handling here)
+      setIsNodeModalOpen(false);
+      // open dedicated delete modal
+      setIsDeleteModalOpen(true);
+    };
+    window.addEventListener('logframe-delete-request', handler as EventListener);
+    return () => window.removeEventListener('logframe-delete-request', handler as EventListener);
+  }, [project]);
+
+  const handleDeleteNode = async (node: LogframeNode) => {
+    // Deprecated: we now use modal-driven delete flow. Keep function for direct calls.
+    if (!node) return;
+    try {
+      await api.deleteLogframeNode(node.id);
+      alert('Node deleted');
+      refreshData();
+    } catch (err: any) {
+      const msg = err?.message || String(err);
+      if (err?.status === 400) {
+        alert('Cannot delete node: it has child nodes or indicators. Use cascade delete if you have permission.');
+      } else {
+        alert(`Failed to delete node: ${msg}`);
+      }
+    }
   };
 
   const handleAddIndicator = (node: LogframeNode) => {
@@ -491,15 +527,11 @@ export const ProjectDetail: React.FC = () => {
 
   if (loading)
     return (
-      <Layout>
         <div className="p-8 text-center text-slate-500">Loading Project...</div>
-      </Layout>
     );
   if (!project)
     return (
-      <Layout>
         <div className="p-8 text-center text-red-500">Project not found</div>
-      </Layout>
     );
 
   const projectNameMissing = editForm.name.trim().length === 0;
@@ -524,7 +556,7 @@ export const ProjectDetail: React.FC = () => {
     !budgetCurrencyMissing;
 
   return (
-    <Layout>
+    <>
       {/* Header */}
       <div className="mb-8">
         <Link
@@ -549,24 +581,28 @@ export const ProjectDetail: React.FC = () => {
                   <ClipboardCheck className="w-4 h-4 mr-2" /> Data Entry
                 </Button>
               </Link>
-              <Button variant="outline" onClick={() => openEditModal()}>
-                Edit Project
-              </Button>
-              <Button
-                variant="danger"
-                onClick={handleDeleteProject}
-                isLoading={isDeleting}
-              >
-                <Trash2 className="w-4 h-4 mr-2" /> Delete
-              </Button>
-              <Button
-                onClick={() => {
-                  setSelectedNodeForIndicator(null);
-                  setIsWizardOpen(true);
-                }}
-              >
-                <Plus className="w-4 h-4 mr-2" /> Add Indicator
-              </Button>
+              {isManagerOrAdmin && (
+                <>
+                  <Button variant="outline" onClick={() => openEditModal()}>
+                    Edit Project
+                  </Button>
+                  <Button
+                    variant="danger"
+                    onClick={handleDeleteProject}
+                    isLoading={isDeleting}
+                  >
+                    <Trash2 className="w-4 h-4 mr-2" /> Delete
+                  </Button>
+                  <Button
+                    onClick={() => {
+                      setSelectedNodeForIndicator(null);
+                      setIsWizardOpen(true);
+                    }}
+                  >
+                    <Plus className="w-4 h-4 mr-2" /> Add Indicator
+                  </Button>
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -896,10 +932,10 @@ export const ProjectDetail: React.FC = () => {
           <div className="space-y-6">
             {/* KPI Cards */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              <div 
-                onClick={() => openEditModal("budgetSpent")}
-                className="bg-white p-5 rounded-2xl border border-slate-200/70 shadow-sm hover:shadow-md transition-all cursor-pointer group"
-              >
+               <div 
+                 onClick={isManagerOrAdmin ? () => openEditModal("budgetSpent") : undefined}
+                 className={`bg-white p-5 rounded-2xl border border-slate-200/70 shadow-sm transition-all ${isManagerOrAdmin ? 'hover:shadow-md cursor-pointer group' : ''}`}
+               >
                 <div className="flex items-center justify-between mb-4">
                   <span className="text-slate-500 text-xs font-semibold uppercase tracking-wider group-hover:text-blue-600 transition-colors">
                     Budget Utilized
@@ -925,10 +961,10 @@ export const ProjectDetail: React.FC = () => {
                 </p>
               </div>
 
-              <div 
-                onClick={() => openEditModal("startDate")}
-                className="bg-white p-5 rounded-2xl border border-slate-200/70 shadow-sm hover:shadow-md transition-all cursor-pointer group"
-              >
+               <div 
+                 onClick={isManagerOrAdmin ? () => openEditModal("startDate") : undefined}
+                 className={`bg-white p-5 rounded-2xl border border-slate-200/70 shadow-sm transition-all ${isManagerOrAdmin ? 'hover:shadow-md cursor-pointer group' : ''}`}
+               >
                 <div className="flex items-center justify-between mb-4">
                   <span className="text-slate-500 text-xs font-semibold uppercase tracking-wider group-hover:text-blue-600 transition-colors">
                     Time Elapsed
@@ -954,10 +990,10 @@ export const ProjectDetail: React.FC = () => {
                 </p>
               </div>
 
-              <div 
-                onClick={() => setActiveTab("indicators")}
-                className="bg-white p-5 rounded-2xl border border-slate-200/70 shadow-sm hover:shadow-md transition-all cursor-pointer group"
-              >
+               <div 
+                 onClick={() => setActiveTab("indicators")}
+                 className="bg-white p-5 rounded-2xl border border-slate-200/70 shadow-sm hover:shadow-md transition-all cursor-pointer group"
+               >
                 <div className="flex items-center justify-between mb-4">
                   <span className="text-slate-500 text-xs font-semibold uppercase tracking-wider group-hover:text-blue-600 transition-colors">
                     Reporting Status
@@ -1330,11 +1366,13 @@ export const ProjectDetail: React.FC = () => {
               <h3 className="text-lg font-bold text-slate-900">
                 Logframe Matrix
               </h3>
-              {project.logframe.length === 0 && (
-                <Button onClick={handleAddRootGoal} size="sm">
-                  <Plus className="w-4 h-4 mr-2" /> Add Primary Goal
-                </Button>
-              )}
+                {project.logframe.length === 0 && isManagerOrAdmin && (
+                  <div className="flex items-center gap-2">
+                    <Button onClick={handleAddRootGoal} size="sm">
+                      <Plus className="w-4 h-4 mr-2" /> Add Primary Goal
+                    </Button>
+                  </div>
+                )}
             </div>
 
             {project.logframe.length === 0 ? (
@@ -1346,17 +1384,17 @@ export const ProjectDetail: React.FC = () => {
               </div>
             ) : (
               <div className="space-y-6">
-                {project.logframe.map((node) => (
-                  <LogframeTree
-                    key={node.id}
-                    node={node}
-                    indicators={indicators}
-                    onAddChild={handleAddChild}
-                    onEdit={handleEditNode}
-                    onAddIndicator={handleAddIndicator}
-                    isRoot={true}
-                  />
-                ))}
+                 {project.logframe.map((node) => (
+                   <LogframeTree
+                     key={node.id}
+                     node={node}
+                     indicators={indicators}
+                     onAddChild={isManagerOrAdmin ? handleAddChild : undefined}
+                     onEdit={isManagerOrAdmin ? handleEditNode : undefined}
+                     onAddIndicator={isManagerOrAdmin ? handleAddIndicator : undefined}
+                     isRoot={true}
+                   />
+                 ))}
               </div>
             )}
           </div>
@@ -1442,8 +1480,8 @@ export const ProjectDetail: React.FC = () => {
       {/* Indicator Wizard Modal */}
       <Modal
         isOpen={isWizardOpen}
-        onClose={() => setIsWizardOpen(false)}
-        title="" // Title handled inside wizard
+        onClose={() => { setIsWizardOpen(false); }}
+        title=""
         size="xl"
       >
         <IndicatorWizard
@@ -1454,8 +1492,44 @@ export const ProjectDetail: React.FC = () => {
             setIsWizardOpen(false);
             setEditingIndicator(null);
           }}
+          canManage={isManagerOrAdmin}
         />
       </Modal>
-    </Layout>
+
+      {/* Confirm Cascade Delete Modal */}
+      <ConfirmCascadeModal
+        isOpen={isDeleteModalOpen}
+        node={selectedNode}
+        indicators={indicators}
+        onClose={() => setIsDeleteModalOpen(false)}
+        onSafeDelete={async () => {
+          if (!selectedNode) return;
+          try {
+            await api.deleteLogframeNode(selectedNode.id);
+            alert('Node deleted');
+            setIsDeleteModalOpen(false);
+            refreshData();
+          } catch (err: any) {
+            if (err?.status === 400) {
+              alert('Cannot delete node: it has child nodes or indicators. Remove them first or use cascade.');
+            } else {
+              alert('Failed to delete node');
+            }
+          }
+        }}
+        onCascadeDelete={async () => {
+          if (!selectedNode) return;
+          try {
+            await api.deleteLogframeNodeCascade(selectedNode.id);
+            alert('Node and descendants deleted');
+            setIsDeleteModalOpen(false);
+            refreshData();
+          } catch (err: any) {
+            console.error('Cascade delete failed', err);
+            alert('Cascade delete failed');
+          }
+        }}
+      />
+    </>
   );
 };
