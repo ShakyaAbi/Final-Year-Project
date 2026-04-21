@@ -739,5 +739,434 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Submission" }
+  /users:
+    get:
+      security: [{ bearerAuth: [] }]
+      summary: List users (ADMIN)
+      responses:
+        "200":
+          description: Users
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/User"
+  /users/{id}/role:
+    patch:
+      security: [{ bearerAuth: [] }]
+      summary: Update user role (ADMIN)
+      parameters:
+        - in: path
+          name: id
+          schema: { type: integer }
+          required: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                role:
+                  type: string
+                  enum: [ADMIN, MANAGER, DATA_ENTRY]
+      responses:
+        "200": { description: Updated }
+  /users/{id}:
+    delete:
+      security: [{ bearerAuth: [] }]
+      summary: Delete user (ADMIN)
+      parameters:
+        - in: path
+          name: id
+          schema: { type: integer }
+          required: true
+      responses:
+        "204": { description: Deleted }
+
+  /notifications/anomalies:
+    get:
+      security: [{ bearerAuth: [] }]
+      summary: List anomaly notifications
+      responses:
+        "200":
+          description: Notifications
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id: { type: integer }
+                    type: { type: string }
+                    message: { type: string }
+                    date: { type: string, format: date-time }
+  /notifications/anomalies/mark-read:
+    post:
+      security: [{ bearerAuth: [] }]
+      summary: Mark anomaly notifications as read
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200": { description: OK }
+  /notifications/overdue:
+    get:
+      security: [{ bearerAuth: [] }]
+      summary: Get overdue notifications
+      responses:
+        "200":
+          description: Overdue notifications
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+
+  /health/ml:
+    get:
+      security: [{ bearerAuth: [] }]
+      summary: ML service health (ADMIN, MANAGER)
+      responses:
+        "200":
+          description: ML health status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string }
+                  details: { type: object }
+
+  /indicators/{indicatorId}/export:
+    post:
+      security: [{ bearerAuth: [] }]
+      summary: Export indicator data as CSV
+      parameters:
+        - in: path
+          name: indicatorId
+          schema: { type: integer }
+          required: true
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                from: { type: string, format: date }
+                to: { type: string, format: date }
+      responses:
+        "200":
+          description: CSV content
+          content:
+            text/csv:
+              schema:
+                type: string
+                format: binary
+  /indicators/{indicatorId}/export/preview:
+    post:
+      security: [{ bearerAuth: [] }]
+      summary: Preview export for indicator
+      parameters:
+        - in: path
+          name: indicatorId
+          schema: { type: integer }
+          required: true
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: Export preview
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /indicators/{indicatorId}/import:
+    post:
+      security: [{ bearerAuth: [] }]
+      summary: Upload CSV import for indicator
+      parameters:
+        - in: path
+          name: indicatorId
+          schema: { type: integer }
+          required: true
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        "202": { description: Accepted - import job created }
+
+  /indicators/{indicatorId}/import-jobs:
+    get:
+      security: [{ bearerAuth: [] }]
+      summary: List import jobs for an indicator
+      parameters:
+        - in: path
+          name: indicatorId
+          schema: { type: integer }
+          required: true
+      responses:
+        "200":
+          description: Import jobs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+
+  /import-jobs/{jobId}:
+    get:
+      security: [{ bearerAuth: [] }]
+      summary: Get import job status
+      parameters:
+        - in: path
+          name: jobId
+          schema: { type: integer }
+          required: true
+      responses:
+        "200":
+          description: Import job status
+          content:
+            application/json:
+              schema:
+                type: object
+    post:
+      security: [{ bearerAuth: [] }]
+      summary: Process import job
+      parameters:
+        - in: path
+          name: jobId
+          schema: { type: integer }
+          required: true
+      responses:
+        "200": { description: Processing started }
+  /import-jobs/{jobId}/process:
+    post:
+      security: [{ bearerAuth: [] }]
+      summary: Process import job
+      parameters:
+        - in: path
+          name: jobId
+          schema: { type: integer }
+          required: true
+      responses:
+        "200": { description: Processing started }
+  /import-jobs/{jobId}/cancel:
+    post:
+      security: [{ bearerAuth: [] }]
+      summary: Cancel import job
+      parameters:
+        - in: path
+          name: jobId
+          schema: { type: integer }
+          required: true
+      responses:
+        "200": { description: Cancelled }
+  /import-jobs/{jobId}/errors/download:
+    get:
+      security: [{ bearerAuth: [] }]
+      summary: Download error CSV for import job
+      parameters:
+        - in: path
+          name: jobId
+          schema: { type: integer }
+          required: true
+      responses:
+        "200":
+          description: Error CSV
+          content:
+            text/csv:
+              schema:
+                type: string
+                format: binary
+
+  /indicators/{indicatorId}/import-templates:
+    post:
+      security: [{ bearerAuth: [] }]
+      summary: Create import template for indicator
+      parameters:
+        - in: path
+          name: indicatorId
+          schema: { type: integer }
+          required: true
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "201": { description: Created }
+    get:
+      security: [{ bearerAuth: [] }]
+      summary: List import templates for indicator
+      parameters:
+        - in: path
+          name: indicatorId
+          schema: { type: integer }
+          required: true
+      responses:
+        "200":
+          description: Templates
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+  /indicators/{indicatorId}/import-template-sample:
+    get:
+      security: [{ bearerAuth: [] }]
+      summary: Download sample CSV for import template
+      parameters:
+        - in: path
+          name: indicatorId
+          schema: { type: integer }
+          required: true
+      responses:
+        "200":
+          description: Sample CSV
+          content:
+            text/csv:
+              schema:
+                type: string
+                format: binary
+
+  /import-templates/{templateId}:
+    get:
+      security: [{ bearerAuth: [] }]
+      summary: Get import template
+      parameters:
+        - in: path
+          name: templateId
+          schema: { type: integer }
+          required: true
+      responses:
+        "200":
+          description: Import template
+          content:
+            application/json:
+              schema:
+                type: object
+    put:
+      security: [{ bearerAuth: [] }]
+      summary: Update import template
+      parameters:
+        - in: path
+          name: templateId
+          schema: { type: integer }
+          required: true
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200": { description: Updated }
+    delete:
+      security: [{ bearerAuth: [] }]
+      summary: Delete import template
+      parameters:
+        - in: path
+          name: templateId
+          schema: { type: integer }
+          required: true
+      responses:
+        "204": { description: Deleted }
+  /import-templates/{templateId}/clone:
+    post:
+      security: [{ bearerAuth: [] }]
+      summary: Clone import template
+      parameters:
+        - in: path
+          name: templateId
+          schema: { type: integer }
+          required: true
+      responses:
+        "201": { description: Cloned }
+
+  /indicators/{id}/templates:
+    get:
+      security: [{ bearerAuth: [] }]
+      summary: Get indicator templates
+      parameters:
+        - in: path
+          name: id
+          schema: { type: integer }
+          required: true
+      responses:
+        "200":
+          description: Templates
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+
+  /ml/algorithms:
+    get:
+      security: [{ bearerAuth: [] }]
+      summary: List available ML algorithms
+      responses:
+        "200":
+          description: Algorithms
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+
+  /indicators/{id}/ml-evaluate:
+    post:
+      security: [{ bearerAuth: [] }]
+      summary: Evaluate ML on indicator data
+      parameters:
+        - in: path
+          name: id
+          schema: { type: integer }
+          required: true
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: ML evaluation result
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /indicators/{id}/anomalies/recalculate:
+    post:
+      security: [{ bearerAuth: [] }]
+      summary: Recalculate anomalies for indicator (ADMIN, MANAGER)
+      parameters:
+        - in: path
+          name: id
+          schema: { type: integer }
+          required: true
+      responses:
+        "200": { description: Recalculation scheduled }
+
 security:
   - bearerAuth: []
