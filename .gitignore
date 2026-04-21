@@ -50,3 +50,5 @@ AGENTS.md
 .gitignore
 APP_OVERVIEW.md
 
+deploy/api.env
+deploy/web.env
